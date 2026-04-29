@@ -65,8 +65,11 @@
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             添加端口
           </button>
-          <button class="proxy-add-btn" @click="handleDetect" :disabled="detecting">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <button class="proxy-add-btn" :class="{ detecting }" @click="handleDetect" :disabled="detecting">
+            <span class="detect-icon-wrap">
+              <svg class="detect-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <span v-if="detecting" class="radar-ping"></span>
+            </span>
             {{ detecting ? '检测中...' : '自动检测' }}
           </button>
         </div>
@@ -77,10 +80,11 @@
         <div class="proxy-detected-label">检测到的端口：</div>
         <div class="proxy-detected-chips">
           <button
-            v-for="p in detectedPortsNotRegistered"
+            v-for="(p, i) in detectedPortsNotRegistered"
             :key="p.port"
             class="detect-chip"
             :class="p.protocol"
+            :style="{ animationDelay: `${i * 60}ms` }"
             @click="handleQuickAdd(p.port, p.protocol)"
           >{{ p.port }} <span class="chip-proto">{{ p.protocol }}</span></button>
           <span v-if="detectedPortsNotRegistered.length === 0" class="detect-all-registered">全部已注册</span>
@@ -215,6 +219,44 @@ watch(() => props.open, async (val) => {
   cursor: not-allowed;
 }
 
+.proxy-add-btn.detecting {
+  border-color: var(--accent-color, #0066cc);
+  color: var(--accent-color, #0066cc);
+}
+
+.detect-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.detect-icon-wrap .detect-icon {
+  position: relative;
+  z-index: 1;
+}
+
+.radar-ping {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-color, #0066cc);
+  opacity: 0;
+  animation: radar-ping 1.2s ease-out infinite;
+}
+
+@keyframes radar-ping {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
 .proxy-add-form {
   display: flex;
   gap: 4px;
@@ -313,6 +355,7 @@ watch(() => props.open, async (val) => {
   display: flex;
   align-items: center;
   gap: 3px;
+  animation: chip-appear 0.3s ease-out both;
 }
 
 .detect-chip.https {
@@ -341,5 +384,16 @@ watch(() => props.open, async (val) => {
   font-size: 11px;
   color: var(--text-muted, #999);
   opacity: 0.7;
+}
+
+@keyframes chip-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 </style>
