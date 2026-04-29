@@ -127,7 +127,7 @@ Run with *npm start*.`
 
 func TestNewMiniMaxProvider_Defaults(t *testing.T) {
 	p := NewMiniMaxProvider()
-	assert.Equal(t, "MiniMax-Text-02-HS", p.SummarizeModel)
+	assert.Equal(t, "MiniMax-M2-7B", p.SummarizeModel)
 	assert.Equal(t, "speech-2.8-hd", p.TTSModel)
 	assert.Equal(t, "female-chengshu", p.TTSVoice)
 	assert.Equal(t, "zh", p.TTSLanguage)

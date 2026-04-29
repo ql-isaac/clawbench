@@ -43,7 +43,7 @@ var MaxTextRunes = 0
 
 // MiniMaxProvider implements SpeechProvider using the mmx CLI tool.
 type MiniMaxProvider struct {
-	// SummarizeModel is the model ID for text chat (default: "MiniMax-Text-02-HS").
+	// SummarizeModel is the model ID for text chat (default: "MiniMax-M2-7B").
 	SummarizeModel string
 	// TTSModel is the model ID for speech synthesis (default: "speech-2.8-hd").
 	TTSModel string

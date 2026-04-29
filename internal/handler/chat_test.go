@@ -22,7 +22,7 @@ import (
 func feedEvents(events []ai.StreamEvent) []model.ContentBlock {
 	var blocks []model.ContentBlock
 	for _, event := range events {
-		accumulateBlock(&blocks, event)
+		accumulateBlock(&blocks, event, "", "", "")
 	}
 	return blocks
 }
