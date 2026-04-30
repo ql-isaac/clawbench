@@ -140,6 +140,11 @@ export function annotateFilePaths(
         const attrs = codeMatch[1]
         const codeContent = codeMatch[2]
         const stripped = codeContent.replace(/<[^>]+>/g, '').trim()
+        // Only treat inline code as a file path if it looks like one:
+        // - Contains at least one '/' (e.g. src/foo.ts, ./bar.go)
+        // - Or has a file extension pattern (e.g. ChatPanel.vue, main.go)
+        // Bare identifiers like `useAutoSpeech`, `onUnmounted`, `ref` should NOT be treated as paths.
+        if (!/\/|\.[a-zA-Z][a-zA-Z0-9]{0,3}$/.test(stripped)) return match
         const resolved = resolveFilePath(stripped, projectRoot)
         if (!resolved) return match
         detectedPaths.push(resolved)
