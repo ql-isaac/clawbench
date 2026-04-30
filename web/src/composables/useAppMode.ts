@@ -5,24 +5,30 @@ const isAppMode = ref(false)
 let initialized = false
 
 /**
- * Detects if the app is running inside the Android native WebView.
- * Uses the AndroidNative.isNativeApp() JS bridge method,
- * with User-Agent as fallback.
+ * Detects if the app is running inside the Android native WebView (top-level frame).
+ *
+ * Two conditions must both be true:
+ * 1. AndroidNative.isNativeApp() returns true (JS Bridge injected by native app)
+ * 2. window === window.top (we are in the top-level frame, not an iframe)
+ *
+ * Condition 2 is critical: Android's addJavascriptInterface injects the bridge
+ * into ALL frames including child iframes. When PortForwardBrowser opens a
+ * ClawBench dev page in an iframe, it inherits the bridge but should run in
+ * web mode (no port forward button, no native auto-login, etc.).
+ * User-Agent is intentionally NOT checked — it's inherited by iframes and
+ * causes false positives in port-forwarded pages.
  */
 export function useAppMode() {
   if (!initialized) {
     initialized = true
     try {
-      // Method 1: JS Bridge (most reliable)
+      // Must be in the top-level frame — iframe is always web mode
+      if (window !== window.top) return { isAppMode }
       if (typeof (window as any).AndroidNative !== 'undefined') {
         isAppMode.value = (window as any).AndroidNative.isNativeApp() === true
       }
-      // Method 2: User-Agent fallback
-      if (!isAppMode.value && navigator.userAgent.includes('ClawBench-Android')) {
-        isAppMode.value = true
-      }
     } catch {
-      // Not in native app
+      // window.top access may throw in cross-origin iframe — treat as web mode
     }
   }
   return { isAppMode }
