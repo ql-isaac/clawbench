@@ -5,7 +5,7 @@
 import { hljs } from './globals.ts'
 import { escapeHtml } from './html.ts'
 import { detectLang, highlightLine } from './diff.ts'
-import { resolveFilePath } from '@/composables/useFilePathAnnotation.ts'
+import { resolveFilePath, fileOpenButtonHtml } from '@/composables/useFilePathAnnotation.ts'
 import { store } from '@/stores/app.ts'
 
 /**
@@ -32,6 +32,7 @@ function renderEditDiff(input: Record<string, any>): string {
   let header = '<div class="tool-file-header">'
   if (resolvedPath) {
     header += `<span class="tool-file-path chat-file-open-btn" data-file-path="${escapeHtml(resolvedPath)}" title="打开文件">${escapeHtml(displayPath)}</span>`
+    header += fileOpenButtonHtml(resolvedPath)
   } else {
     header += `<span class="tool-file-path">${escapeHtml(displayPath)}</span>`
   }
@@ -107,6 +108,7 @@ function filePathHeader(input: Record<string, any>, extraBadge = ''): string {
   let html = '<div class="tool-file-header">'
   if (resolvedPath) {
     html += `<span class="tool-file-path chat-file-open-btn" data-file-path="${escapeHtml(resolvedPath)}" title="打开文件">${escapeHtml(displayPath)}</span>`
+    html += fileOpenButtonHtml(resolvedPath)
   } else {
     html += `<span class="tool-file-path">${escapeHtml(displayPath)}</span>`
   }

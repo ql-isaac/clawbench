@@ -49,10 +49,16 @@ export function resolveFilePath(path: string, projectRoot: string): string | nul
 }
 
 /**
+ * SVG icon markup for the file-open button (external-link icon).
+ * Shared constant so both fileOpenButtonHtml() and Vue templates use the same icon.
+ */
+export const FILE_OPEN_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+
+/**
  * Generate HTML for the small open-file button.
  */
 export function fileOpenButtonHtml(resolvedPath: string): string {
-    return `<button class="chat-file-open-btn" data-file-path="${escapeHtml(resolvedPath)}" title="打开文件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`
+    return `<button class="chat-file-open-btn" data-file-path="${escapeHtml(resolvedPath)}" title="打开文件">${FILE_OPEN_ICON_SVG}</button>`
 }
 
 export interface AnnotateFilePathsOptions {

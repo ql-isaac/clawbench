@@ -21,6 +21,7 @@
     <template v-if="selectedFilePath && mode === 'project' && currentView === 'diff'">
       <span class="git-crumb-sep">›</span>
       <span class="git-crumb current">{{ fileName }}</span>
+      <button class="git-file-open-btn" @click.stop="$emit('open-file', selectedFilePath)" title="打开文件" v-html="FILE_OPEN_ICON_SVG"></button>
     </template>
   </div>
 </template>
@@ -28,6 +29,7 @@
 <script setup>
 import { computed } from 'vue'
 import { baseName } from '@/utils/helpers.ts'
+import { FILE_OPEN_ICON_SVG } from '@/composables/useFilePathAnnotation.ts'
 
 const props = defineProps({
   mode: { type: String, default: 'project' },
@@ -36,7 +38,7 @@ const props = defineProps({
   selectedFilePath: String,
 })
 
-defineEmits(['navigate'])
+defineEmits(['navigate', 'open-file'])
 
 const commitLabel = computed(() => {
   if (!props.selectedCommit) return ''
@@ -99,5 +101,31 @@ const commitTarget = computed(() => {
 .git-crumb-sep {
   color: var(--text-muted, #999);
   font-size: 11px;
+}
+.git-file-open-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  outline: none;
+  flex-shrink: 0;
+}
+.git-file-open-btn:hover {
+  opacity: 1;
+  color: var(--accent-color, #4a90d9);
+  background: var(--bg-secondary, #e0e0e0);
+}
+.git-file-open-btn svg {
+  display: block;
 }
 </style>

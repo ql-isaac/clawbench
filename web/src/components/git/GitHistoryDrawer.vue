@@ -1,5 +1,5 @@
 <template>
-  <BottomSheet :open="open" @close="handleClose">
+  <BottomSheet ref="bottomSheetRef" :open="open" @close="handleClose">
     <template #header>
       <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
         <line x1="6" y1="3" x2="6" y2="15"/>
@@ -126,6 +126,7 @@
           :selected-commit="selectedCommit"
           :selected-file-path="selectedFilePath"
           @navigate="drillBack"
+          @open-file="onOpenFile"
         />
       </div>
       <div class="drilldown-body">
@@ -162,6 +163,13 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'open-file'])
+
+const bottomSheetRef = ref(null)
+
+function onOpenFile(path) {
+  emit('open-file', path)
+  bottomSheetRef.value?.close()
+}
 
 // ─── Unified state ─────────────────────────────────────────────────────────
 
@@ -482,12 +490,8 @@ const lastFilePath = ref(null)
 
 watch(() => props.open, async (val) => {
   if (!val) {
-    // Stop observing and navigate back to commit list so reopening is clean
+    // Stop observing but keep state so reopening resumes where we left off
     commitListRef.value?.unobserveList()
-    currentView.value = 'commits'
-    selectedSHA.value = null
-    selectedFilePath.value = null
-    diffState.value = { loading: false, empty: false, html: '' }
     return
   }
 
