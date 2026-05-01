@@ -101,7 +101,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted, onMounted, inject, provide, toRef, nextTick } from 'vue'
+import { ref, computed, watch, watchEffect, onUnmounted, onMounted, inject, provide, toRef, nextTick } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'
 import SessionDrawer from '@/components/session/SessionDrawer.vue'
@@ -124,6 +124,7 @@ import { useSwipeSession } from '@/composables/useSwipeSession.ts'
 const props = defineProps({
     open: Boolean,
     currentFile: Object,
+    chatSessionState: Object,
 })
 const emit = defineEmits(['close', 'open', 'message'])
 
@@ -242,7 +243,7 @@ provide('chatUI', { closeSheet: () => bottomSheetRef.value?.close() })
 provide('autoSpeech', autoSpeech)
 provide('layoutRefreshKey', layoutRefreshKey)
 
-// Provide session info for the QuoteQuestionBar
+// Provide session info (kept for backward compat with child components)
 provide('chatSessionInfo', {
   currentSessionId: session.currentSessionId,
   currentSessionTitle: session.currentSessionTitle,
@@ -256,6 +257,25 @@ provide('chatSessionInfo', {
   deleteSession: session.deleteSession,
   runningSessions: session.runningSessions,
 })
+
+// Sync session state to parent (App.vue) via chatSessionState prop
+// This avoids the provide/inject direction limitation (child→parent doesn't work)
+if (props.chatSessionState) {
+  // Sync reactive refs
+  watchEffect(() => {
+    props.chatSessionState.currentSessionId = session.currentSessionId.value
+    props.chatSessionState.currentSessionTitle = session.currentSessionTitle.value
+    props.chatSessionState.currentAgentId = session.currentAgentId.value
+    props.chatSessionState.agentHeaderTitle = session.agentHeaderTitle.value
+    props.chatSessionState.runningSessions = session.runningSessions.value
+  })
+  // Sync functions (stable, only need to set once)
+  props.chatSessionState.getAgentIcon = session.getAgentIcon
+  props.chatSessionState.getAgentName = session.getAgentName
+  props.chatSessionState.switchSession = session.switchSession
+  props.chatSessionState.createSession = session.createSession
+  props.chatSessionState.deleteSession = session.deleteSession
+}
 
 // 子抽屉跟随聊天框关闭；面板打开时刷新渲染（修复 display:none 期间的过时布局状态）
 watch(() => props.open, async (val) => {

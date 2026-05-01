@@ -62,6 +62,7 @@
       <ChatPanel
         :open="chatOpen"
         :current-file="currentFile"
+        :chat-session-state="chatSessionState"
         @close="chatOpen = false"
         @open="chatOpen = true"
         @message="handleChatMessage()"
@@ -119,10 +120,10 @@
       <QuoteQuestionBar
         :visible="quoteQuestion.visible.value"
         :quoteData="quoteQuestion.quoteData.value"
-        :sessionIcon="chatSessionInfo?.getAgentIcon?.(chatSessionInfo?.currentAgentId?.value) || '🤖'"
-        :sessionTitle="chatSessionInfo?.currentSessionTitle?.value || ''"
-        :currentSessionId="chatSessionInfo?.currentSessionId?.value || ''"
-        @send="quoteQuestion.sendMessage($event, chatSessionInfo?.currentSessionId?.value || '')"
+        :sessionIcon="chatSessionState.getAgentIcon(chatSessionState.currentAgentId)"
+        :sessionTitle="chatSessionState.currentSessionTitle"
+        :currentSessionId="chatSessionState.currentSessionId"
+        @send="quoteQuestion.sendMessage($event, chatSessionState.currentSessionId)"
         @close="quoteQuestion.closeSheet()"
         @pin="quoteQuestion.pinBar()"
         @open-sessions="handleQuoteOpenSessions"
@@ -131,8 +132,8 @@
       <!-- Session drawer for quote-question session switching -->
       <SessionDrawer
         :open="quoteSessionDrawerOpen"
-        :currentSessionId="chatSessionInfo?.currentSessionId?.value || ''"
-        :runningSessionIds="chatSessionInfo?.runningSessions?.value || new Set()"
+        :currentSessionId="chatSessionState.currentSessionId"
+        :runningSessionIds="chatSessionState.runningSessions"
         @close="quoteSessionDrawerOpen = false"
         @select="handleQuoteSessionSelect"
         @create="handleQuoteSessionCreate"
@@ -209,7 +210,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, provide, inject, nextTick } from 'vue'
+import { ref, computed, watch, reactive, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import AppHeader from './components/common/AppHeader.vue'
 import FileManager from './components/file/FileManager.vue'
 import WelcomeView from './components/WelcomeView.vue'
@@ -278,7 +279,18 @@ const proxyOpen = ref(false)
 
 // Quote question feature
 const quoteQuestion = useQuoteQuestion()
-const chatSessionInfo = inject('chatSessionInfo', null)
+const chatSessionState = reactive({
+  currentSessionId: '',
+  currentSessionTitle: '',
+  currentAgentId: '',
+  agentHeaderTitle: '',
+  getAgentIcon: () => '🤖',
+  getAgentName: () => '助手',
+  switchSession: () => {},
+  createSession: () => {},
+  deleteSession: () => {},
+  runningSessions: new Set(),
+})
 const quoteSessionDrawerOpen = ref(false)
 
 // Open session drawer directly when user clicks session info in QuoteQuestionBar
@@ -287,17 +299,17 @@ function handleQuoteOpenSessions() {
 }
 
 function handleQuoteSessionSelect(sessionId) {
-  chatSessionInfo?.switchSession?.(sessionId)
+  chatSessionState.switchSession(sessionId)
   quoteSessionDrawerOpen.value = false
 }
 
 function handleQuoteSessionCreate(agentId) {
-  chatSessionInfo?.createSession?.(agentId)
+  chatSessionState.createSession(agentId)
   quoteSessionDrawerOpen.value = false
 }
 
 function handleQuoteSessionDelete(sessionId, backend) {
-  chatSessionInfo?.deleteSession?.(sessionId, backend)
+  chatSessionState.deleteSession(sessionId, backend)
 }
 
 // 抽屉互斥：打开一个时关闭其他（瞬间关闭，无动画）
