@@ -73,8 +73,8 @@ func TestOpenCodeStream_ParseLine_ToolUse(t *testing.T) {
 	if tool == nil {
 		t.Fatal("expected tool call, got nil")
 	}
-	if tool.Name != "read" {
-		t.Errorf("expected tool name 'read', got %q", tool.Name)
+	if tool.Name != "Read" {
+		t.Errorf("expected normalized tool name 'Read', got %q", tool.Name)
 	}
 	if tool.ID != "call_123" {
 		t.Errorf("expected call ID 'call_123', got %q", tool.ID)
@@ -82,12 +82,12 @@ func TestOpenCodeStream_ParseLine_ToolUse(t *testing.T) {
 	if !tool.Done {
 		t.Error("expected Done=true for completed tool")
 	}
-	// Verify input is preserved as JSON
+	// Verify input is normalized: filePath → file_path
 	var input map[string]any
 	if err := json.Unmarshal([]byte(tool.Input), &input); err != nil {
 		t.Fatalf("failed to parse tool input: %v", err)
 	}
-	if input["filePath"] != "/tmp/test.go" {
+	if input["file_path"] != "/tmp/test.go" {
 		t.Errorf("unexpected input: %v", input)
 	}
 }
@@ -236,8 +236,8 @@ func TestOpenCodeStream_MultiStepFlow(t *testing.T) {
 	if events[0].Type != "tool_use" {
 		t.Errorf("event 0: expected tool_use, got %s", events[0].Type)
 	}
-	if events[0].Tool.Name != "read" {
-		t.Errorf("event 0: expected tool name 'read', got %q", events[0].Tool.Name)
+	if events[0].Tool.Name != "Read" {
+		t.Errorf("event 0: expected normalized tool name 'Read', got %q", events[0].Tool.Name)
 	}
 
 	// Event 2: content

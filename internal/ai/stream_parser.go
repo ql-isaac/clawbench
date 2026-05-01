@@ -152,6 +152,7 @@ func (p *StreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 						continue
 					}
 					// Emit tool_use event with full input from the complete message
+					// Claude/Codebuddy already use canonical tool names and field names
 					inputStr := string(block.Input)
 					ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
 						Name:  block.Name,

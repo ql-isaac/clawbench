@@ -1,4 +1,6 @@
-// Custom rendering for tool_use block details in chat messages
+// Custom rendering for tool_use block details in chat messages.
+// All backends normalize tool names and input field names in their parsers,
+// so we can assume canonical field names here: file_path, command, old_string, etc.
 
 import { hljs } from './globals.ts'
 import { escapeHtml } from './html.ts'

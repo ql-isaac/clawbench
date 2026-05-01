@@ -101,10 +101,11 @@ func (p *GeminiStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 	case "tool_use":
 		inputStr := "{}"
 		if len(msg.Parameters) > 0 {
-			inputStr = string(msg.Parameters)
+			// Normalize input field names from Gemini's camelCase to canonical snake_case
+			inputStr = normalizeGeminiInput(msg.ToolName, msg.Parameters)
 		}
 		ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
-			Name:  msg.ToolName,
+			Name:  normalizeGeminiToolName(msg.ToolName),
 			ID:    msg.ToolID,
 			Input: inputStr,
 			Done:  true, // Gemini sends full tool input in one event
@@ -177,5 +178,47 @@ func buildGeminiStreamArgs(req ChatRequest) []string {
 	}
 
 	return args
+}
+
+// normalizeGeminiToolName maps Gemini tool names to canonical names.
+// Gemini uses snake_case tool names (read_file, write_file, edit_file, list_files).
+func normalizeGeminiToolName(name string) string {
+	switch name {
+	case "read_file":
+		return "Read"
+	case "write_file":
+		return "Write"
+	case "edit_file":
+		return "Edit"
+	case "shell", "run_command":
+		return "Bash"
+	case "list_files":
+		return "LS"
+	case "search_files":
+		return "Grep"
+	default:
+		return name
+	}
+}
+
+// normalizeGeminiInput remaps Gemini's camelCase input fields to canonical snake_case.
+// Gemini uses filePath instead of file_path, etc.
+func normalizeGeminiInput(toolName string, rawInput json.RawMessage) string {
+	var input map[string]any
+	if err := json.Unmarshal(rawInput, &input); err != nil {
+		return string(rawInput) // fallback: return as-is
+	}
+
+	// Remap camelCase keys to canonical snake_case
+	if v, ok := input["filePath"]; ok {
+		delete(input, "filePath")
+		input["file_path"] = v
+	}
+
+	normalized, err := json.Marshal(input)
+	if err != nil {
+		return string(rawInput)
+	}
+	return string(normalized)
 }
 

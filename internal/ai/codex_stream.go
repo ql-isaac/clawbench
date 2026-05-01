@@ -94,17 +94,10 @@ func (p *CodexStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 			}
 
 		case "command_execution":
-			// Emit tool_use event for completed command execution
-			input := msg.Item.Command
-			if msg.Item.AggregatedOutput != "" {
-				input = fmt.Sprintf("%s\n\nOutput:\n%s", msg.Item.Command, msg.Item.AggregatedOutput)
-			}
-			ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
-				Name:  "command_execution",
-				ID:    msg.Item.ID,
-				Input: input,
-				Done:  true,
-			}}
+			// Emit Bash tool_use event for completed command execution.
+			// Codex's raw command string is wrapped into canonical {"command":"..."} JSON.
+			input := codexBashInputJSON(msg.Item.Command, msg.Item.AggregatedOutput)
+			emitBashToolCall(ch, msg.Item.ID, input, true)
 		}
 
 	case "item.started":
@@ -112,12 +105,8 @@ func (p *CodexStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 			return
 		}
 		if msg.Item.Type == "command_execution" {
-			ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
-				Name:  "command_execution",
-				ID:    msg.Item.ID,
-				Input: msg.Item.Command,
-				Done:  false,
-			}}
+			input := codexBashInputJSON(msg.Item.Command, "")
+			emitBashToolCall(ch, msg.Item.ID, input, false)
 		}
 
 	case "turn.completed":
@@ -223,12 +212,7 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 		if line == "codex" || line == "user" {
 			// Flush any pending exec block
 			if role == "exec" && execCommand != "" {
-				ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
-					Name:  "command_execution",
-					ID:    execID,
-					Input: execCommandCompleteJSON(execCommand, execOutput.String()),
-					Done:  true,
-				}}
+				emitBashToolCall(ch, execID, execCommandCompleteJSON(execCommand, execOutput.String()), true)
 				execCommand = ""
 				execOutput.Reset()
 			}
@@ -239,12 +223,7 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 		if line == "exec" {
 			// Flush any pending exec block
 			if role == "exec" && execCommand != "" {
-				ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
-					Name:  "command_execution",
-					ID:    execID,
-					Input: execCommandCompleteJSON(execCommand, execOutput.String()),
-					Done:  true,
-				}}
+				emitBashToolCall(ch, execID, execCommandCompleteJSON(execCommand, execOutput.String()), true)
 				execCommand = ""
 				execOutput.Reset()
 			}
@@ -301,12 +280,7 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 			execCommand = strings.TrimSuffix(line, ":")
 			execID = fmt.Sprintf("exec-%d", execCounter)
 			execCounter++
-			ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
-				Name:  "command_execution",
-				ID:    execID,
-				Input: execCommandSummaryJSON(execCommand),
-				Done:  false,
-			}}
+			emitBashToolCall(ch, execID, execCommandSummaryJSON(execCommand), false)
 		} else {
 			if execOutput.Len() > 0 {
 				execOutput.WriteByte('\n')
@@ -319,12 +293,7 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 
 	// Flush any pending exec block at EOF
 	if role == "exec" && execCommand != "" {
-		ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
-			Name:  "command_execution",
-			ID:    execID,
-			Input: execCommandCompleteJSON(execCommand, execOutput.String()),
-			Done:  true,
-		}}
+		emitBashToolCall(ch, execID, execCommandCompleteJSON(execCommand, execOutput.String()), true)
 	}
 	// Also flush exec blocks when role changes (codex/exec marker)
 	// These are handled inline above.
@@ -339,15 +308,36 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 	ch <- StreamEvent{Type: "done"}
 }
 
-// execCommandSummaryJSON returns a JSON string for a tool_use started event.
-// The input contains just the command summary line.
-func execCommandSummaryJSON(summary string) string {
-	b, _ := json.Marshal(map[string]string{"command": summary})
+// emitBashToolCall emits a canonical Bash tool_use event.
+// Codex only has "command_execution"; we normalize to "Bash" with {"command":"..."} input.
+func emitBashToolCall(ch chan<- StreamEvent, id, input string, done bool) {
+	ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
+		Name:  "Bash",
+		ID:    id,
+		Input: input,
+		Done:  done,
+	}}
+}
+
+// codexBashInputJSON builds canonical {"command":"..."} JSON from Codex's raw command string.
+// If output is non-empty, it's included as "output" field (for completed events).
+func codexBashInputJSON(command, output string) string {
+	m := map[string]string{"command": command}
+	if output != "" {
+		m["output"] = output
+	}
+	b, _ := json.Marshal(m)
 	return string(b)
 }
 
-// execCommandCompleteJSON returns a JSON string for a tool_use completed event.
-// The input contains the command summary and optional output.
+// execCommandSummaryJSON returns JSON for a started exec command (resume parser).
+func execCommandSummaryJSON(summary string) string {
+	m := map[string]string{"command": summary}
+	b, _ := json.Marshal(m)
+	return string(b)
+}
+
+// execCommandCompleteJSON returns JSON for a completed exec command (resume parser).
 func execCommandCompleteJSON(summary, output string) string {
 	m := map[string]string{"command": summary}
 	if output != "" {

@@ -109,11 +109,12 @@ func (p *OpenCodeStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 		}
 		inputStr := "{}"
 		if part.State != nil && len(part.State.Input) > 0 {
-			inputStr = string(part.State.Input)
+			// Normalize input field names from OpenCode's camelCase to canonical snake_case
+			inputStr = normalizeOpenCodeInput(part.Tool, part.State.Input)
 		}
 		done := part.State != nil && part.State.Status == "completed"
 		ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
-			Name:  part.Tool,
+			Name:  normalizeOpenCodeToolName(part.Tool),
 			ID:    part.CallID,
 			Input: inputStr,
 			Done:  done,
@@ -177,4 +178,48 @@ func buildOpenCodeStreamArgs(req ChatRequest) []string {
 	}
 
 	return args
+}
+
+// normalizeOpenCodeToolName maps OpenCode tool names to canonical names.
+// OpenCode uses lowercase tool names (read, bash, edit, write).
+func normalizeOpenCodeToolName(name string) string {
+	switch name {
+	case "read":
+		return "Read"
+	case "write":
+		return "Write"
+	case "edit":
+		return "Edit"
+	case "bash":
+		return "Bash"
+	case "glob":
+		return "Glob"
+	case "grep":
+		return "Grep"
+	case "ls":
+		return "LS"
+	default:
+		return name
+	}
+}
+
+// normalizeOpenCodeInput remaps OpenCode's camelCase input fields to canonical snake_case.
+// OpenCode uses filePath instead of file_path, etc.
+func normalizeOpenCodeInput(toolName string, rawInput json.RawMessage) string {
+	var input map[string]any
+	if err := json.Unmarshal(rawInput, &input); err != nil {
+		return string(rawInput) // fallback: return as-is
+	}
+
+	// Remap camelCase keys to canonical snake_case
+	if v, ok := input["filePath"]; ok {
+		delete(input, "filePath")
+		input["file_path"] = v
+	}
+
+	normalized, err := json.Marshal(input)
+	if err != nil {
+		return string(rawInput)
+	}
+	return string(normalized)
 }

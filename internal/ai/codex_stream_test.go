@@ -123,11 +123,11 @@ func TestCodexStream_CommandExecutionStarted(t *testing.T) {
 	if events[0].Tool.Done {
 		t.Error("expected tool to not be done")
 	}
-	if events[0].Tool.Name != "command_execution" {
-		t.Errorf("expected tool name 'command_execution', got %q", events[0].Tool.Name)
+	if events[0].Tool.Name != "Bash" {
+		t.Errorf("expected normalized tool name 'Bash', got %q", events[0].Tool.Name)
 	}
-	if events[0].Tool.Input != "bash -lc 'ls -la'" {
-		t.Errorf("expected command as input, got %q", events[0].Tool.Input)
+	if events[0].Tool.Input != `{"command":"bash -lc 'ls -la'"}` {
+		t.Errorf("expected canonical JSON input, got %q", events[0].Tool.Input)
 	}
 }
 
@@ -144,8 +144,8 @@ func TestCodexStream_CommandExecutionCompleted(t *testing.T) {
 	if !events[0].Tool.Done {
 		t.Error("expected tool to be done")
 	}
-	if events[0].Tool.Name != "command_execution" {
-		t.Errorf("expected tool name 'command_execution', got %q", events[0].Tool.Name)
+	if events[0].Tool.Name != "Bash" {
+		t.Errorf("expected normalized tool name 'Bash', got %q", events[0].Tool.Name)
 	}
 }
 
@@ -162,8 +162,8 @@ func TestCodexStream_CommandExecutionFailed(t *testing.T) {
 	if !strings.Contains(events[0].Tool.Input, "exit 1") {
 		t.Errorf("expected command in input, got %q", events[0].Tool.Input)
 	}
-	if !strings.Contains(events[0].Tool.Input, "error: something went wrong") {
-		t.Errorf("expected output in input, got %q", events[0].Tool.Input)
+	if !strings.Contains(events[0].Tool.Input, `"command"`) || !strings.Contains(events[0].Tool.Input, "error: something went wrong") {
+		t.Errorf("expected canonical JSON input with output, got %q", events[0].Tool.Input)
 	}
 }
 
@@ -174,9 +174,9 @@ func TestCodexStream_CommandExecutionNoOutput(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	// Input should just be the command when no output
-	if events[0].Tool.Input != "bash -lc 'true'" {
-		t.Errorf("expected command only, got %q", events[0].Tool.Input)
+	// Input should be canonical JSON with command only when no output
+	if events[0].Tool.Input != `{"command":"bash -lc 'true'"}` {
+		t.Errorf("expected canonical JSON input, got %q", events[0].Tool.Input)
 	}
 }
 
