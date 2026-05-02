@@ -1,5 +1,5 @@
 <template>
-  <ModalDialog :open="open" title="浏览项目" max-width="480px" full-height :z-index="2500" @close="$emit('close')">
+  <ModalDialog :open="open" title="浏览项目" :z-index="2500" @close="$emit('close')">
     <!-- Browse nav -->
     <div class="dialog-nav">
       <div class="dialog-toolbar-row">

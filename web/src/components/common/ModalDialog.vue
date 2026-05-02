@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div v-show="open" class="modal-overlay" :style="{ zIndex }" @click.self="$emit('close')">
-      <div class="modal-dialog" :style="{ maxWidth, maxHeight: maxHeightValue }" @click.stop>
+      <div class="modal-dialog" @click.stop>
         <div class="modal-header" @click="$emit('close')">
           <span class="modal-title">{{ title }}</span>
         </div>
@@ -18,21 +18,13 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-
-const props = defineProps({
+defineProps({
   open: Boolean,
   title: { type: String, default: '' },
-  maxWidth: { type: String, default: '600px' },
-  fullHeight: Boolean,
   zIndex: { type: Number, default: 2100 },
 })
 
 defineEmits(['close'])
-
-const maxHeightValue = computed(() =>
-  props.fullHeight ? 'none' : 'calc(100dvh - 64px)'
-)
 </script>
 
 <style>
@@ -42,26 +34,19 @@ const maxHeightValue = computed(() =>
   background: rgba(0, 0, 0, 0.85);
   z-index: 2100;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  padding: 32px 16px;
+  padding: 44px 2px 48px;
 }
 
 .modal-dialog {
   background: var(--bg-secondary, #fff);
-  border-radius: var(--radius-md, 10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
   width: 100%;
-  max-width: 600px;
-  max-height: calc(100dvh - 64px);
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.modal-dialog[style*="max-height: none"] {
-  max-height: none;
-  height: calc(100dvh - 48px);
 }
 
 .modal-header {

@@ -278,9 +278,11 @@ export function useChatStream(options: UseChatStreamOptions) {
       const data = JSON.parse(e.data)
       if (!guard()) return
       const blocks = messages.value[lastIndex].blocks
+      // Always check for existing block with same ID first — the backend may
+      // emit multiple tool_use events for the same call (start + stop), and
+      // we should merge them rather than creating duplicates.
+      const existing = blocks.find(b => b.type === 'tool_use' && b.id === data.id)
       if (data.done) {
-        // Find existing tool block by id and update
-        const existing = blocks.find(b => b.type === 'tool_use' && b.id === data.id)
         if (existing) {
           existing.input = data.input || existing.input
           existing.done = true
@@ -289,18 +291,25 @@ export function useChatStream(options: UseChatStreamOptions) {
         const timer = toolUseTimeouts.get(data.id)
         if (timer) { clearTimeout(timer); toolUseTimeouts.delete(data.id) }
       } else {
-        // New tool call — start timeout as safety net
-        const newBlock = { type: 'tool_use', name: data.name, id: data.id, input: data.input || {}, done: false }
-        blocks.push(newBlock)
-        const timer = setTimeout(() => {
-          if (!newBlock.done) {
-            console.warn(`tool_use block ${data.id} timed out without 'done', marking as done`)
-            newBlock.done = true
-            onRenderNeeded()
+        if (existing) {
+          // Update existing block with new input data (may be richer than start event)
+          if (data.input && Object.keys(data.input).length > 0) {
+            existing.input = data.input
           }
-          toolUseTimeouts.delete(data.id)
-        }, TOOL_USE_TIMEOUT_MS)
-        toolUseTimeouts.set(data.id, timer)
+        } else {
+          // New tool call — start timeout as safety net
+          const newBlock = { type: 'tool_use', name: data.name, id: data.id, input: data.input || {}, done: false }
+          blocks.push(newBlock)
+          const timer = setTimeout(() => {
+            if (!newBlock.done) {
+              console.warn(`tool_use block ${data.id} timed out without 'done', marking as done`)
+              newBlock.done = true
+              onRenderNeeded()
+            }
+            toolUseTimeouts.delete(data.id)
+          }, TOOL_USE_TIMEOUT_MS)
+          toolUseTimeouts.set(data.id, timer)
+        }
       }
       onScrollBottom()
     })

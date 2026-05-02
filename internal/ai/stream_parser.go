@@ -85,12 +85,13 @@ type StreamEventData struct {
 
 // StreamContentBlock represents a content_block_start/stop payload
 type StreamContentBlock struct {
-	Type      string `json:"type"`
-	Text      string `json:"text,omitempty"`
-	Thinking  string `json:"thinking,omitempty"`
-	Signature string `json:"signature,omitempty"`
-	Name      string `json:"name,omitempty"`
-	ID        string `json:"id,omitempty"`
+	Type      string          `json:"type"`
+	Text      string          `json:"text,omitempty"`
+	Thinking  string          `json:"thinking,omitempty"`
+	Signature string          `json:"signature,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	ID        string          `json:"id,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"` // tool_use input (some CLIs include it in content_block_start)
 }
 
 // StreamDelta represents a content_block_delta payload
@@ -282,6 +283,13 @@ func (p *StreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 				p.currentTool = &ToolCall{
 					Name: msg.Event.ContentBlock.Name,
 					ID:   msg.Event.ContentBlock.ID,
+				}
+				// Capture input from content_block_start if provided.
+				// Some CLIs (e.g., Claude CLI with certain models) include the
+				// full tool input in the content_block_start event instead of
+				// sending separate input_json_delta events.
+				if len(msg.Event.ContentBlock.Input) > 0 {
+					p.currentTool.Input = string(msg.Event.ContentBlock.Input)
 				}
 				// Send a copy to the channel so that later mutations (Input accumulation,
 				// Done=true) don't affect events already queued for SSE consumption.

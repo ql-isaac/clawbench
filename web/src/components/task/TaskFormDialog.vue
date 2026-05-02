@@ -167,7 +167,7 @@
           <span class="execution-time">{{ chatRender.formatMessageTime(exec.createdAt) }}</span>
           <span v-if="!execExpanded[idx]" class="execution-preview">{{ execPreview(exec) }}</span>
         </div>
-        <div v-if="execExpanded[idx]" class="execution-body">
+        <div v-if="execExpanded[idx]" class="chat-message assistant execution-body">
           <ContentBlocks
             :blocks="exec.blocks"
             :msgId="'exec-' + idx"
@@ -752,7 +752,7 @@ watch(() => props.open, (isOpen) => {
 }
 
 .execution-body {
-  padding: 0 10px 8px;
+  margin: 4px 4px 8px;
 }
 
 .dialog-loading,

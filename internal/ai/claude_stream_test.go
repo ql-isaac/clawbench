@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -875,5 +876,79 @@ func TestBuildClaudeStreamArgs_ResumeSession(t *testing.T) {
 		if a == "follow-up question" {
 			t.Error("prompt should not be in args for resume (goes via stdin)")
 		}
+	}
+}
+
+func TestStreamParser_ToolUseInputInContentBlockStart(t *testing.T) {
+	// Some CLIs (e.g., Claude CLI with certain models) include tool input
+	// directly in the content_block_start event instead of sending separate
+	// input_json_delta events. The parser should capture this input.
+	lines := []string{
+		// tool_use with input embedded in content_block_start — no input_json_delta
+		`{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_function_abc123","name":"Bash","input":{"command":"ls /workspace/","description":"List workspace"}}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_stop","index":1}}`,
+	}
+
+	events := parseLines(lines)
+
+	// Should get 2 tool_use events: start (done=false) and stop (done=true)
+	toolEvents := 0
+	for _, e := range events {
+		if e.Type == "tool_use" {
+			toolEvents++
+		}
+	}
+	if toolEvents != 2 {
+		t.Fatalf("expected 2 tool_use events, got %d", toolEvents)
+	}
+
+	// The stop event should have the full input from content_block_start
+	var stopEvent *StreamEvent
+	for i := range events {
+		if events[i].Type == "tool_use" && events[i].Tool != nil && events[i].Tool.Done {
+			stopEvent = &events[i]
+			break
+		}
+	}
+	if stopEvent == nil {
+		t.Fatal("expected a tool_use stop event with Done=true")
+	}
+	expectedInput := `{"command":"ls /workspace/","description":"List workspace"}`
+	if stopEvent.Tool.Input != expectedInput {
+		t.Errorf("expected stop event input %q, got %q", expectedInput, stopEvent.Tool.Input)
+	}
+}
+
+func TestStreamParser_ToolUseInputInContentBlockStartWithDelta(t *testing.T) {
+	// When content_block_start includes input AND input_json_delta is also sent,
+	// the deltas should append to the start input (though this is unusual).
+	lines := []string{
+		// content_block_start with partial input
+		`{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_function_xyz","name":"Read","input":{"file_path":"/src/main.go"}}}}`,
+		// input_json_delta appends more data
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":",\"limit\":100}"}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_stop","index":1}}`,
+	}
+
+	events := parseLines(lines)
+
+	// Find the stop event
+	var stopEvent *StreamEvent
+	for i := range events {
+		if events[i].Type == "tool_use" && events[i].Tool != nil && events[i].Tool.Done {
+			stopEvent = &events[i]
+			break
+		}
+	}
+	if stopEvent == nil {
+		t.Fatal("expected a tool_use stop event with Done=true")
+	}
+	// Input should include both the start input and the delta
+	if stopEvent.Tool.Input == "" {
+		t.Error("expected stop event to have accumulated input, but Input is empty")
+	}
+	// The input should contain the file_path from content_block_start
+	if !strings.Contains(stopEvent.Tool.Input, "file_path") {
+		t.Errorf("expected input to contain 'file_path', got %q", stopEvent.Tool.Input)
 	}
 }
