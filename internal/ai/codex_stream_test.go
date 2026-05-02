@@ -497,7 +497,8 @@ const (
 func parseResumeOutput(input string) []StreamEvent {
 	ch := make(chan StreamEvent, 64)
 	scanner := bufio.NewScanner(strings.NewReader(input))
-	parseCodexResumeOutput(scanner, ch, "test-session-id")
+	var rawLines strings.Builder
+	parseCodexResumeOutput(scanner, ch, "test-session-id", &rawLines)
 	close(ch)
 	var events []StreamEvent
 	for ev := range ch {

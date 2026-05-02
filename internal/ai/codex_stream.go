@@ -187,7 +187,7 @@ func buildCodexStreamArgs(req ChatRequest) []string {
 //	codex
 //	<thinking block>
 //	<response content>
-func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessionID string) {
+func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessionID string, rawLines *strings.Builder) {
 	role := "" // current role: "codex" or "exec"
 	inThinking := false
 	var thinkingBuf strings.Builder
@@ -198,6 +198,14 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// Collect raw line for debugging (all non-empty lines, same as CLIBackend)
+		if line != "" {
+			if rawLines.Len() > 0 {
+				rawLines.WriteByte('\n')
+			}
+			rawLines.WriteString(line)
+		}
 
 		// Handle ERROR lines from codex resume output
 		if strings.HasPrefix(line, "ERROR:") {
@@ -447,6 +455,9 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 
 	ch := make(chan StreamEvent, streamChanSize)
 
+	// Collect raw stdout/stderr lines for debugging/analysis (same as CLIBackend)
+	var rawLines strings.Builder
+
 	go func() {
 		defer close(ch)
 
@@ -457,7 +468,7 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 			scanner := bufio.NewScanner(stderrPipe)
 			buf := make([]byte, scannerInitial)
 			scanner.Buffer(buf, scannerMax)
-			parseCodexResumeOutput(scanner, ch, req.SessionID)
+			parseCodexResumeOutput(scanner, ch, req.SessionID, &rawLines)
 		} else {
 			// New session with --json: parse JSONL from stdout
 			scanner := bufio.NewScanner(stdoutPipe)
@@ -474,6 +485,12 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 					continue
 				}
 
+				// Collect raw line for debugging
+				if rawLines.Len() > 0 {
+					rawLines.WriteByte('\n')
+				}
+				rawLines.WriteString(line)
+
 				slog.Debug("codex stream: raw line", "session_id", req.SessionID, "line", line)
 				parser.ParseLine(line, ch)
 
@@ -483,6 +500,13 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 					slog.Warn("codex stream: context cancelled",
 						slog.String("session_id", req.SessionID),
 					)
+					// Send raw output before returning so it's available for debugging
+					if rawLines.Len() > 0 {
+						select {
+						case ch <- StreamEvent{Type: "raw_output", RawOutput: rawLines.String()}:
+						default:
+						}
+					}
 					return
 				default:
 				}
@@ -502,6 +526,13 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 					slog.String("session_id", req.SessionID),
 					slog.String("ctx_err", ctx.Err().Error()),
 				)
+				// Send raw output before returning
+				if rawLines.Len() > 0 {
+					select {
+					case ch <- StreamEvent{Type: "raw_output", RawOutput: rawLines.String()}:
+					default:
+					}
+				}
 				return
 			}
 			slog.Error("codex stream: command exited abnormally",
@@ -511,6 +542,14 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 			select {
 			case ch <- StreamEvent{Type: "warning", Content: "AI 后端异常退出"}:
 			case <-ctx.Done():
+			}
+		}
+
+		// Send raw output event after all other events (same as CLIBackend)
+		if rawLines.Len() > 0 {
+			select {
+			case ch <- StreamEvent{Type: "raw_output", RawOutput: rawLines.String()}:
+			default:
 			}
 		}
 	}()
