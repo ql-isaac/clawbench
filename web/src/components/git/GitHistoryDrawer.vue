@@ -1,12 +1,7 @@
 <template>
   <BottomSheet ref="bottomSheetRef" :open="open" @close="handleClose">
     <template #header>
-      <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <line x1="6" y1="3" x2="6" y2="15"/>
-        <circle cx="18" cy="6" r="3"/>
-        <circle cx="6" cy="18" r="3"/>
-        <path d="M15 6a9 9 0 0 0-9 9V3"/>
-      </svg>
+      <GitBranch :size="16" class="bs-header-icon" />
       <span class="bs-header-title">{{ mode === 'file' ? '文件历史' : '项目历史' }}</span>
       <div v-if="mode === 'project' && store.state.projectRoot" class="bs-header-description">
         <HeaderMarquee :text="store.state.projectRoot">{{ store.state.projectRoot }}</HeaderMarquee>
@@ -74,16 +69,9 @@
               @click="drillToFile(f)"
             >
               <span class="git-file-icon">
-                <svg v-if="f.type === 'A'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                <svg v-else-if="f.type === 'D'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                </svg>
+                <Plus v-if="f.type === 'A'" :size="14" :stroke-width="2.5" />
+                <Minus v-else-if="f.type === 'D'" :size="14" :stroke-width="2.5" />
+                <FileText v-else :size="14" />
               </span>
               <span class="git-file-type-badge" :class="badgeClass(f)">{{ fileTypeLabel(f.type, f.staged) }}</span>
               <span class="git-file-path" :title="f.path">{{ f.path }}</span>
@@ -98,16 +86,9 @@
               @click="drillToFile(f)"
             >
               <span class="git-file-icon">
-                <svg v-if="f.type === 'A'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                <svg v-else-if="f.type === 'D'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                </svg>
+                <Plus v-if="f.type === 'A'" :size="14" :stroke-width="2.5" />
+                <Minus v-else-if="f.type === 'D'" :size="14" :stroke-width="2.5" />
+                <FileText v-else :size="14" />
               </span>
               <span class="git-file-type-badge" :class="badgeClass(f)">{{ fileTypeLabel(f.type, f.staged) }}</span>
               <span class="git-file-path" :title="f.path">{{ f.path }}</span>
@@ -143,6 +124,7 @@
 </template>
 
 <script setup>
+import { GitBranch, Plus, Minus, FileText } from 'lucide-vue-next'
 import { ref, computed, watch } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'

@@ -24,10 +24,7 @@
 
       <div class="session-footer">
         <button class="session-create-btn" @click="createSession">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
+          <Plus :size="16" />
           新会话
         </button>
       </div>
@@ -37,6 +34,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { Plus } from 'lucide-vue-next'
 
 const props = defineProps({
   open: Boolean,

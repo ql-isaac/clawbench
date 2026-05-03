@@ -4,15 +4,13 @@
       <!-- Detail view: back arrow + time -->
       <template v-if="view === 'detail' && selectedExec">
         <button class="back-btn" @click.stop="view = 'list'" title="返回列表">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
+          <ChevronLeft :size="16" />
         </button>
         <span class="modal-title">{{ formatAbsoluteTime(selectedExec.createdAt) }}</span>
       </template>
       <!-- List view: icon + task name -->
       <template v-else>
-        <svg class="modal-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <Clock :size="16" class="modal-header-icon" />
         <span class="modal-title">{{ task?.name || '执行记录' }}</span>
       </template>
     </template>
@@ -35,9 +33,7 @@
               <span v-if="exec.triggerType === 'manual'" class="exec-trigger-type manual">手动</span>
             </div>
           </div>
-          <svg class="exec-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
+          <ChevronRight :size="14" class="exec-chevron" />
         </div>
       </div>
     </div>
@@ -68,6 +64,7 @@
 
 <script setup>
 import { ref, watch, inject } from 'vue'
+import { Clock, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import ContentBlocks from '@/components/chat/ContentBlocks.vue'
 import { useChatRender } from '@/composables/useChatRender.ts'

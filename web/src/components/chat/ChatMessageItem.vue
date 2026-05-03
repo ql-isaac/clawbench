@@ -6,22 +6,12 @@
       <div v-if="msg.role === 'user' && msg.files && msg.files.length > 0 && !hasImagesInContent(msg.content)" class="chat-files">
         <template v-for="(f, idx) in msg.files" :key="idx">
           <span v-if="isUploadPath(normalizeFileEntry(f).path)" class="chat-file-attachment attachment-upload" @click="$emit('file-tag-click', normalizeFileEntry(f).path)" title="打开文件">
-            <svg v-if="isImageFile(normalizeFileEntry(f).path)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <circle cx="10" cy="13" r="2"/>
-              <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
+            <FileImage v-if="isImageFile(normalizeFileEntry(f).path)" :size="12" :stroke-width="1.5" />
+            <FileText v-else :size="12" :stroke-width="1.5" />
             <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
           </span>
           <span v-else class="chat-file-attachment attachment-ref" @click="$emit('file-tag-click', normalizeFileEntry(f).path)" title="打开文件">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-            </svg>
+            <Paperclip :size="12" :stroke-width="1.5" />
             <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
           </span>
         </template>
@@ -55,13 +45,19 @@
     </div>
 
     <!-- Collapse overlay + expand button -->
-    <div v-if="collapsed" class="msg-collapse-overlay" @click="manuallyExpanded = true; $emit('expand', index)">
+    <div v-if="collapsed" class="msg-collapse-overlay" @click="handleExpand">
       <div class="msg-collapse-gradient"></div>
       <button class="msg-expand-btn">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
+        <ChevronDown :size="14" />
         展开全文
+      </button>
+    </div>
+
+    <!-- Collapse button (shown when message is expanded and content overflows) -->
+    <div v-if="!collapsed && canCollapse" class="msg-collapse-action">
+      <button class="msg-collapse-btn" @click="handleCollapse">
+        <ChevronUp :size="14" />
+        收起
       </button>
     </div>
 
@@ -76,34 +72,22 @@
         <button v-if="msgText" ref="speakBtnRef" class="chat-info-btn chat-speak-btn" :class="{ active: autoSpeech.isActive(msg.id), loading: autoSpeech.isGeneratingText(msg.id) }" @click.stop="handleSpeak">
           <!-- Generating states: summarizing / synthesizing -->
           <template v-if="autoSpeech.isGeneratingText(msg.id)">
-            <svg class="speak-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2"/>
-            </svg>
+            <Clock :size="14" class="speak-spinner" />
             <span>{{ autoSpeech.getPhaseLabel(msg.id) }}</span>
           </template>
           <!-- Playing state -->
           <template v-else-if="autoSpeech.isPlayingAudio(msg.id)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
-            </svg>
+            <Pause :size="14" />
             <span>朗读中</span>
           </template>
           <!-- Default idle state -->
           <template v-else>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-            </svg>
+            <Volume2 :size="14" />
             <span>朗读</span>
           </template>
         </button>
         <button v-if="!msg.streaming" class="chat-info-btn" @click="$emit('show-metadata', msg)" title="查看详情">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="16" x2="12" y2="12"/>
-            <line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
+          <Info :size="14" />
         </button>
       </div>
     </div>
@@ -113,11 +97,7 @@
         <span v-if="msg.createdAt">{{ formatMessageTime(msg.createdAt) }}</span>
       </span>
       <button class="chat-info-btn chat-info-btn-user" @click="$emit('show-metadata', msg)" title="查看详情">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="16" x2="12" y2="12"/>
-          <line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>
+        <Info :size="14" />
       </button>
     </div>
 
@@ -126,6 +106,7 @@
 
 <script setup>
 import { ref, inject, computed, watch, nextTick, onMounted } from 'vue'
+import { FileImage, FileText, Paperclip, ChevronDown, ChevronUp, Clock, Pause, Volume2, Info } from 'lucide-vue-next'
 import { baseName } from '@/utils/helpers.ts'
 import { store } from '@/stores/app.ts'
 import ContentBlocks from './ContentBlocks.vue'
@@ -141,13 +122,13 @@ const props = defineProps({
   shouldCollapse: Boolean,
 })
 
-const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'expand', 'edit-task', 'send-message'])
+const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'expand', 'collapse', 'edit-task', 'send-message'])
 
 const autoSpeech = inject('autoSpeech')
 const layoutRefreshKey = inject('layoutRefreshKey', ref(0))
 const wrapperRef = ref(null)
 const overflows = ref(false)
-const manuallyExpanded = ref(false)
+const userExpanded = ref(false)  // Whether user manually expanded (true) or is in default/auto-collapsed state (false)
 const speakBtnRef = ref(null)
 
 // Reset internal collapse state when the message identity changes
@@ -156,7 +137,7 @@ const speakBtnRef = ref(null)
 // across message replacements, causing stale collapse state.
 watch(() => props.msg?.id, (newId, oldId) => {
   if (oldId !== undefined && newId !== oldId) {
-    manuallyExpanded.value = false
+    userExpanded.value = false
     overflows.value = false  // Will be recalculated by checkOverflow watchers
   }
 })
@@ -220,9 +201,24 @@ watch(layoutRefreshKey, () => {
 const collapsed = computed(() => {
   if (!props.shouldCollapse) return false
   if (props.msg?.streaming) return false
-  if (manuallyExpanded.value) return false
+  if (userExpanded.value) return false
   return overflows.value
 })
+
+// Whether the message content overflows (used to show collapse/expand buttons)
+const canCollapse = computed(() => {
+  return overflows.value && !props.msg?.streaming
+})
+
+function handleExpand() {
+  userExpanded.value = true
+  emit('expand', props.index)
+}
+
+function handleCollapse() {
+  userExpanded.value = false
+  emit('collapse', props.index)
+}
 
 const chatRender = inject('chatRender', {})
 const chatSession = inject('chatSession', {})
@@ -334,6 +330,46 @@ function getFileName(path) {
 
 .msg-expand-btn svg {
   flex-shrink: 0;
+}
+
+/* Collapse button (shown when message is expanded) */
+.msg-collapse-action {
+  display: flex;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.msg-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.msg-collapse-btn:hover {
+  color: var(--accent-color, #0066cc);
+  background: var(--bg-tertiary);
+}
+
+.msg-collapse-btn svg {
+  flex-shrink: 0;
+}
+
+.chat-message.user .msg-collapse-btn {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.chat-message.user .msg-collapse-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* Chat Meta Bar — contains model/duration info + detail button */

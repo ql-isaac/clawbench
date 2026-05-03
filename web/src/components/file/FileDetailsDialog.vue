@@ -1,12 +1,7 @@
 <template>
   <BottomSheet :open="open" @close="$emit('close')">
     <template #header>
-      <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="16" y1="13" x2="8" y2="13"/>
-        <line x1="16" y1="17" x2="8" y2="17"/>
-      </svg>
+      <FileText :size="16" class="bs-header-icon" />
       <span class="bs-header-title">文件详情</span>
     </template>
 
@@ -17,10 +12,7 @@
         <div class="details-value-wrap" @click="item.copyable && copyValue(item.value, $event)">
           <span class="details-value" :class="{ 'details-value-copyable': item.copyable }">{{ item.value }}</span>
           <button v-if="item.copyable" class="details-copy-btn" @click.stop="copyValue(item.value, $event)" title="复制">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
+            <Copy :size="13" />
           </button>
         </div>
       </div>
@@ -31,6 +23,7 @@
 
 <script setup>
 import { computed, inject } from 'vue'
+import { FileText, Copy } from 'lucide-vue-next'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { store } from '@/stores/app.ts'
 import { getFileType, formatFileSize } from '@/utils/helpers.ts'

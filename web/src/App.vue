@@ -149,44 +149,24 @@
             @click.stop="handleGoBack"
             title="上一个文件"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
+            <ChevronLeft />
           </button>
 
           <div class="dock-center">
             <button class="dock-btn" :class="{ active: chatOpen, 'has-unread': (store.state.chatUnread || store.state.taskUnread) && !chatOpen, 'has-running': store.state.chatRunning && !chatOpen && !store.state.chatUnread && !store.state.taskUnread }" @click.stop="openDrawer('chat')" title="会话">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
+              <MessageSquare />
             </button>
             <button class="dock-btn" :class="{ active: fileManagerOpen }" @click.stop="openDrawer('fileManager')" title="文件管理器">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
+              <Folder />
             </button>
             <button class="dock-btn" :class="{ active: projectHistoryOpen || fileHistoryOpen }" @click.stop="toggleHistoryDrawer" title="历史">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="6" y1="3" x2="6" y2="15"/>
-                <circle cx="18" cy="6" r="3"/>
-                <circle cx="6" cy="18" r="3"/>
-                <path d="M15 6a9 9 0 0 0-9 9V3"/>
-              </svg>
+              <GitBranch />
             </button>
             <button class="dock-btn" :class="{ active: proxyOpen, disabled: !isAppMode }" @click.stop="isAppMode ? openDrawer('proxy') : toast.show('端口转发仅在移动端APP支持', { type: 'info' })" title="端口转发">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="18" cy="5" r="3"/>
-                <circle cx="6" cy="12" r="3"/>
-                <circle cx="18" cy="19" r="3"/>
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-              </svg>
+              <Waypoints />
             </button>
             <button class="dock-btn" @click.stop="handleRefresh" title="刷新">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="23,4 23,10 17,10"/>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-              </svg>
+              <RotateCw />
             </button>
           </div>
 
@@ -196,9 +176,7 @@
             @click.stop="handleGoForward"
             title="下一个文件"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
+            <ChevronRight />
           </button>
         </div>
         <div class="dock-safe-area"></div>
@@ -212,6 +190,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue'
+import { ChevronLeft, ChevronRight, MessageSquare, Folder, GitBranch, Waypoints, RotateCw } from 'lucide-vue-next'
 import AppHeader from './components/common/AppHeader.vue'
 import FileManager from './components/file/FileManager.vue'
 import WelcomeView from './components/WelcomeView.vue'

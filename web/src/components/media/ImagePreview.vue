@@ -16,11 +16,11 @@
         :style="{ transform: `translateX(${dragOffsetX}px)`, transition: isDragging ? 'none' : 'transform 0.25s ease-out' }" />
       <!-- Prev overlay -->
       <div v-if="hasPrev" class="img-nav-hint img-nav-prev" @click="goPrev">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        <ChevronLeft :size="18" />
       </div>
       <!-- Next overlay -->
       <div v-if="hasNext" class="img-nav-hint img-nav-next" @click="goNext">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        <ChevronRight :size="18" />
       </div>
     </div>
     <!-- Counter badge -->
@@ -29,6 +29,7 @@
 </template>
 
 <script setup>
+import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { store } from '@/stores/app.ts'
 import { baseName, getFileType } from '@/utils/helpers.ts'

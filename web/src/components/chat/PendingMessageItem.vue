@@ -4,22 +4,12 @@
     <div v-if="hasFiles" class="chat-files">
       <template v-for="(f, idx) in allFiles" :key="idx">
         <span v-if="isUploadPath(normalizeFileEntry(f).path)" class="chat-file-attachment attachment-upload" title="上传附件">
-          <svg v-if="isImageFile(normalizeFileEntry(f).path)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <circle cx="10" cy="13" r="2"/>
-            <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
+          <FileImage v-if="isImageFile(normalizeFileEntry(f).path)" :size="12" :stroke-width="1.5" />
+          <FileText v-else :size="12" :stroke-width="1.5" />
           <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
         </span>
         <span v-else class="chat-file-attachment attachment-ref" title="文件引用">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-          </svg>
+          <Paperclip :size="12" :stroke-width="1.5" />
           <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
         </span>
       </template>
@@ -36,6 +26,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { FileImage, FileText, Paperclip } from 'lucide-vue-next'
 import { baseName } from '@/utils/helpers.ts'
 
 const props = defineProps({

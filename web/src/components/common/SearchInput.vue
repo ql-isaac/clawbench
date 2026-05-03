@@ -1,8 +1,6 @@
 <template>
   <div class="search-pill" :class="{ focused }">
-    <svg class="search-pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-    </svg>
+    <Search class="search-pill-icon" />
     <input
       ref="inputRef"
       type="text"
@@ -15,14 +13,13 @@
       @dblclick="$emit('dblclick')"
     />
     <button v-if="modelValue" class="search-pill-clear" @click="$emit('update:modelValue', '')" title="清除">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-      </svg>
+      <X :size="12" />
     </button>
   </div>
 </template>
 
 <script setup>
+import { Search, X } from 'lucide-vue-next'
 import { ref } from 'vue'
 
 defineProps({

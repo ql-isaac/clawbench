@@ -1,9 +1,7 @@
 <template>
   <BottomSheet ref="bottomSheetRef" :open="open" title="AI 对话" @close="$emit('close')">
     <template #header>
-      <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-      </svg>
+      <MessageSquare :size="16" class="bs-header-icon" />
       <span class="bs-header-title">{{ session.agentHeaderTitle.value }}</span>
       <div v-if="session.currentSessionTitle.value" class="bs-header-description">
         <HeaderMarquee :text="session.currentSessionTitle.value">{{ session.currentSessionTitle.value }}</HeaderMarquee>
@@ -138,6 +136,7 @@
 
 <script setup>
 import { ref, computed, watch, onUnmounted, onMounted, inject, provide, toRef, nextTick } from 'vue'
+import { MessageSquare } from 'lucide-vue-next'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'
 import SessionDrawer from '@/components/session/SessionDrawer.vue'

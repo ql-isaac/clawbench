@@ -8,9 +8,7 @@
           <span>加载中...</span>
         </div>
         <div v-else-if="hasMore && remainingCount > 0" class="chat-load-hint" @click="emit('load-more')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="18 15 12 9 6 15"/>
-          </svg>
+          <ChevronUp :size="14" />
           <span>还有 {{ remainingCount }} 条更早消息</span>
         </div>
         <div v-else-if="showAllLoaded" class="chat-load-done">
@@ -54,6 +52,7 @@
       @edit-task="$emit('edit-task', $event)"
       @send-message="$emit('send-message', $event)"
       @expand="handleExpand"
+      @collapse="handleCollapse"
     />
     </div>
 
@@ -72,6 +71,7 @@
 
 <script setup>
 import { ref, nextTick, inject, computed, watch } from 'vue'
+import { ChevronUp } from 'lucide-vue-next'
 import ChatMessageItem from './ChatMessageItem.vue'
 import PendingMessageItem from './PendingMessageItem.vue'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
@@ -116,12 +116,16 @@ watch(() => props.hasMore, (hasMore, prevHasMore) => {
   }
 })
 
-// Track manually expanded message indices
+// Track manually expanded/collapsed message indices
+// expandedSet: indices that user manually expanded (should not auto-collapse)
+// collapsedSet: indices that user manually collapsed after expanding (should auto-collapse even if last round)
 const expandedSet = ref(new Set())
+const collapsedSet = ref(new Set())
 
-// Reset expanded state when messages change identity (session switch / reload)
+// Reset expanded/collapsed state when messages change identity (session switch / reload)
 watch(() => props.messages, () => {
   expandedSet.value = new Set()
+  collapsedSet.value = new Set()
 })
 
 // Compute the last round: last assistant message + its preceding user message
@@ -162,7 +166,9 @@ const lastRoundIndices = computed(() => {
 })
 
 function isCollapsed(index, msg) {
-  // Last round is always fully expanded (no collapse suggestion)
+  // User explicitly collapsed this message — suggest collapse
+  if (collapsedSet.value.has(index)) return true
+  // Last round is always fully expanded (no collapse suggestion) unless user collapsed it
   if (lastRoundIndices.value.has(index)) return false
   // Manually expanded — don't suggest collapse
   if (expandedSet.value.has(index)) return false
@@ -172,6 +178,22 @@ function isCollapsed(index, msg) {
 
 function handleExpand(index) {
   expandedSet.value = new Set([...expandedSet.value, index])
+  // Remove from collapsedSet if it was there
+  if (collapsedSet.value.has(index)) {
+    const newSet = new Set(collapsedSet.value)
+    newSet.delete(index)
+    collapsedSet.value = newSet
+  }
+}
+
+function handleCollapse(index) {
+  collapsedSet.value = new Set([...collapsedSet.value, index])
+  // Remove from expandedSet if it was there
+  if (expandedSet.value.has(index)) {
+    const newSet = new Set(expandedSet.value)
+    newSet.delete(index)
+    expandedSet.value = newSet
+  }
 }
 
 // Inject bottomSheetRef from parent for closing

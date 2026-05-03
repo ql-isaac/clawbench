@@ -2,11 +2,7 @@
   <div class="audio-preview-container">
     <div class="audio-preview-body">
       <div class="audio-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 18V5l12-2v13"/>
-          <circle cx="6" cy="18" r="3"/>
-          <circle cx="18" cy="16" r="3"/>
-        </svg>
+        <Music :size="40" />
       </div>
       <div class="audio-info">
         <div class="audio-name">{{ file.name }}</div>
@@ -25,6 +21,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { Music } from 'lucide-vue-next'
 
 const props = defineProps({
     file: Object,

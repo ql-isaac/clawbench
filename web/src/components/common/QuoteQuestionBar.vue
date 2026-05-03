@@ -5,9 +5,7 @@
       <!-- Collapsed: quoted snippet (single-line) + 对话 button -->
       <div v-if="!expanded" class="quote-bar-row" @click="expand()">
         <div class="qq-quoted-snippet qq-quoted-snippet--inline">
-          <svg class="qq-quoted-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+          <MessageSquare :size="12" class="qq-quoted-icon" />
           <span class="qq-quoted-text qq-quoted-text--single">{{ fullQuoteText }}</span>
         </div>
         <button class="quote-bar-btn" @click.stop="expand">
@@ -24,17 +22,13 @@
             <div class="qq-session-title">
               <HeaderMarquee :text="displaySessionTitle">{{ displaySessionTitle }}</HeaderMarquee>
             </div>
-            <svg class="qq-session-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
+            <ChevronDown :size="12" class="qq-session-arrow" />
           </div>
         </div>
 
         <!-- Quoted snippet -->
         <div class="qq-quoted-snippet">
-          <svg class="qq-quoted-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+          <MessageSquare :size="12" class="qq-quoted-icon" />
           <span class="qq-quoted-text">{{ fullQuoteText }}</span>
         </div>
 
@@ -42,9 +36,7 @@
         <div class="qq-input-container">
           <div class="qq-input-row">
             <button v-if="inputText" class="qq-clear-btn" @click="inputText = ''; collapseTextarea()" title="清空">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
+              <XCircle :size="16" />
             </button>
             <textarea
               ref="inputRef"
@@ -56,9 +48,7 @@
               @input="autoResizeTextarea"
             />
             <button class="qq-send-btn" :class="{ disabled: !canSend }" @click="handleSend" title="发送">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
+              <Send :size="14" />
             </button>
           </div>
         </div>
@@ -69,6 +59,7 @@
 </template>
 
 <script setup>
+import { MessageSquare, ChevronDown, XCircle, Send } from 'lucide-vue-next'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'
 

@@ -1,10 +1,7 @@
 <template>
   <div v-if="parts.length > 0" class="dir-breadcrumb">
     <span class="crumb" @click="$emit('navigate', '')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-        <polyline points="9 22 9 12 15 12 15 22"/>
-      </svg>
+      <CircleDot :size="14" />
     </span>
     <template v-for="(part, i) in parts" :key="i">
       <span class="crumb-sep">›</span>
@@ -19,6 +16,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { CircleDot } from 'lucide-vue-next'
 import { splitPath } from '@/utils/helpers.ts'
 
 const props = defineProps({

@@ -23,11 +23,7 @@
       <div v-else-if="error" class="git-history-error">{{ error }}</div>
       <div v-else-if="!isGit" class="git-history-empty">
         <div class="init-git-prompt">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="40" height="40" style="color:#ccc;margin-bottom:12px;">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="16"/>
-            <line x1="8" y1="12" x2="16" y2="12"/>
-          </svg>
+          <CirclePlus :size="40" style="color:#ccc;margin-bottom:12px;" />
           <div style="font-size:14px;color:var(--text-muted,#999);margin-bottom:12px;">尚未初始化 Git 仓库</div>
           <button class="init-git-btn" @click.stop="$emit('init-git')" :disabled="initLoading">
             <span v-if="initLoading" class="spinner" style="width:14px;height:14px;border-width:2px;" />
@@ -37,11 +33,7 @@
       </div>
       <div v-else-if="commits.length === 0 && untracked" class="git-history-empty">
         <div class="empty-state-card">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36" style="color:var(--text-muted);">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="9" y1="15" x2="15" y2="15"/>
-          </svg>
+          <FileText :size="36" :stroke-width="1.5" style="color:var(--text-muted);" />
           <div class="empty-state-title">此文件未被 Git 跟踪</div>
           <div class="empty-state-desc">文件尚未纳入版本控制，无历史记录</div>
           <div class="empty-state-hint">
@@ -61,11 +53,7 @@
           @update:collapsed="graphCollapsed = $event"
         />
         <div v-else class="commit-list-graph-hint">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="16" x2="12" y2="12"/>
-            <line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
+          <Info :size="14" />
         </div>
         <!-- Commit rows -->
         <div class="commit-list-content" ref="contentRef" @touchstart="onTouchStart" @touchend="onTouchEnd">
@@ -87,9 +75,7 @@
                 <span v-if="c.author"> · {{ c.author }}</span>
               </div>
             </div>
-            <svg class="drilldown-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
+            <ChevronRight :size="14" class="drilldown-chevron" />
           </div>
           <div ref="listRef">
             <div v-if="hasMore && loadingMore" class="git-load-more">
@@ -103,6 +89,7 @@
 </template>
 
 <script setup>
+import { CirclePlus, FileText, Info, ChevronRight } from 'lucide-vue-next'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import GitGraph from './GitGraph.vue'
 import SearchInput from '@/components/common/SearchInput.vue'

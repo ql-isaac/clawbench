@@ -48,26 +48,15 @@
       <!-- Too large -->
       <div v-else-if="file.tooLarge" class="raw-content-viewer">
         <div class="unsupported-file">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14,2 14,8 20,8"/>
-          </svg>
+          <FileText />
           <div class="unsupported-title">{{ file.name }}</div>
           <div class="unsupported-desc">文件过大，无法在浏览器中预览 {{ file.size ? '(' + formatSize(file.size) + ')' : '' }}</div>
           <a v-if="!isAppMode" :href="'/api/local-file/' + encodeURIComponent(file.path)" class="download-btn" download>
-            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="14" height="14">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7,10 12,15 17,10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
+            <Download :size="14" color="#fff" />
             下载
           </a>
           <button v-else class="download-btn" @click="handleDownload(file.path)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="14" height="14">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7,10 12,15 17,10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
+            <Download :size="14" color="#fff" />
             下载
           </button>
         </div>
@@ -76,26 +65,15 @@
       <!-- Binary file -->
       <div v-else-if="file.isBinary" class="raw-content-viewer">
         <div class="unsupported-file">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14,2 14,8 20,8"/>
-          </svg>
+          <FileText />
           <div class="unsupported-title">{{ file.name }}</div>
           <div class="unsupported-desc">二进制文件，无法在浏览器中预览 {{ file.size ? '(' + formatSize(file.size) + ')' : '' }}</div>
           <a v-if="!isAppMode" :href="'/api/local-file/' + encodeURIComponent(file.path)" class="download-btn" download>
-            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="14" height="14">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7,10 12,15 17,10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
+            <Download :size="14" color="#fff" />
             下载
           </a>
           <button v-else class="download-btn" @click="handleDownload(file.path)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="14" height="14">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7,10 12,15 17,10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
+            <Download :size="14" color="#fff" />
             下载
           </button>
         </div>
@@ -125,6 +103,7 @@
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { FileText, Download } from 'lucide-vue-next'
 import ImagePreview from '@/components/media/ImagePreview.vue'
 import AudioPreview from '@/components/media/AudioPreview.vue'
 import VideoPreview from '@/components/media/VideoPreview.vue'

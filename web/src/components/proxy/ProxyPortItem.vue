@@ -14,23 +14,17 @@
     </div>
     <div class="port-actions">
       <button class="port-action-btn open" @click.stop="$emit('open', port, protocol)" title="打开">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-          <polyline points="15 3 21 3 21 9"/>
-          <line x1="10" y1="14" x2="21" y2="3"/>
-        </svg>
+        <ExternalLink :size="14" />
       </button>
       <button class="port-action-btn delete" @click.stop="$emit('remove', port)" title="删除">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-        </svg>
+        <Trash2 :size="14" />
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
+import { ExternalLink, Trash2 } from 'lucide-vue-next'
 import { computed } from 'vue'
 
 const props = defineProps({

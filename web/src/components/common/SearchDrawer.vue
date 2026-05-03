@@ -1,10 +1,7 @@
 <template>
   <BottomSheet :open="open" compact @close="handleClose">
     <template #header>
-      <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <circle cx="11" cy="11" r="8"/>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>
+      <Search :size="16" class="bs-header-icon" />
       <span class="bs-header-title">搜索文件</span>
       <div v-if="file?.path" class="bs-header-description">
         <HeaderMarquee :text="file.path">{{ file.path }}</HeaderMarquee>
@@ -38,6 +35,7 @@
 </template>
 
 <script setup>
+import { Search } from 'lucide-vue-next'
 import { ref, computed, watch, nextTick } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import HeaderMarquee from './HeaderMarquee.vue'

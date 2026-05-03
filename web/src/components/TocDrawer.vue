@@ -1,14 +1,7 @@
 <template>
   <BottomSheet :open="open" title="目录" @close="$emit('close')">
     <template #header>
-      <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <line x1="8" y1="6" x2="21" y2="6"/>
-        <line x1="8" y1="12" x2="21" y2="12"/>
-        <line x1="8" y1="18" x2="21" y2="18"/>
-        <line x1="3" y1="6" x2="3.01" y2="6"/>
-        <line x1="3" y1="12" x2="3.01" y2="12"/>
-        <line x1="3" y1="18" x2="3.01" y2="18"/>
-      </svg>
+      <List :size="16" class="bs-header-icon" />
       <span class="bs-header-title">目录</span>
       <div v-if="file?.path" class="bs-header-description">
         <HeaderMarquee :text="file.path">{{ file.path }}</HeaderMarquee>
@@ -32,6 +25,7 @@
 </template>
 
 <script setup>
+import { List } from 'lucide-vue-next'
 import { ref, watch, nextTick } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'

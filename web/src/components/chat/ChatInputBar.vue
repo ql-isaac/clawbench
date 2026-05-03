@@ -6,9 +6,7 @@
         <button class="chat-action-btn" :class="{ 'has-unread': chatUnread, 'has-running': chatRunning && !chatUnread }"
           @click="$emit('open-session-tab', 'sessions')"
           title="会话">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+          <MessageSquare :size="14" />
           <span class="chat-action-label">会话</span>
         </button>
         <button class="chat-action-btn"
@@ -19,36 +17,26 @@
           @touchcancel="onCreateTouchCancel"
           @contextmenu.prevent="onCreateContextMenu"
           title="选择智能体（长按直接新建）">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
+          <Plus :size="14" />
           <span class="chat-action-label">新建</span>
         </button>
         <button class="chat-action-btn chat-action-btn-delete" :class="{ disabled: !currentSessionId }"
           @click="handleDelete"
           :title="currentSessionId ? '删除当前会话' : '无会话可删除'">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          </svg>
+          <Trash2 :size="14" />
           <span class="chat-action-label">删除</span>
         </button>
       </div>
       <button class="chat-action-btn" :class="{ 'has-unread': taskUnread }"
         @click="$emit('open-session-tab', 'tasks')"
         title="定时任务">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
+        <Clock :size="14" />
         <span class="chat-action-label">定时</span>
       </button>
       <button class="chat-action-btn" :class="{ active: autoSpeechEnabled }"
         @click="$emit('toggle-auto-speech')"
         title="自动朗读">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-        </svg>
+        <Volume2 :size="14" />
         <span class="chat-action-label">朗读</span>
       </button>
     </div>
@@ -61,11 +49,7 @@
       <input type="file" ref="fileInputRef" @change="onFileSelect" style="display:none" multiple />
       <!-- Drop overlay -->
       <div v-if="isDragOver" class="drop-overlay">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
+        <Upload :size="24" :stroke-width="1.5" />
         <span>松开上传文件</span>
       </div>
       <!-- Upload progress bars -->
@@ -77,23 +61,13 @@
       <!-- Attachment tags -->
       <div v-if="attachedFiles.length > 0 || pendingFiles.length > 0" class="chat-attachment-tags">
         <span v-for="(filePath, idx) in attachedFiles" :key="'att-' + filePath" class="chat-file-attachment attachment-ref" @click="$emit('file-tag-click', filePath)" title="打开文件">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-          </svg>
+          <Paperclip :size="12" :stroke-width="1.5" />
           <span class="chat-file-name">{{ getFileName(filePath) }}</span>
           <button class="attachment-tag-remove" @click.stop="$emit('remove-attached', idx)" title="移除">×</button>
         </span>
         <span v-for="(f, idx) in pendingFiles" :key="'upload-' + idx" class="chat-file-attachment attachment-upload" :class="{ 'is-uploading': f.uploading }">
-          <svg v-if="f.isImage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <circle cx="10" cy="13" r="2"/>
-            <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
+          <FileImage v-if="f.isImage" :size="12" :stroke-width="1.5" />
+          <FileText v-else :size="12" :stroke-width="1.5" />
           <span class="chat-file-name">{{ getFileName(f.path) || '上传中...' }}</span>
           <span v-if="f.uploading" class="attachment-progress-pct">{{ f.progress }}%</span>
           <button class="attachment-tag-remove" @click.stop="$emit('remove-file', idx)" title="移除">×</button>
@@ -103,17 +77,11 @@
       <div class="chat-input-row">
         <div class="attach-menu-wrapper" ref="attachMenuRef">
           <button class="chat-attach-btn" @click.stop="toggleAttachMenu" :disabled="inputDisabled" title="附件">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-            </svg>
+            <Paperclip :size="16" />
           </button>
         </div>
         <button v-if="inputText && !loading" class="chat-clear-btn" @click="inputText = ''; collapseTextarea()" title="清空输入">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="15" y1="9" x2="9" y2="15"/>
-            <line x1="9" y1="9" x2="15" y2="15"/>
-          </svg>
+          <XCircle :size="16" />
         </button>
         <textarea class="chat-textarea"
           ref="textareaRef"
@@ -126,18 +94,12 @@
           @blur="collapseTextarea"></textarea>
         <button v-if="!stopPrimed" class="chat-send-btn" :class="{ disabled: !hasInputContent && !hasQuickSend, queued: loading }" @click.stop="handleSendClick" :title="loading ? '加入队列' : '发送'">
           <!-- Queue mode: inbox with down arrow (enqueue) -->
-          <svg v-if="loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
-            <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
-          </svg>
+          <Inbox v-if="loading" :size="16" />
           <!-- Normal mode: paper plane (send) -->
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            <line x1="22" y1="2" x2="11" y2="13"/>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
+          <Send v-else :size="16" />
         </button>
         <button v-if="loading" class="chat-stop-btn" :class="{ primed: stopPrimed }" @click="handleStopClick" :title="stopPrimed ? '确认停止' : '停止生成'">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          <Square :size="16" fill="currentColor" />
         </button>
       </div>
       <!-- Teleported attach menu (avoids overflow:hidden clipping) -->
@@ -147,10 +109,7 @@
           <template v-if="currentFile?.path && !attachedFiles.includes(currentFile.path)">
             <div class="attach-menu-group-title">当前文件</div>
             <button class="attach-menu-item" @click="handleAttachFile(currentFile.path)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-              </svg>
+              <FileText :size="14" :stroke-width="1.5" />
               <span class="attach-menu-item-name">{{ getFileName(currentFile.path) }}</span>
             </button>
           </template>
@@ -158,10 +117,7 @@
           <template v-if="recentReferencedFiles.length > 0">
             <div class="attach-menu-group-title">最近引用</div>
             <button v-for="item in recentReferencedFiles" :key="item.path" class="attach-menu-item" @click="handleAttachFile(item.path)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-              </svg>
+              <FileText :size="14" :stroke-width="1.5" />
               <span class="attach-menu-item-name">{{ getFileName(item.path) }}</span>
               <span class="attach-menu-item-count">×{{ item.count }}</span>
             </button>
@@ -169,11 +125,7 @@
           <!-- Separator + Upload -->
           <div v-if="hasFileGroups" class="attach-menu-separator"></div>
           <button class="attach-menu-item" @click="handleUploadClick">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
+            <Upload :size="14" :stroke-width="1.5" />
             <span>上传文件</span>
           </button>
         </div>
@@ -193,6 +145,7 @@
 
 <script setup>
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
+import { MessageSquare, Plus, Trash2, Clock, Volume2, Upload, Paperclip, FileImage, FileText, XCircle, Inbox, Send, Square } from 'lucide-vue-next'
 import { baseName } from '@/utils/helpers.ts'
 
 const props = defineProps({

@@ -1,9 +1,7 @@
 <template>
   <BottomSheet :open="open" title="文件管理器" @close="$emit('close')">
     <template #header>
-      <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-      </svg>
+      <Folder :size="16" class="bs-header-icon" />
       <span class="bs-header-title">文件管理器</span>
       <div v-if="projectPath" class="bs-header-description">
         <HeaderMarquee :text="projectPath">{{ projectPath }}</HeaderMarquee>
@@ -14,22 +12,25 @@
     <div id="dirNav" class="dir-nav">
       <div class="dir-toolbar">
         <button class="toolbar-btn" :class="{ active: sortField === 'name' }" @click="$emit('toggleSort', 'name')" :title="sortField === 'name' ? '按名称排序 (' + (sortDir === 'asc' ? '升序)' : '降序)') : '按名称排序'">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h12M3 18h6"/></svg>
-          <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline v-if="sortField === 'name' && sortDir === 'desc'" points="6,15 12,9 18,15"/><polyline v-else points="6,9 12,15 18,9"/></svg>
+          <ArrowDownAz :size="14" />
+          <ChevronDown v-if="sortField === 'name' && sortDir === 'desc'" :size="8" :stroke-width="3" class="sort-arrow" />
+          <ChevronUp v-else :size="8" :stroke-width="3" class="sort-arrow" />
         </button>
         <button class="toolbar-btn" :class="{ active: sortField === 'time' }" @click="$emit('toggleSort', 'time')" :title="sortField === 'time' ? '按时间排序 (' + (sortDir === 'asc' ? '升序)' : '降序)') : '按时间排序'">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
-          <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline v-if="sortField === 'time' && sortDir === 'desc'" points="6,15 12,9 18,15"/><polyline v-else points="6,9 12,15 18,9"/></svg>
+          <Clock :size="14" />
+          <ChevronDown v-if="sortField === 'time' && sortDir === 'desc'" :size="8" :stroke-width="3" class="sort-arrow" />
+          <ChevronUp v-else :size="8" :stroke-width="3" class="sort-arrow" />
         </button>
         <button class="toolbar-btn" :class="{ active: sortField === 'type' }" @click="$emit('toggleSort', 'type')" :title="sortField === 'type' ? '按后缀排序 (' + (sortDir === 'asc' ? '升序)' : '降序)') : '按后缀排序'">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
-          <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline v-if="sortField === 'type' && sortDir === 'desc'" points="6,15 12,9 18,15"/><polyline v-else points="6,9 12,15 18,9"/></svg>
+          <FileText :size="14" />
+          <ChevronDown v-if="sortField === 'type' && sortDir === 'desc'" :size="8" :stroke-width="3" class="sort-arrow" />
+          <ChevronUp v-else :size="8" :stroke-width="3" class="sort-arrow" />
         </button>
         <button class="toolbar-btn" :class="{ active: !showHidden }" @click="$emit('toggleHidden')" title="隐藏隐藏文件">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          <EyeOff :size="14" />
         </button>
         <button class="toolbar-btn" :class="{ active: isInSync }" :disabled="!currentFile?.path" @click="syncToCurrentFile" title="同步到当前文件目录">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 3 4 7 8 11"/><line x1="4" y1="7" x2="20" y2="7"/><polyline points="16 21 20 17 16 13"/><line x1="20" y1="17" x2="4" y2="17"/></svg>
+          <ArrowRightLeft :size="14" />
         </button>
         <SearchInput v-model="searchQuery" placeholder="Filter files..." @dblclick="searchQuery = ''" />
       </div>
@@ -46,14 +47,12 @@
       @touchcancel="onContainerTouchEnd"
     >
       <div v-if="dirLoading" class="dir-loading-overlay">
-        <svg class="dir-loading-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        <Loader :size="24" class="dir-loading-spinner" />
         <span>加载中…</span>
       </div>
       <template v-else>
       <div v-if="filteredEntries.length === 0" class="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
+        <Folder :size="48" />
         <p>{{ currentDir ? 'This directory is empty.' : 'No supported files found.' }}</p>
       </div>
 
@@ -64,11 +63,9 @@
           :data-action="'dir'"
           :data-path="(currentDir ? currentDir + '/' : '') + entry.name"
           @contextmenu.prevent="showCtx($event, entry)">
-          <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
+          <Folder class="file-icon" :size="16" />
           <span class="file-name">{{ entry.name }}</span>
-          <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9,18 15,12 9,6"/></svg>
+          <ChevronRight :size="14" class="chevron" />
           <span class="file-meta">{{ formatDate(entry.modified) }}</span>
         </div>
 
@@ -79,19 +76,9 @@
           :data-action="'file'"
           :data-path="(currentDir ? currentDir + '/' : '') + entry.name"
           @contextmenu.prevent="showCtx($event, entry)">
-          <svg v-if="isImage(entry)" class="file-icon" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/>
-          </svg>
-          <svg v-else-if="isAudio(entry)" class="file-icon" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2">
-            <path d="M9 18V5l12-2v13"/>
-            <circle cx="6" cy="18" r="3"/>
-            <circle cx="18" cy="16" r="3"/>
-          </svg>
-          <svg v-else class="file-icon" viewBox="0 0 24 24" fill="none" :stroke="getFileType(entry.name).color" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14,2 14,8 20,8"/>
-          </svg>
+          <FileImage v-if="isImage(entry)" class="file-icon" :size="16" color="#a855f7" />
+          <FileMusic v-else-if="isAudio(entry)" class="file-icon" :size="16" color="#22c55e" />
+          <FileText v-else class="file-icon" :size="16" :color="getFileType(entry.name).color" />
           <span class="file-name">{{ entry.name }}</span>
           <span class="file-meta">{{ formatSize(entry.size) }} · {{ formatDate(entry.modified) }}</span>
         </div>
@@ -106,43 +93,43 @@
     <Teleport to="body">
       <div v-if="ctxMenu.visible" class="context-menu visible" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" @click.stop>
         <div class="context-menu-item" @click.stop="doCopy">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <Copy :size="14" />
           复制
         </div>
         <div class="context-menu-item" @click.stop="doCut">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+          <Scissors :size="14" />
           剪切
         </div>
         <div class="context-menu-item" :class="{ disabled: !clipboard.entry }" @click.stop="clipboard.entry && doPaste()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+          <ClipboardPaste :size="14" />
           粘贴
         </div>
         <div class="context-menu-divider" />
         <div class="context-menu-item" @click.stop="doNewFile">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          <FilePlus :size="14" />
           新建文件
         </div>
         <div class="context-menu-item" @click.stop="doNewFolder">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+          <FolderPlus :size="14" />
           新建文件夹
         </div>
         <div class="context-menu-divider" v-if="ctxMenu.entry" />
         <div class="context-menu-item" v-if="ctxMenu.entry" @click.stop="doRename">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <Pencil :size="14" />
           重命名
         </div>
         <div class="context-menu-item" v-if="ctxMenu.entry && ctxMenu.entry.type !== 'dir'" @click.stop="doDownload">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <Download :size="14" />
           下载
         </div>
         <div class="context-menu-item danger" v-if="ctxMenu.entry" @click.stop="doDelete">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <Trash2 :size="14" />
           删除
         </div>
         <template v-if="ctxMenu.entry && ctxMenu.entry.type === 'dir'">
           <div class="context-menu-divider" />
           <div class="context-menu-item" @click.stop="doOpenAsProject">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="14,12 10,12 10,16 14,16"/></svg>
+            <FolderOpen :size="14" />
             打开为项目
           </div>
         </template>
@@ -154,6 +141,7 @@
 
 <script setup>
 import { ref, computed, reactive, inject, nextTick, Teleport, watch } from 'vue'
+import { Folder, ArrowDownAz, ChevronDown, ChevronUp, Clock, FileText, EyeOff, ArrowRightLeft, Loader, FileImage, FileMusic, ChevronRight, Copy, Scissors, ClipboardPaste, FilePlus, FolderPlus, Pencil, Download, Trash2, FolderOpen } from 'lucide-vue-next'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'
 import { getFileType } from '@/utils/helpers.ts'

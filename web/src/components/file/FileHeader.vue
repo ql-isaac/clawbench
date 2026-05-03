@@ -6,81 +6,43 @@
     <div class="header-actions">
       <!-- TOC button (only for file types that support TOC) -->
       <button v-if="hasToc" class="file-header-btn" :class="{ active: tocOpen }" @click.stop="$emit('toggleToc')" title="目录">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-          <line x1="8" y1="6" x2="21" y2="6"/>
-          <line x1="8" y1="12" x2="21" y2="12"/>
-          <line x1="8" y1="18" x2="21" y2="18"/>
-          <line x1="3" y1="6" x2="5" y2="6"/>
-          <line x1="3" y1="12" x2="5" y2="12"/>
-          <line x1="3" y1="18" x2="5" y2="18"/>
-        </svg>
+        <List :size="13" />
       </button>
 
 
       <!-- Search button (only for file types that support search) -->
       <button v-if="hasToc" class="file-header-btn" :class="{ active: searchOpen }" :disabled="!file.content" @click.stop="$emit('toggleSearch')" title="搜索">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-          <circle cx="11" cy="11" r="8"/>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
+        <Search :size="13" />
       </button>
 
       <!-- More actions dropdown -->
       <div class="dropdown-wrapper" ref="dropdownRef">
         <button class="file-header-btn" @click.stop="menuOpen = !menuOpen" title="更多">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-            <circle cx="12" cy="5" r="1"/>
-            <circle cx="12" cy="12" r="1"/>
-            <circle cx="12" cy="19" r="1"/>
-          </svg>
+          <MoreVertical :size="13" />
         </button>
         <div v-if="menuOpen" class="dropdown-menu">
           <button v-if="file.isBinary" class="dropdown-item" @click="handleOpenAsText">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <polyline points="16 18 22 12 16 6"/>
-              <polyline points="8 6 2 12 8 18"/>
-            </svg>
+            <Code2 :size="14" />
             以文本打开
           </button>
           <button v-if="isMarkdown" class="dropdown-item" @click="handleToggleView">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <polyline points="16 18 22 12 16 6"/>
-              <polyline points="8 6 2 12 8 18"/>
-            </svg>
+            <Code2 :size="14" />
             {{ viewMode === 'rendered' ? '源码' : '渲染' }}
           </button>
           <a v-if="!isAppMode" class="dropdown-item" :href="'/api/local-file/' + encodeURIComponent(file.path)" :download="file.name" @click="menuOpen = false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7,10 12,15 17,10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
+            <Download :size="14" />
             下载
           </a>
           <button v-else class="dropdown-item" @click="handleDownload">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7,10 12,15 17,10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
+            <Download :size="14" />
             下载
           </button>
           <button class="dropdown-item" @click="handleDelete">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <polyline points="3,6 5,6 21,6"/>
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-              <path d="M10 11v6M14 11v6"/>
-              <path d="M9 6V4h6v2"/>
-            </svg>
+            <Trash2 :size="14" />
             删除
           </button>
           <button class="dropdown-item" @click="handleGitHistory">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <line x1="6" y1="3" x2="6" y2="15"/>
-              <circle cx="18" cy="6" r="3"/>
-              <circle cx="6" cy="18" r="3"/>
-              <path d="M15 6a9 9 0 0 0-9 9V3"/>
-            </svg>
+            <GitBranch :size="14" />
             文件历史
           </button>
         </div>
@@ -91,6 +53,7 @@
 
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { List, Search, MoreVertical, Code2, Download, Trash2, GitBranch } from 'lucide-vue-next'
 import { getFileType } from '@/utils/helpers.ts'
 import { useAppMode } from '@/composables/useAppMode.ts'
 

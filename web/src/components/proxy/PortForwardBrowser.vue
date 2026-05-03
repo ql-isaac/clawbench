@@ -4,9 +4,7 @@
       <!-- Toolbar -->
       <div class="pf-toolbar">
         <button class="pf-back-btn" @click="close" title="返回">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
+          <ChevronLeft :size="18" />
         </button>
         <div class="pf-url-bar" ref="urlBarRef">
           <span class="pf-protocol" @click="toggleProtocol" :title="`切换为 ${altProtocol}`">{{ currentProtocol }}://</span>
@@ -21,10 +19,7 @@
           />
         </div>
         <button class="pf-refresh-btn" @click="refresh" title="刷新">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"/>
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-          </svg>
+          <RotateCw :size="16" />
         </button>
       </div>
 
@@ -40,9 +35,7 @@
 
       <!-- Loading overlay -->
       <div v-if="loading" class="pf-loading">
-        <svg class="pf-spinner" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-        </svg>
+        <Loader class="pf-spinner" :size="32" />
       </div>
     </div>
   </Teleport>
@@ -50,6 +43,7 @@
 
 <script setup>
 import { ref, computed, nextTick } from 'vue'
+import { ChevronLeft, RotateCw, Loader } from 'lucide-vue-next'
 
 const visible = ref(false)
 const port = ref(0)

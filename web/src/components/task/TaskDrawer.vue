@@ -1,14 +1,10 @@
 <template>
   <BottomSheet ref="bottomSheetRef" :open="open" compact title="定时任务" @close="$emit('close')">
     <template #header>
-      <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-      </svg>
+      <Clock :size="16" class="bs-header-icon" />
       <span class="bs-header-title">定时任务</span>
       <button class="create-btn" @click="openCreateDialog" title="新建定时任务">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
+        <Plus :size="16" />
       </button>
     </template>
 
@@ -35,16 +31,16 @@
           </div>
           <div class="task-item-actions">
             <button class="task-action-btn edit" @click.stop="openEditDialog(task)" title="编辑">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              <Pencil :size="14" />
             </button>
             <button v-if="task.status === 'active'" class="task-action-btn pause" @click.stop="pauseTask(task.id)" title="暂停">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              <Pause :size="14" />
             </button>
             <button v-if="task.status === 'paused'" class="task-action-btn resume" @click.stop="resumeTask(task.id)" title="恢复">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <Play :size="14" />
             </button>
             <button class="task-action-btn delete" @click.stop="deleteTask(task.id)" title="删除">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <Trash2 :size="14" />
             </button>
           </div>
         </div>
@@ -67,6 +63,7 @@
 </template>
 
 <script setup>
+import { Clock, Plus, Pencil, Pause, Play, Trash2 } from 'lucide-vue-next'
 import { ref, watch } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import TaskFormDialog from '@/components/task/TaskFormDialog.vue'

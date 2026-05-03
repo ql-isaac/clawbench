@@ -1,14 +1,10 @@
 <template>
   <BottomSheet ref="bottomSheetRef" :open="open" compact title="会话" @close="$emit('close')">
     <template #header>
-      <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <rect x="3" y="6" width="18" height="12" rx="2"/><line x1="12" y1="2" x2="12" y2="6"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><line x1="1" y1="10" x2="3" y2="10"/><line x1="1" y1="14" x2="3" y2="14"/><line x1="21" y1="10" x2="23" y2="10"/><line x1="21" y1="14" x2="23" y2="14"/>
-      </svg>
+      <Bot :size="16" class="bs-header-icon" />
       <span class="bs-header-title">会话</span>
       <button class="create-btn" @click.stop="showAgentSelector = true" title="新建会话">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
+        <Plus :size="16" />
       </button>
     </template>
 
@@ -40,10 +36,7 @@
             </div>
           </div>
           <button class="session-item-delete" @click.stop="deleteSession(session.id)" title="删除">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <polyline points="3,6 5,6 21,6"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
+            <Trash2 :size="14" />
           </button>
         </div>
       </div>
@@ -53,9 +46,7 @@
   <!-- Agent selector dialog -->
   <ModalDialog :open="showAgentSelector" title="选择智能体" @close="showAgentSelector = false">
     <template #header>
-      <svg class="modal-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <rect x="3" y="4" width="18" height="12" rx="2"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/><line x1="8" y1="16" x2="8" y2="19"/><line x1="16" y1="16" x2="16" y2="19"/>
-      </svg>
+      <Bot :size="16" class="modal-header-icon" />
       <span class="modal-title">选择智能体</span>
     </template>
     <div class="agent-list">
@@ -84,6 +75,7 @@
 </template>
 
 <script setup>
+import { Bot, Plus, Trash2 } from 'lucide-vue-next'
 import { ref, watch, computed } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'

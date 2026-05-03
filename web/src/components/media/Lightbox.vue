@@ -5,10 +5,10 @@
       <div class="lightbox-toolbar">
         <div v-if="currentFileName" class="lb-filename">{{ currentFileName }}</div>
         <button class="lb-btn" @click="resetAndRefresh" title="Reset & Reload">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <RotateCcw :size="20" />
         </button>
         <button class="lb-btn lb-close" @click="close" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <X :size="20" />
         </button>
       </div>
       <div
@@ -34,18 +34,18 @@
           @error="imageLoading = false"
         />
         <div v-if="imageLoading" class="lb-loading-spinner">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          <Loader :size="32" />
         </div>
         <div v-if="currentSvg" :style="imgStyle" v-html="currentSvg" />
       </div>
       <div class="lightbox-bottom-bar">
         <template v-if="showNav">
           <button class="lb-btn lb-nav-btn" @click="navigatePrev" title="Previous">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            <ChevronLeft :size="20" />
           </button>
           <span class="lb-counter">{{ navCurrentIndex + 1 }}/{{ navTotalCount }}</span>
           <button class="lb-btn lb-nav-btn" @click="navigateNext" title="Next">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            <ChevronRight :size="20" />
           </button>
         </template>
       </div>
@@ -54,6 +54,7 @@
 </template>
 
 <script setup>
+import { RotateCcw, X, Loader, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { ref, computed, provide, onMounted, onUnmounted } from 'vue'
 import { store } from '@/stores/app.ts'
 import { baseName, getFileType } from '@/utils/helpers.ts'

@@ -1,17 +1,17 @@
 <template>
   <ModalDialog :open="open" title="浏览项目" :z-index="2500" @close="$emit('close')">
     <template #header>
-      <svg class="modal-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <Projector :size="16" class="modal-header-icon" />
       <span class="modal-title">浏览项目</span>
     </template>
     <!-- Browse nav -->
     <div class="dialog-nav">
       <div class="dialog-toolbar-row">
         <button class="toolbar-btn" @click="doNewFolder" title="新建文件夹">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+          <FolderPlus :size="14" />
         </button>
         <button class="toolbar-btn" :class="{ active: !showHidden }" @click="showHidden = !showHidden" title="隐藏隐藏文件">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="1"/><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          <EyeOff :size="14" />
         </button>
         <SearchInput v-model="searchQuery" placeholder="搜索..." />
       </div>
@@ -30,15 +30,13 @@
         :class="{ selected: selectedPath === item.path }"
         @click="enterDir(item)"
       >
-        <svg class="item-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
+        <Projector :size="16" class="item-icon-svg" />
         <span class="item-name">{{ item.name }}</span>
         <button class="item-action-btn" @click.stop="doRename(item)" title="重命名">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <Pencil :size="14" />
         </button>
         <button class="item-action-btn danger" @click.stop="doDelete(item)" title="删除">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <Trash2 :size="14" />
         </button>
       </div>
     </div>
@@ -53,6 +51,7 @@
 </template>
 
 <script setup>
+import { Projector, FolderPlus, EyeOff, Pencil, Trash2 } from 'lucide-vue-next'
 import { ref, computed, watch, inject } from 'vue'
 import ModalDialog from './common/ModalDialog.vue'
 import SearchInput from './common/SearchInput.vue'

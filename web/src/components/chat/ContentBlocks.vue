@@ -4,57 +4,35 @@
       <!-- Thinking block -->
       <div v-if="block.type === 'thinking'" class="chat-thinking" :class="{ expanded: thinkingExpanded[key(bi)] }" @click.stop="toggleThinking(key(bi))">
         <div class="thinking-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-          </svg>
+          <CircleHelp :size="12" />
           <span class="thinking-label">Thinking</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="thinking-chevron">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
+          <ChevronDown :size="12" class="thinking-chevron" />
         </div>
         <pre v-if="thinkingExpanded[key(bi)]" class="thinking-text">{{ block.text }}</pre>
       </div>
       <!-- Tool use block -->
       <template v-else-if="block.type === 'tool_use'">
-        <div class="chat-tool-call" :class="{ done: block.done, incomplete: block.done && !hasToolResult(block) }" :data-category="getToolDisplay(block).category" @click.stop="$emit('toggle-tool', key(bi))">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="tool-icon">
-            <path :d="getToolDisplay(block).icon"/>
-          </svg>
+        <div class="chat-tool-call" :class="{ done: block.done, incomplete: block.done && !hasToolResult(block) }" :data-category="getToolIcon(block.name).category" @click.stop="$emit('toggle-tool', key(bi))">
+          <component :is="getToolIcon(block.name).icon" :size="12" class="tool-icon" />
           <span class="tool-name">{{ block.name }}</span>
           <span v-if="toolCallSummary(block)" class="tool-summary">{{ toolCallSummary(block) }}</span>
           <!-- Loading: spinner -->
           <span v-if="!block.done" class="tool-spinner"></span>
           <!-- Done with result: green check -->
-          <svg v-else-if="hasToolResult(block)" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" width="14" height="14" class="tool-check">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="8 12 11 15 16 9"/>
-          </svg>
+          <CheckCircle2 v-else-if="hasToolResult(block)" :size="14" color="#22c55e" class="tool-check" />
           <!-- Done without result: yellow warning -->
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" width="14" height="14" class="tool-warn">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
+          <AlertCircle v-else :size="14" color="#f59e0b" class="tool-warn" />
         </div>
         <div v-if="expandedTools[key(bi)] || shouldAutoExpand(block)" class="tool-detail" :data-tool-name="block.name" @click="handleToolDetailClick" v-html="formatToolInput(block.input, block.name)"></div>
       </template>
       <!-- Error block -->
       <div v-else-if="block.type === 'error'" class="chat-error-card">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="error-icon">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
+        <AlertTriangle :size="14" class="error-icon" />
         <span class="error-text">{{ block.text }}</span>
       </div>
       <!-- Warning block -->
       <div v-else-if="block.type === 'warning'" class="chat-warning-card">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="warning-icon">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
+        <AlertCircle :size="14" class="warning-icon" />
         <span class="warning-text">{{ block.text }}</span>
       </div>
       <!-- Schedule proposal card (inline in message) — must come before generic text block -->
@@ -65,9 +43,7 @@
           <div class="proposal-header">
             <span class="proposal-icon">⏰</span> 定时任务已创建
             <button v-if="blockProposals[blockProposalsKey(bi)].proposal.task_id" class="proposal-edit-btn" @click.stop="$emit('edit-task', blockProposals[blockProposalsKey(bi)].proposal.task_id)" title="编辑">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-              </svg>
+              <Pencil :size="14" />
             </button>
           </div>
           <div class="proposal-body">
@@ -92,54 +68,8 @@
 <script setup>
 import { ref, watch, onUnmounted } from 'vue'
 import { handleToolAction, shouldAutoExpandTool } from '@/utils/renderToolDetail.ts'
-
-// Tool display configuration: icon SVG paths + category for color
-const TOOL_DISPLAY = {
-  'Read':            { icon: 'M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', category: 'file' },
-  'Write':           { icon: 'M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z', category: 'file' },
-  'Edit':            { icon: 'M12 3v18M3 12h18', category: 'file' },
-  'Bash':            { icon: 'M4 17l6-6-6-6M12 19h8', category: 'bash' },
-  'Grep':            { icon: 'M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35', category: 'search' },
-  'Glob':            { icon: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z', category: 'search' },
-  'WebSearch':       { icon: 'M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.35-4.35', category: 'search' },
-  'WebFetch':        { icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z', category: 'search' },
-  'Agent':           { icon: 'M12 8V4H8 M12 8V4h4 M8 4a4 4 0 0 0-4 4v2 M16 4a4 4 0 0 1 4 4v2 M9 16h6 M10 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', category: 'agent' },
-  'Skill':           { icon: 'M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z', category: 'skill' },
-  'AskUserQuestion': { icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z M8 10h.01 M12 10h.01 M16 10h.01', category: 'ask' },
-  'TaskCreate':      { icon: 'M12 5v14M5 12h14', category: 'task' },
-  'TaskUpdate':      { icon: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z', category: 'task' },
-  'TaskList':        { icon: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', category: 'task' },
-  'TaskGet':         { icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z', category: 'task' },
-  'TaskStop':        { icon: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', category: 'task' },
-  'TaskOutput':      { icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8', category: 'task' },
-  'EnterPlanMode':   { icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z', category: 'plan' },
-  'ExitPlanMode':    { icon: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3', category: 'plan' },
-  'LS':              { icon: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z', category: 'file' },
-  'PowerShell':      { icon: 'M4 17l6-6-6-6M12 19h8', category: 'bash' },
-  'SendMessage':     { icon: 'M22 2l-7 20-4-9-9-4 20-7z', category: 'agent' },
-  'NotebookEdit':    { icon: 'M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z', category: 'file' },
-  'TodoWrite':       { icon: 'M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11', category: 'task' },
-  'LSP':             { icon: 'M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z', category: 'skill' },
-  'ImageGen':        { icon: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', category: 'skill' },
-  'EnterWorktree':   { icon: 'M6 3v18M18 3v18M3 6h18M3 18h18', category: 'plan' },
-  'LeaveWorktree':   { icon: 'M6 3v18M18 3v18M3 6h18M3 18h18', category: 'plan' },
-  'ComputerUse':     { icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z', category: 'agent' },
-  'TeamCreate':      { icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75', category: 'agent' },
-  'TeamDelete':      { icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75', category: 'agent' },
-  'WeChatReply':     { icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', category: 'agent' },
-  'WeComReply':      { icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', category: 'agent' },
-  'save_memory':     { icon: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z M17 21v-5.5a2.5 2.5 0 0 0-2.5-2.5h-5a2.5 2.5 0 0 0-2.5 2.5V21', category: 'skill' },
-  'StructuredOutput': { icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8', category: 'file' },
-  'SkillManage':     { icon: 'M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z', category: 'skill' },
-  'Monitor':         { icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z', category: 'bash' },
-}
-const FALLBACK_TOOL_DISPLAY = { icon: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z', category: 'fallback' }
-
-function getToolDisplay(block) {
-  const name = (block.name || '').toLowerCase()
-  const entry = Object.entries(TOOL_DISPLAY).find(([k]) => k.toLowerCase() === name)
-  return entry ? entry[1] : FALLBACK_TOOL_DISPLAY
-}
+import { getToolIcon } from '@/utils/icons'
+import { CircleHelp, ChevronDown, CheckCircle2, AlertCircle, AlertTriangle, Pencil } from 'lucide-vue-next'
 
 function hasToolResult(block) {
   if (!block.done) return false
