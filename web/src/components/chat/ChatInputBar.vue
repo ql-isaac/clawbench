@@ -124,7 +124,7 @@
           @keydown.enter.exact.prevent="$emit('send', inputText.trim())"
           @input="autoResizeTextarea"
           @blur="collapseTextarea"></textarea>
-        <button class="chat-send-btn" :class="{ disabled: !hasInputContent && !hasQuickSend, queued: loading }" @click.stop="handleSendClick" :title="loading ? '加入队列' : '发送'">
+        <button v-if="!stopPrimed" class="chat-send-btn" :class="{ disabled: !hasInputContent && !hasQuickSend, queued: loading }" @click.stop="handleSendClick" :title="loading ? '加入队列' : '发送'">
           <!-- Queue mode: inbox with down arrow (enqueue) -->
           <svg v-if="loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
             <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
