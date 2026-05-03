@@ -136,14 +136,15 @@ defineExpose({
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-color, #0066cc) 15%, var(--border-color, #e5e5e5));
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 6%, transparent);
   flex-shrink: 0;
   cursor: pointer;
 }
 
 .modal-header-icon {
   flex-shrink: 0;
-  color: var(--text-primary, #1a1a1a);
+  color: var(--accent-color, #0066cc);
   display: flex;
   align-items: center;
 }

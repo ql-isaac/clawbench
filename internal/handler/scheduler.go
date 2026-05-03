@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"clawbench/internal/model"
 	"clawbench/internal/service"
@@ -191,7 +192,7 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 // serveTaskExecutions returns the execution history for a task.
 // It queries task_executions directly (content is stored inline, no chat_history dependency).
 func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID string) {
-	_, err := service.GetTaskByID(taskID)
+	task, err := service.GetTaskByID(taskID)
 	if err != nil {
 		model.WriteError(w, model.NotFound(nil, "Task not found"))
 		return
@@ -200,6 +201,7 @@ func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID string) 
 	type Execution struct {
 		Content   string `json:"content"`
 		CreatedAt string `json:"createdAt"`
+		IsUnread  bool   `json:"isUnread"`
 	}
 
 	rows, err := service.DB.Query(`
@@ -220,6 +222,14 @@ func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID string) 
 		if err := rows.Scan(&exec.Content, &exec.CreatedAt); err != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to scan execution record")))
 			return
+		}
+		if task.LastReadAt == nil {
+			exec.IsUnread = true
+		} else {
+			createdAt, parseErr := time.Parse(time.RFC3339, exec.CreatedAt)
+			if parseErr == nil {
+				exec.IsUnread = createdAt.After(*task.LastReadAt)
+			}
 		}
 		executions = append(executions, exec)
 	}

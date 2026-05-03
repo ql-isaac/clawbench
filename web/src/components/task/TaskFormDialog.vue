@@ -1,19 +1,11 @@
 <template>
-  <ModalDialog :open="open" :title="mode === 'create' ? '新建定时任务' : '定时任务详情'" @close="$emit('close')">
+  <ModalDialog :open="open" :title="mode === 'create' ? '新建定时任务' : '编辑定时任务'" @close="$emit('close')">
     <template #header>
       <svg class="modal-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <span class="modal-title">{{ mode === 'create' ? '新建定时任务' : '定时任务详情' }}</span>
+      <span class="modal-title">{{ mode === 'create' ? '新建定时任务' : '编辑定时任务' }}</span>
     </template>
-    <!-- Tabs (edit mode only) -->
-    <div v-if="mode === 'edit'" class="dialog-tabs-row">
-      <div class="dialog-tabs">
-        <button class="dialog-tab" :class="{ active: tab === 'details' }" @click="tab = 'details'">详情</button>
-        <button class="dialog-tab" :class="{ active: tab === 'executions' }" @click="tab = 'executions'">执行记录</button>
-      </div>
-    </div>
 
-    <!-- Details / Create form -->
-    <div v-if="tab === 'details'" class="details-content">
+    <div class="details-content">
       <div v-if="saving" class="saving-indicator">保存中...</div>
 
       <!-- Task name -->
@@ -159,49 +151,19 @@
       </div>
     </div>
 
-    <!-- Executions tab (edit mode only) -->
-    <div v-if="mode === 'edit' && tab === 'executions'" class="executions-content">
-      <div v-if="executionsLoading" class="dialog-loading">加载中...</div>
-      <div v-else-if="executions.length === 0" class="dialog-empty">暂无执行记录</div>
-      <div v-for="(exec, idx) in executions" :key="idx" class="execution-item" :class="{ expanded: execExpanded[idx] }">
-        <div class="execution-header" @click="execExpanded[idx] = !execExpanded[idx]">
-          <svg class="execution-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-          <span class="exec-absolute-time">{{ formatAbsoluteTime(exec.createdAt) }}</span>
-          <span class="exec-relative-time">{{ chatRender.formatMessageTime(exec.createdAt) }}</span>
-        </div>
-        <div v-if="execExpanded[idx]" class="chat-message assistant execution-body">
-          <ContentBlocks
-            :blocks="exec.blocks"
-            :msgId="'exec-' + idx"
-            :msgIndex="idx"
-            :expandedTools="execExpandedTools"
-            :blockProposals="{}"
-            :renderTextBlock="chatRender.renderTextBlock"
-            :formatToolInput="chatRender.formatToolInput"
-            :toolCallSummary="chatRender.toolCallSummary"
-            @toggle-tool="toggleExecTool"
-          />
-        </div>
-      </div>
-    </div>
-
     <template #footer>
-      <button v-if="tab === 'details'" class="btn btn-primary" :disabled="saving" @click="submit">
+      <button class="btn btn-primary" :disabled="saving" @click="submit">
         {{ mode === 'create' ? '创建' : '保存' }}
       </button>
-      <button class="btn btn-secondary" @click="$emit('close')">{{ tab === 'executions' ? '关闭' : '取消' }}</button>
+      <button class="btn btn-secondary" @click="$emit('close')">取消</button>
     </template>
   </ModalDialog>
 </template>
 
 <script setup>
-import { ref, computed, watch, inject } from 'vue'
+import { ref, computed, watch } from 'vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
-import ContentBlocks from '@/components/chat/ContentBlocks.vue'
 import { useAgents } from '@/composables/useAgents.ts'
-import { useChatRender } from '@/composables/useChatRender.ts'
 import { humanizeCron } from '@/utils/helpers.ts'
 
 const props = defineProps({
@@ -212,32 +174,8 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'saved'])
 
-const tab = ref('details')
 const saving = ref(false)
 const { agents, loadAgents } = useAgents()
-const executions = ref([])
-const executionsLoading = ref(false)
-const execExpandedTools = ref({})
-const execExpanded = ref({})
-
-// Create chatRender instance for rendering execution blocks
-const renderTheme = inject('theme', ref('light'))
-const chatRender = useChatRender({ messages: ref([]), theme: renderTheme, currentSessionId: ref('') })
-
-function toggleExecTool(key) {
-  execExpandedTools.value = { ...execExpandedTools.value, [key]: !execExpandedTools.value[key] }
-}
-
-function formatAbsoluteTime(createdAt) {
-  const d = new Date(createdAt)
-  const y = d.getFullYear()
-  const mo = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const h = String(d.getHours()).padStart(2, '0')
-  const mi = String(d.getMinutes()).padStart(2, '0')
-  const s = String(d.getSeconds()).padStart(2, '0')
-  return `${y}-${mo}-${day} ${h}:${mi}:${s}`
-}
 
 // Frequency preset
 const presets = [
@@ -393,30 +331,10 @@ async function submit() {
   }
 }
 
-// Load executions (edit mode)
-async function loadExecutions() {
-  if (!props.task?.id) return
-  executionsLoading.value = true
-  try {
-    const resp = await fetch(`/api/tasks/${props.task.id}/executions`)
-    const data = await resp.json()
-    const rawExecutions = data.executions || []
-    executions.value = rawExecutions.map(exec => {
-      const { blocks } = chatRender.parseAssistantContent(exec.content)
-      return { ...exec, blocks }
-    })
-  } catch (err) {
-    console.error('Failed to load executions:', err)
-  } finally {
-    executionsLoading.value = false
-  }
-}
-
 // Initialize form when dialog opens
 watch(() => props.open, (isOpen) => {
   if (!isOpen) return
   errors.value = {}
-  tab.value = 'details'
 
   if (props.mode === 'edit' && props.task) {
     form.value = {
@@ -429,7 +347,6 @@ watch(() => props.open, (isOpen) => {
       maxRuns: props.task.maxRuns || 0,
     }
     preset.value = detectPreset(props.task.cronExpr)
-    loadExecutions()
   } else {
     // Create mode: reset form
     form.value = {
@@ -457,36 +374,6 @@ watch(() => props.open, (isOpen) => {
 </script>
 
 <style scoped>
-/* Tabs */
-.dialog-tabs-row {
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--border-color, #e5e5e5);
-  background: var(--bg-tertiary, #f5f5f5);
-  flex-shrink: 0;
-}
-
-.dialog-tabs {
-  display: flex;
-  gap: 0;
-}
-
-.dialog-tab {
-  padding: 5px 12px;
-  border: none;
-  background: transparent;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  color: var(--text-muted, #999);
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s, border-color 0.2s;
-}
-
-.dialog-tab:hover { color: var(--text-secondary, #666); }
-.dialog-tab.active { color: var(--accent-color, #0066cc); border-bottom-color: var(--accent-color, #0066cc); }
-
 /* Details content */
 .details-content {
   flex: 1;
@@ -696,70 +583,6 @@ watch(() => props.open, (isOpen) => {
   font-size: 13px;
   color: var(--text-primary, #1a1a1a);
   cursor: pointer;
-}
-
-/* Executions content */
-.executions-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 2px 0;
-}
-
-.execution-item {
-  border-bottom: 1px solid var(--border-color, #e5e5e5);
-}
-
-.execution-item:last-child {
-  border-bottom: none;
-}
-
-.execution-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.execution-header:hover {
-  background: var(--bg-secondary);
-}
-
-.execution-chevron {
-  flex-shrink: 0;
-  transition: transform 0.2s;
-  color: var(--text-muted, #999);
-}
-
-.execution-item.expanded .execution-chevron {
-  transform: rotate(180deg);
-}
-
-.exec-absolute-time {
-  font-size: 12px;
-  color: var(--text-primary);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.exec-relative-time {
-  font-size: 11px;
-  color: var(--text-muted, #999);
-  white-space: nowrap;
-}
-
-.execution-body {
-  margin: 4px 4px 8px;
-}
-
-.dialog-loading,
-.dialog-empty {
-  text-align: center;
-  padding: 20px 12px;
-  color: var(--text-muted, #999);
-  font-size: 13px;
 }
 
 /* Buttons */

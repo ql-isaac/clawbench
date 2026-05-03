@@ -64,11 +64,9 @@
         <div class="schedule-proposal-card">
           <div class="proposal-header">
             <span class="proposal-icon">⏰</span> 定时任务已创建
-            <button v-if="blockProposals[blockProposalsKey(bi)].proposal.task_id" class="proposal-edit-btn" @click.stop="$emit('edit-task', blockProposals[blockProposalsKey(bi)].proposal.task_id)" title="查看详情">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 16v-4"/>
-                <path d="M12 8h.01"/>
+            <button v-if="blockProposals[blockProposalsKey(bi)].proposal.task_id" class="proposal-edit-btn" @click.stop="$emit('edit-task', blockProposals[blockProposalsKey(bi)].proposal.task_id)" title="编辑">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
               </svg>
             </button>
           </div>
@@ -519,8 +517,8 @@ onUnmounted(() => {
   align-items: center;
   background: color-mix(in srgb, var(--accent-color, #4a90d9) 12%, transparent);
   color: var(--accent-color, #4a90d9);
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: 4px 10px;
+  font-size: 12px;
   font-weight: 600;
   border-bottom: 1px solid color-mix(in srgb, var(--accent-color, #4a90d9) 15%, var(--border-color, #dee2e6));
 }
@@ -534,8 +532,8 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: none;
   border-radius: 4px;
