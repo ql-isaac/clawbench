@@ -58,7 +58,19 @@ def try_load_misaki_zh(model_path):
     """
     try:
         from misaki import zh
-        g2p = zh.ZHG2P(version="1.1")
+
+        # Try to load English G2P so that English fragments in Chinese text
+        # are properly phonemized instead of being silently dropped.
+        # Wrap en.G2P to return only the phoneme string (it returns a tuple).
+        en_callable = None
+        try:
+            from misaki import en as misaki_en
+            _en_g2p = misaki_en.G2P()
+            en_callable = lambda text: _en_g2p(text)[0]
+        except (ImportError, Exception):
+            pass
+
+        g2p = zh.ZHG2P(version="1.1", en_callable=en_callable)
 
         # Look for vocab config next to the model file
         model_dir = os.path.dirname(model_path)
