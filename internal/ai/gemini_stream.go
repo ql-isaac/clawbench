@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 )
 
@@ -160,8 +161,16 @@ func (p *GeminiStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 
 // buildGeminiStreamArgs constructs the CLI arguments for Gemini streaming
 func buildGeminiStreamArgs(req ChatRequest) []string {
+	// Prompt: prepend system prompt if set.
+	// Gemini CLI has no --system-prompt flag, so injecting the system prompt
+	// into the user prompt is the only way to pass it through.
+	prompt := req.Prompt
+	if req.SystemPrompt != "" {
+		prompt = fmt.Sprintf("[System Instructions: %s]\n\n%s", req.SystemPrompt, prompt)
+	}
+
 	args := []string{
-		"--prompt", req.Prompt,
+		"--prompt", prompt,
 		"--output-format", "stream-json",
 		"--yolo",
 	}
