@@ -137,6 +137,12 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	if cfg.TTS.Speed <= 0 {
 		cfg.TTS.Speed = 1.0
 	}
+	if cfg.TTS.InlineCodeMaxLen <= 0 {
+		cfg.TTS.InlineCodeMaxLen = 100
+	}
+	if cfg.TTS.MaxSummarizeRunes <= 0 {
+		cfg.TTS.MaxSummarizeRunes = 10000
+	}
 
 	return autoPassword
 }

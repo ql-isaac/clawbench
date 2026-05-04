@@ -125,13 +125,9 @@ func main() {
 	model.ChatQuickSend = cfg.Chat.QuickSend
 	model.SessionMaxCount = cfg.Session.MaxCount
 
-	// Apply TTS text processing config
-	if cfg.TTS.InlineCodeMaxLen > 0 {
-		speech.InlineCodeMaxLen = cfg.TTS.InlineCodeMaxLen
-	}
-	if cfg.TTS.MaxSummarizeRunes > 0 {
-		speech.MaxSummarizeRunes = cfg.TTS.MaxSummarizeRunes
-	}
+	// Apply TTS text processing config (defaults applied in ApplyDefaults)
+	speech.InlineCodeMaxLen = cfg.TTS.InlineCodeMaxLen
+	speech.MaxSummarizeRunes = cfg.TTS.MaxSummarizeRunes
 
 	// Initialize TTS summarizer from config
 	summarizeBackend := cfg.TTS.SummarizeBackend
