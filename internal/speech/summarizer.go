@@ -27,7 +27,7 @@ Rules:
 
 	// DefaultMaxSummarizeRunes is the default maximum number of runes for summarization input.
 	// Texts longer than this are truncated to the last N characters.
-	// Configurable via config.yaml tts.max_summarize_runes.
+	// Configurable via config/config.yaml tts.max_summarize_runes.
 	DefaultMaxSummarizeRunes = 10000
 
 	// SimpleMaxSummarizeRunes is the maximum number of runes for the "simple" summarizer,

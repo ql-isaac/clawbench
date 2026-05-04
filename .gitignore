@@ -2,7 +2,7 @@
 .DS_Store
 
 # Configuration files (keep local config private)
-config.yaml
+config/config.yaml
 
 # Python (legacy scripts)
 venv/

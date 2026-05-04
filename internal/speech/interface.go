@@ -52,7 +52,7 @@ var (
 // InlineCodeMaxLen is the maximum content length (in runes) for inline code
 // to be preserved (with backticks removed). Longer inline code is removed
 // entirely — it typically contains code snippets not suitable for TTS.
-// Configurable via config.yaml tts.inline_code_max_len.
+// Configurable via config/config.yaml tts.inline_code_max_len.
 var InlineCodeMaxLen = 100
 
 // StripMarkdown removes common markdown formatting from text.

@@ -28,11 +28,11 @@ A: Yes. The release and dev versions use independent ports and databases, so the
 
 **Q: Do I need a config file to start?**
 
-A: No. All configuration options have default values, so you can start without `config.yaml`. When `password` is not configured, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it. To customize, copy `config/config.example.yaml` to `config.yaml` and modify as needed.
+A: No. All configuration options have default values, so you can start without `config/config.yaml`. When `password` is not configured, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it. To customize, copy `config/config.example.yaml` to `config/config.yaml` and modify as needed.
 
 **Q: What if I forget the auto-generated password?**
 
-A: Check the `.clawbench/auto-password` file to retrieve the password. You can also set `password` in `config.yaml` to use a fixed password.
+A: Check the `.clawbench/auto-password` file to retrieve the password. You can also set `password` in `config/config.yaml` to use a fixed password.
 
 **Q: Where is data stored?**
 

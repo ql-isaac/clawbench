@@ -21,7 +21,7 @@ param(
 
 $NAME = "clawbench"
 $BIN = ".\$NAME.exe"
-$CONFIG = "config.yaml"
+$CONFIG = "config\config.yaml"
 
 # Release mode port (default)
 $RELEASE_PORT = 20000
@@ -36,7 +36,7 @@ $DEV_PID_FILE = Join-Path $env:TEMP "$NAME-dev.pid"
 $DEV_BACKEND_PID_FILE = Join-Path $env:TEMP "$NAME-dev-backend.pid"
 $AUTO_PW_FILE = ".\.clawbench\auto-password"
 
-# Read watch_dir from config.yaml
+# Read watch_dir from config/config.yaml
 function Get-WatchDir {
     if (Test-Path $CONFIG) {
         $line = Get-Content $CONFIG | Where-Object { $_ -match '^watch_dir:' } | Select-Object -First 1

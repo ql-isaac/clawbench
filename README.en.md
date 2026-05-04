@@ -134,7 +134,7 @@ Each YAML file corresponds to one agent and requires at minimum: `id` (unique id
 ./server.sh
 ```
 
-> A random password is auto-generated on first startup and printed to the console. Save it securely. To customize configuration, copy `config/config.example.yaml` to `config.yaml` and modify.
+> A random password is auto-generated on first startup and printed to the console. Save it securely. To customize configuration, copy `config/config.example.yaml` to `config/config.yaml` and modify.
 
 Once deployed, access `http://server-ip:20000` from your phone app or mobile browser:
 

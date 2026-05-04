@@ -18,7 +18,7 @@ cd clawbench
 ./server.sh
 ```
 
-> On first startup, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it automatically. To customize configuration, copy `config/config.example.yaml` to `config.yaml` and modify as needed.
+> On first startup, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it automatically. To customize configuration, copy `config/config.example.yaml` to `config/config.yaml` and modify as needed.
 
 Release package contents (Linux):
 
@@ -100,7 +100,7 @@ cd clawbench
 
 ### Configuration File
 
-`config.yaml` is entirely optional — all configuration items have default values. To customize, copy `config/config.example.yaml` to `config.yaml` and modify.
+`config/config.yaml` is entirely optional — all configuration items have default values. To customize, copy `config/config.example.yaml` to `config/config.yaml` and modify.
 
 **Defaults:**
 
@@ -271,7 +271,7 @@ For detailed instructions on installation, deployment, configuration examples, a
 Enabling HTTPS is recommended for production environments:
 
 1. **Obtain certificate**: Use Let's Encrypt or another CA to issue a certificate
-2. **Configure TLS**: Enable in `config.yaml`
+2. **Configure TLS**: Enable in `config/config.yaml`
    ```yaml
    tls:
      enabled: true

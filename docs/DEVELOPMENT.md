@@ -18,7 +18,7 @@ cd clawbench
 ./server.sh
 ```
 
-> 首次启动会自动生成随机密码并保存到 `.clawbench/auto-password`，启动脚本会自动显示。如需自定义配置，可复制 `config/config.example.yaml` 为 `config.yaml` 并修改。
+> 首次启动会自动生成随机密码并保存到 `.clawbench/auto-password`，启动脚本会自动显示。如需自定义配置，可复制 `config/config.example.yaml` 为 `config/config.yaml` 并修改。
 
 发布包内容（Linux）：
 
@@ -100,7 +100,7 @@ cd clawbench
 
 ### 配置文件
 
-`config.yaml` 完全可选，所有配置项均有默认值。如需自定义，复制 `config/config.example.yaml` 为 `config.yaml` 并修改。
+`config/config.yaml` 完全可选，所有配置项均有默认值。如需自定义，复制 `config/config.example.yaml` 为 `config/config.yaml` 并修改。
 
 **默认值**：
 
@@ -271,7 +271,7 @@ ClawBench 支持 TTS 语音合成，自动将 AI 回复总结后朗读。支持 
 生产环境建议启用 HTTPS：
 
 1. **获取证书**：使用 Let's Encrypt 或其他 CA 签发证书
-2. **配置 TLS**：在 `config.yaml` 中启用
+2. **配置 TLS**：在 `config/config.yaml` 中启用
    ```yaml
    tls:
      enabled: true

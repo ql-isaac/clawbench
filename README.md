@@ -134,7 +134,7 @@ cp config/agents/agent.yaml.example config/agents/my-agent.yaml
 ./server.sh
 ```
 
-> 首次启动会自动生成随机密码并打印到控制台，请妥善保存。如需自定义配置，可复制 `config/config.example.yaml` 为 `config.yaml` 并修改。
+> 首次启动会自动生成随机密码并打印到控制台，请妥善保存。如需自定义配置，可复制 `config/config.example.yaml` 为 `config/config.yaml` 并修改。
 
 部署完成后，使用手机 App 或手机浏览器访问 `http://服务器IP:20000` 即可开始使用：
 

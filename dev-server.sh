@@ -18,7 +18,7 @@ DEV_PID_FILE="/tmp/${NAME}-vite.pid"
 AUTO_PW_FILE=".clawbench/auto-password"
 
 get_watch_dir() {
-    grep "^watch_dir:" "config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo ""
+    grep "^watch_dir:" "config/config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo ""
 }
 
 show_auto_password() {
@@ -31,16 +31,16 @@ show_auto_password() {
 get_dev_port() {
     local key="$1"
     local default="$2"
-    local val=$(sed -n '/^dev:/,/^[a-z]/{/^  '"$key"':/p}' "config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo "")
+    local val=$(sed -n '/^dev:/,/^[a-z]/{/^  '"$key"':/p}' "config/config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo "")
     echo "${val:-$default}"
 }
 
 get_dev_host() {
-    local host=$(sed -n '/^dev:/,/^[a-z]/{/^  host:/p}' "config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo "")
+    local host=$(sed -n '/^dev:/,/^[a-z]/{/^  host:/p}' "config/config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo "")
     echo "${host:-localhost}"
 }
 
-# Dev 模式端口（从 config.yaml 读取，与正式版分离）
+# Dev 模式端口（从 config/config.yaml 读取，与正式版分离）
 DEV_BACKEND_PORT=$(get_dev_port "port" 20002)
 DEV_FRONTEND_PORT=$(get_dev_port "frontend_port" 20001)
 DEV_HOST=$(get_dev_host)

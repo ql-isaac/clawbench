@@ -13,7 +13,7 @@
 NAME="clawbench"
 BIN="./$NAME"
 PID_FILE="/tmp/${NAME}.pid"
-CONFIG="config.yaml"
+CONFIG="config/config.yaml"
 AUTO_PW_FILE=".clawbench/auto-password"
 
 RELEASE_PORT=20000

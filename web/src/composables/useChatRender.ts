@@ -1,4 +1,4 @@
-import { reactive, nextTick, watch } from 'vue'
+import { ref, reactive, nextTick, watch } from 'vue'
 import { baseName } from '@/utils/path.ts'
 import { marked, DOMPurify, mermaid } from '@/utils/globals.ts'
 import { formatToolInput } from '@/utils/renderToolDetail.ts'

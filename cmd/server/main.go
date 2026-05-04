@@ -81,13 +81,25 @@ func main() {
 	absBinPath, _ := filepath.Abs(os.Args[0])
 	model.BinDir = filepath.Dir(absBinPath)
 
-	// Load configuration — config.yaml is optional
+	// Load configuration — config/config.yaml is optional
 	var cfg model.Config
 	var presence map[string]bool
 
-	configPath := filepath.Join(model.BinDir, "config.yaml")
+	// Search for config in priority order:
+	// 1. <BinDir>/config/config.yaml (green portable: next to binary)
+	// 2. config/config.yaml (CWD-relative, standard layout)
+	// 3. <BinDir>/config.yaml (legacy: next to binary)
+	// 4. config.yaml (legacy: CWD root)
+	configPath := filepath.Join(model.BinDir, "config", "config.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		configPath = "config.yaml"
+		configPath = filepath.Join("config", "config.yaml")
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			// Fallback to legacy paths
+			configPath = filepath.Join(model.BinDir, "config.yaml")
+			if _, err := os.Stat(configPath); os.IsNotExist(err) {
+				configPath = "config.yaml"
+			}
+		}
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -95,19 +107,19 @@ func main() {
 		// Parse into raw map first for presence detection (bool defaults)
 		var raw map[string]any
 		if err := yaml.Unmarshal(data, &raw); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to parse config.yaml: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to parse %s: %v\n", configPath, err)
 			os.Exit(1)
 		}
 		presence = model.ParsePresenceMap(raw)
 
 		// Parse into typed config struct
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to parse config.yaml: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to parse %s: %v\n", configPath, err)
 			os.Exit(1)
 		}
 	} else if !os.IsNotExist(err) {
 		// File exists but can't be read (permissions, etc.)
-		fmt.Fprintf(os.Stderr, "Failed to read config.yaml: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to read %s: %v\n", configPath, err)
 		os.Exit(1)
 	}
 	// If file doesn't exist: cfg stays zero-value, presence is nil → all defaults apply

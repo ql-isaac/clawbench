@@ -2,8 +2,8 @@
 # ClawBench Configuration Example / 配置示例
 # =============================================================================
 #
-# All settings have sensible defaults — config.yaml is entirely optional.
-# 所有配置项均有默认值，config.yaml 完全可选，无需配置即可启动。
+# All settings have sensible defaults — config/config.yaml is entirely optional.
+# 所有配置项均有默认值，config/config.yaml 完全可选，无需配置即可启动。
 #
 # Without a config file:
 # 无配置文件启动时：
@@ -16,15 +16,15 @@
 #
 # Usage / 使用方法：
 #   Linux/macOS:
-#     1. (Optional) Copy this file as config.yaml: cp config/config.example.yaml config.yaml
-#        （可选）复制此文件为 config.yaml：cp config/config.example.yaml config.yaml
+#     1. (Optional) Copy this file as config.yaml: cp config/config.example.yaml config/config.yaml
+#        （可选）复制此文件为 config.yaml：cp config/config.example.yaml config/config.yaml
 #     2. Modify values to match your environment
 #        根据实际情况修改配置项
 #     3. Start the server: ./server.sh
 #        启动服务：./server.sh
 #   Windows:
-#     1. (Optional) Copy this file as config.yaml: copy config\config.example.yaml config.yaml
-#        （可选）复制此文件为 config.yaml：copy config\config.example.yaml config.yaml
+#     1. (Optional) Copy this file as config.yaml: copy config\config.example.yaml config\config.yaml
+#        （可选）复制此文件为 config.yaml：copy config\config.example.yaml config\config.yaml
 #     2. Modify values to match your environment
 #        根据实际情况修改配置项
 #     3. Start the server: .\server.ps1
