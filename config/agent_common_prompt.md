@@ -89,9 +89,12 @@ Some AI backends support multi-agent execution (also called "Team" mode), where 
 
 - **Why**: ClawBench runs AI backends in CLI mode. The CLI process is the parent of all sub-agent processes. When the lead agent finishes and the CLI exits, the OS kills all child processes — sub-agents lose their work mid-execution with no chance to save or report results.
 - **How to apply**:
-  - After spawning sub-agents, the lead agent must actively wait (poll, block, or use the backend's built-in synchronization) until all sub-agents report completion.
+  - **Always use foreground mode** for sub-agents. Foreground Agent calls block the lead agent until the sub-agent returns, guaranteeing the lead never exits prematurely.
+  - **Never use background mode** (`run_in_background: true`). Background agents return immediately, and the lead agent has no reliable way to wait for them — if the lead's turn ends with no pending tool calls, the process exits and kills all background agents.
+  - When spawning multiple sub-agents, call them sequentially (one after another in foreground mode). This is slower but safe.
+  - If you need parallelism, place multiple foreground Agent calls in the **same message** (same `function_calls` block) — the system will execute them concurrently and return all results before the lead agent continues.
   - Never assume sub-agents will "notify back later" after the lead exits — there is no daemon or background service to keep them alive.
-  - If a sub-agent appears stuck, the lead agent should cancel or retry it before exiting — do not abandon it.
+  - If a sub-agent appears stuck or fails, the lead agent should cancel or retry it before exiting — do not abandon it.
   - When aggregating results from sub-agents, do so only after all have finished; partial aggregation followed by exit will orphan the remaining sub-agents.
 
 ## Media File Handling
