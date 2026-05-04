@@ -40,7 +40,7 @@ func TestStripMarkdown_InlineCode_Short(t *testing.T) {
 }
 
 func TestStripMarkdown_InlineCode_Long(t *testing.T) {
-	longCode := "for i := 0; i < len(items); i++ { process(items[i]) }"
+	longCode := "for i := 0; i < len(items); i++ { if items[i].IsActive { process(items[i]) } else { skip(items[i]) } } // handle active items"
 	input := "代码如下 `" + longCode + "` 继续文本。"
 	result := StripMarkdown(input)
 	assert.NotContains(t, result, "`")

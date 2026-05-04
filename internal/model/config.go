@@ -32,18 +32,20 @@ type Config struct {
 		MaxCount int `yaml:"max_count"` // Maximum number of chat sessions per project (default: 10)
 	} `yaml:"session"`
 	TTS struct {
-		Engine           string         `yaml:"engine"`            // TTS engine: "minimax" (default), "edge", "piper", "kokoro", "moss-nano"
-		SummarizeBackend string         `yaml:"summarize_backend"` // Summarization backend: "mmx-cli" (default), "claude", "codebuddy", "gemini", "opencode", "codex", "ollama"
-		SummarizeModel   string         `yaml:"summarize_model"`   // Model for summarization (default: "MiniMax-M2.7" for mmx-cli, "gemma3:270m" for ollama; empty = backend default for others)
-		TTSModel         string         `yaml:"tts_model"`         // TTS model for speech synthesis (default: "Speech-2.8-Turbo")
-		Voice            string         `yaml:"voice"`             // Voice ID for TTS (default: "female-chengshu")
-		Language         string         `yaml:"language"`          // Language boost code (default: "zh")
-		Speed            float64        `yaml:"speed"`             // Speech speed multiplier (default: 1.0)
-		Format           string         `yaml:"format"`            // Audio output format (default: "mp3")
-		Piper            PiperConfig    `yaml:"piper"`             // Piper-specific configuration (only used when engine: "piper")
-		Kokoro           KokoroConfig   `yaml:"kokoro"`            // Kokoro-specific configuration (only used when engine: "kokoro")
-		MossNano         MossNanoConfig `yaml:"moss_nano"`         // MOSS-TTS-Nano-specific configuration (only used when engine: "moss-nano")
-		Ollama           OllamaConfig   `yaml:"ollama"`            // Ollama-specific configuration (only used when summarize_backend: "ollama")
+		Engine            string         `yaml:"engine"`             // TTS engine: "minimax" (default), "edge", "piper", "kokoro", "moss-nano"
+		SummarizeBackend  string         `yaml:"summarize_backend"`  // Summarization backend: "mmx-cli" (default), "claude", "codebuddy", "gemini", "opencode", "codex", "ollama", "simple"
+		SummarizeModel    string         `yaml:"summarize_model"`    // Model for summarization (default: "MiniMax-M2.7" for mmx-cli, "gemma3:270m" for ollama; empty = backend default for others)
+		TTSModel          string         `yaml:"tts_model"`          // TTS model for speech synthesis (default: "Speech-2.8-Turbo")
+		Voice             string         `yaml:"voice"`              // Voice ID for TTS (default: "female-chengshu")
+		Language          string         `yaml:"language"`           // Language boost code (default: "zh")
+		Speed             float64        `yaml:"speed"`              // Speech speed multiplier (default: 1.0)
+		Format            string         `yaml:"format"`             // Audio output format (default: "mp3")
+		InlineCodeMaxLen  int            `yaml:"inline_code_max_len"` // Max inline code content length (runes) to preserve for TTS; longer code is removed (default: 100)
+		MaxSummarizeRunes int            `yaml:"max_summarize_runes"` // Max runes for summarization input; longer text is truncated (default: 10000, simple mode: 1000)
+		Piper             PiperConfig    `yaml:"piper"`              // Piper-specific configuration (only used when engine: "piper")
+		Kokoro            KokoroConfig   `yaml:"kokoro"`             // Kokoro-specific configuration (only used when engine: "kokoro")
+		MossNano          MossNanoConfig `yaml:"moss_nano"`          // MOSS-TTS-Nano-specific configuration (only used when engine: "moss-nano")
+		Ollama            OllamaConfig   `yaml:"ollama"`             // Ollama-specific configuration (only used when summarize_backend: "ollama")
 	} `yaml:"tts"`
 	Proxy ProxyConfig `yaml:"proxy"` // Port forwarding configuration
 	SSH   SSHConfig   `yaml:"ssh"`   // SSH tunnel server configuration

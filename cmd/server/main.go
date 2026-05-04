@@ -139,14 +139,27 @@ func main() {
 	}
 	model.SessionMaxCount = cfg.Session.MaxCount
 
+	// Apply TTS text processing config with defaults
+	if cfg.TTS.InlineCodeMaxLen > 0 {
+		speech.InlineCodeMaxLen = cfg.TTS.InlineCodeMaxLen
+	}
+	if cfg.TTS.MaxSummarizeRunes > 0 {
+		speech.MaxSummarizeRunes = cfg.TTS.MaxSummarizeRunes
+	}
+
 	// Initialize TTS summarizer from config
 	summarizeBackend := cfg.TTS.SummarizeBackend
 	if summarizeBackend == "" {
-		summarizeBackend = "mmx-cli"
+		summarizeBackend = "simple"
 	}
 
 	var ttsSummarizer speech.Summarizer
-	if summarizeBackend == "mmx-cli" {
+	if summarizeBackend == "simple" {
+		ttsSummarizer = speech.NewSimpleSummarizer()
+		slog.Info("tts summarizer configured",
+			slog.String("backend", "simple"),
+		)
+	} else if summarizeBackend == "mmx-cli" {
 		s := speech.NewMMXSummarizer()
 		if cfg.TTS.SummarizeModel != "" {
 			s.Model = cfg.TTS.SummarizeModel

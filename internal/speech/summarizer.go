@@ -25,9 +25,16 @@ const (
 	// shortTextThreshold — texts shorter than this are not summarized.
 	shortTextThreshold = 300
 
-	// maxSummarizeRunes is the maximum number of runes for summarization input.
+	// DefaultMaxSummarizeRunes is the default maximum number of runes for summarization input.
 	// Texts longer than this are truncated to the last N characters.
-	maxSummarizeRunes = 10000
+	// Configurable via config.yaml tts.max_summarize_runes.
+	DefaultMaxSummarizeRunes = 10000
+
+	// SimpleMaxSummarizeRunes is the maximum number of runes for the "simple" summarizer,
+	// which does no AI-based summarization — just strips markdown and truncates.
+	// Lower than the AI summarizer because without AI condensation, longer text
+	// would be too verbose for TTS.
+	SimpleMaxSummarizeRunes = 1000
 
 	// CacheKeyHexLen is the number of hex characters used for the cache filename.
 	CacheKeyHexLen = 16
@@ -44,6 +51,11 @@ const (
 // MaxTextRunes is the maximum number of runes accepted for TTS input.
 // Set to 0 for no hard limit — long texts are handled by the summarization step before synthesis.
 var MaxTextRunes = 0
+
+// MaxSummarizeRunes is the maximum number of runes for summarization input.
+// Texts longer than this are truncated to the last N characters.
+// Set by config; defaults to DefaultMaxSummarizeRunes.
+var MaxSummarizeRunes = DefaultMaxSummarizeRunes
 
 // Summarizer abstracts text summarization for TTS.
 // Implementations can use different backends (mmx-cli, AI backends, etc.)
@@ -137,9 +149,9 @@ func prepareTextForSummarization(text string) (string, bool) {
 		return cleaned, false // short text, skip summarization
 	}
 
-	// Truncate to last maxSummarizeRunes if too long
-	if len(runes) > maxSummarizeRunes {
-		cleaned = string(runes[len(runes)-maxSummarizeRunes:])
+	// Truncate to last MaxSummarizeRunes if too long
+	if len(runes) > MaxSummarizeRunes {
+		cleaned = string(runes[len(runes)-MaxSummarizeRunes:])
 	}
 
 	return cleaned, true

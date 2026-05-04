@@ -98,9 +98,11 @@ tts:
 
   # --- Summarization backend (compresses AI replies into TTS-friendly summaries) ---
   # --- 总结后端（将AI回复压缩为适合朗读的摘要） ---
-  # summarize_backend: which AI backend to use for summarization / 决定用哪个 AI 来做总结
-  #   "mmx-cli"   — mmx text chat (default, lightweight & fast, requires mmx CLI)
-  #                  使用 mmx text chat（默认，轻量快速，需要 mmx CLI）
+  # summarize_backend: which backend to use for summarization / 决定用哪个后端来做总结
+  #   "simple"    — Pure text cleaning only (default): strip markdown, code blocks, URLs, etc. Zero latency, no AI call
+  #                  纯文本清洗（默认）：去除 markdown、代码块、链接等，零延迟，无需 AI 调用
+  #   "mmx-cli"   — mmx text chat (lightweight & fast, requires mmx CLI)
+  #                  使用 mmx text chat（轻量快速，需要 mmx CLI）
   #   "claude"    — Claude CLI (high quality, higher startup overhead)
   #                  使用 Claude CLI（总结质量高，启动开销较大）
   #   "codebuddy" — CodeBuddy CLI / 使用 CodeBuddy CLI
@@ -109,7 +111,7 @@ tts:
   #   "codex"     — Codex CLI / 使用 Codex CLI
   #   "ollama"    — Ollama HTTP API (local inference, requires running Ollama service)
   #                  使用 Ollama HTTP API（本地推理，需要运行 Ollama 服务）
-  summarize_backend: "mmx-cli"
+  summarize_backend: "simple"
   summarize_model: "MiniMax-M2.7"                        # Summarization model (leave empty for backend default;
                                                           # defaults: mmx-cli→MiniMax-M2.7, ollama→gemma3:270m,
                                                           # claude→claude-sonnet-4-6, codebuddy→glm-5.1,
@@ -122,6 +124,13 @@ tts:
   speed: 1                                             # Speed multiplier (1.0 = normal; edge auto-converts to % rate, e.g. 1.2 → +20%)
                                                        # 语速倍率（1.0=正常速度；edge 会转为百分比速率如 +0%）
   # voice: See engine-specific examples below / 见下方各引擎样例
+
+  # --- Text Processing for TTS ---
+  # --- TTS 文本处理 ---
+  # inline_code_max_len: 100                            # Max inline code content length (runes) to preserve; longer code is removed (default: 100)
+                                                       # 行内代码保留的最大字符数（rune）；超出则整段删除（默认: 100）
+  # max_summarize_runes: 10000                          # Max runes for summarization input; longer text is truncated to the tail (default: 10000; simple mode: 1000)
+                                                       # 总结输入的最大字符数；超出则截取尾部（默认: 10000；simple 模式: 1000）
 
   # ============================================================
   # TTS Engine + Summarization Backend Combination Examples
