@@ -75,22 +75,14 @@ func (p *CodexStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 			if text == "" {
 				return
 			}
-			// Codex uses \n\n to separate thinking from content in agent_message.text.
-			// The thinking section is wrapped in <think>...</think> tags or appears
-			// before the first \n\n delimiter. We split on the first \n\n that
-			// separates thinking from the actual response.
-			if idx := strings.Index(text, "\n\n"); idx >= 0 {
-				thinking := text[:idx]
-				content := text[idx+2:]
-				if thinking != "" {
-					ch <- StreamEvent{Type: "thinking", Content: thinking}
-				}
-				if content != "" {
-					ch <- StreamEvent{Type: "content", Content: content}
-				}
-			} else {
-				// No separator — entire text is content
-				ch <- StreamEvent{Type: "content", Content: text}
+			// Split thinking from content. Handles both MiniMax-style tags
+			// and Codex's native \n\n separator.
+			thinking, content := codexSplitThinking(text)
+			if thinking != "" {
+				ch <- StreamEvent{Type: "thinking", Content: thinking}
+			}
+			if content != "" {
+				ch <- StreamEvent{Type: "content", Content: content}
 			}
 
 		case "command_execution":
@@ -162,8 +154,17 @@ func buildCodexStreamArgs(req ChatRequest) []string {
 	// Skip git repo check (allows running in non-git dirs)
 	args = append(args, "--skip-git-repo-check")
 
+	// Prompt: prepend system prompt if set.
+	// Codex CLI has no --system-prompt flag, and -c developer_instructions= causes
+	// reconnection errors (v0.57.0). Injecting the system prompt into the user prompt
+	// is the only reliable mechanism that works across all Codex CLI versions.
+	prompt := req.Prompt
+	if req.SystemPrompt != "" {
+		prompt = fmt.Sprintf("[System Instructions: %s]\n\n%s", req.SystemPrompt, prompt)
+	}
+
 	// Prompt is the last argument for new sessions
-	args = append(args, req.Prompt)
+	args = append(args, prompt)
 
 	return args
 }
@@ -246,18 +247,33 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 
 		// Handle codex role: thinking blocks and content
 		if role == "codex" {
-			// Track thinking blocks: <think> starts thinking, </think> ends thinking
-			if strings.HasPrefix(line, "<think>") {
+			// Thinking blocks use  antici( antici) tags. Both tags may appear
+			// on the same line:  anticicontent... antici. We must handle:
+			// 1.  antici + content +  antici all on one line
+			// 2.  antici on its own line, content on next lines,  antici on its own line
+			// 3.  antici at line start with content,  antici at end of a thinking line
+			if strings.HasPrefix(line, codexThinkOpen) {
 				inThinking = true
 				thinkingBuf.Reset()
-				// If there's text after <think> on the same line, capture it
-				rest := strings.TrimPrefix(line, "<think>")
-				if rest != "" {
+				rest := strings.TrimPrefix(line, codexThinkOpen)
+				// Check if closing tag is on the same line
+				if closeIdx := strings.Index(rest, codexThinkClose); closeIdx >= 0 {
+					thinkingContent := rest[:closeIdx]
+					afterClose := rest[closeIdx+len(codexThinkClose):]
+					if thinkingContent != "" {
+						ch <- StreamEvent{Type: "thinking", Content: thinkingContent}
+					}
+					inThinking = false
+					afterClose = strings.TrimSpace(afterClose)
+					if afterClose != "" {
+						ch <- StreamEvent{Type: "content", Content: afterClose + "\n"}
+					}
+				} else if rest != "" {
 					thinkingBuf.WriteString(rest)
 				}
 				continue
 			}
-			if strings.HasPrefix(line, "</think>") {
+			if strings.HasPrefix(line, codexThinkClose) {
 				if inThinking {
 					inThinking = false
 					if thinking := thinkingBuf.String(); thinking != "" {
@@ -265,13 +281,40 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 					}
 					thinkingBuf.Reset()
 				}
+				// Check for content after closing tag on the same line
+				afterClose := strings.TrimPrefix(line, codexThinkClose)
+				afterClose = strings.TrimSpace(afterClose)
+				if afterClose != "" {
+					ch <- StreamEvent{Type: "content", Content: afterClose + "\n"}
+				}
 				continue
 			}
 			if inThinking {
-				if thinkingBuf.Len() > 0 {
-					thinkingBuf.WriteByte('\n')
+				// Check for inline closing tag within a thinking line
+				if closeIdx := strings.Index(line, codexThinkClose); closeIdx >= 0 {
+					before := line[:closeIdx]
+					afterClose := line[closeIdx+len(codexThinkClose):]
+					if before != "" {
+						if thinkingBuf.Len() > 0 {
+							thinkingBuf.WriteByte('\n')
+						}
+						thinkingBuf.WriteString(before)
+					}
+					inThinking = false
+					if thinking := thinkingBuf.String(); thinking != "" {
+						ch <- StreamEvent{Type: "thinking", Content: thinking}
+					}
+					thinkingBuf.Reset()
+					afterClose = strings.TrimSpace(afterClose)
+					if afterClose != "" {
+						ch <- StreamEvent{Type: "content", Content: afterClose + "\n"}
+					}
+				} else {
+					if thinkingBuf.Len() > 0 {
+						thinkingBuf.WriteByte('\n')
+					}
+					thinkingBuf.WriteString(line)
 				}
-				thinkingBuf.WriteString(line)
 				continue
 			}
 			if line != "" {
@@ -377,8 +420,14 @@ func buildCodexResumeArgs(req ChatRequest, threadID string) []string {
 	// Thread ID for resuming
 	args = append(args, threadID)
 
+	// Prompt: prepend system prompt if set (same approach as buildCodexStreamArgs).
+	prompt := req.Prompt
+	if req.SystemPrompt != "" {
+		prompt = fmt.Sprintf("[System Instructions: %s]\n\n%s", req.SystemPrompt, prompt)
+	}
+
 	// Prompt for the resumed session
-	args = append(args, req.Prompt)
+	args = append(args, prompt)
 
 	return args
 }

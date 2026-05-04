@@ -21,15 +21,9 @@ func buildCodebuddyStreamArgs(req ChatRequest) []string {
 		args = append(args, "--system-prompt", req.SystemPrompt)
 	}
 
-	// Pass model name: per-request override takes priority
-	modelName := req.Model
-	if modelName == "" {
-		// No model specified, use default from agent configuration
-		// This should have been set by the caller based on agent config
-		modelName = "glm-5.1"
-	}
-	if modelName != "" {
-		args = append(args, "--model", modelName)
+	// Pass model name if specified; otherwise let CLI use its default
+	if req.Model != "" {
+		args = append(args, "--model", req.Model)
 	}
 
 	if req.Resume {

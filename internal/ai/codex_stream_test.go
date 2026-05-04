@@ -412,6 +412,37 @@ func TestBuildCodexStreamArgs_NoWorkDir(t *testing.T) {
 	}
 }
 
+func TestBuildCodexStreamArgs_WithSystemPrompt(t *testing.T) {
+	req := ChatRequest{
+		Prompt:       "test",
+		SystemPrompt: "You are a helpful coding assistant.",
+	}
+	args := buildCodexStreamArgs(req)
+
+	// System prompt should be prepended to the last arg (prompt)
+	lastArg := args[len(args)-1]
+	if !strings.HasPrefix(lastArg, "[System Instructions: You are a helpful coding assistant.]") {
+		t.Errorf("expected prompt to start with system instructions, got %q", lastArg)
+	}
+	if !strings.Contains(lastArg, "test") {
+		t.Errorf("expected prompt to contain original prompt, got %q", lastArg)
+	}
+}
+
+func TestBuildCodexStreamArgs_NoSystemPrompt(t *testing.T) {
+	req := ChatRequest{
+		Prompt:       "test",
+		SystemPrompt: "",
+	}
+	args := buildCodexStreamArgs(req)
+
+	// Without system prompt, last arg should be the prompt as-is
+	lastArg := args[len(args)-1]
+	if lastArg != "test" {
+		t.Errorf("expected prompt to be 'test', got %q", lastArg)
+	}
+}
+
 // --- buildCodexResumeArgs tests ---
 
 func TestBuildCodexResumeArgs(t *testing.T) {
@@ -483,6 +514,38 @@ func TestBuildCodexResumeArgs_NoModel(t *testing.T) {
 	}
 	if !foundSandbox {
 		t.Error("expected -c sandbox_permissions= override in resume args even without model")
+	}
+}
+
+func TestBuildCodexResumeArgs_WithSystemPrompt(t *testing.T) {
+	req := ChatRequest{
+		Prompt:       "continue this task",
+		Model:        "codex-MiniMax-M2.7",
+		SystemPrompt: "You are a senior developer.",
+	}
+	args := buildCodexResumeArgs(req, "thread-abc")
+
+	// System prompt should be prepended to the last arg (prompt)
+	lastArg := args[len(args)-1]
+	if !strings.HasPrefix(lastArg, "[System Instructions: You are a senior developer.]") {
+		t.Errorf("expected prompt to start with system instructions, got %q", lastArg)
+	}
+	if !strings.Contains(lastArg, "continue this task") {
+		t.Errorf("expected prompt to contain original prompt, got %q", lastArg)
+	}
+}
+
+func TestBuildCodexResumeArgs_NoSystemPrompt(t *testing.T) {
+	req := ChatRequest{
+		Prompt:       "test",
+		SystemPrompt: "",
+	}
+	args := buildCodexResumeArgs(req, "thread-123")
+
+	// Without system prompt, last arg should be the prompt as-is
+	lastArg := args[len(args)-1]
+	if lastArg != "test" {
+		t.Errorf("expected prompt to be 'test', got %q", lastArg)
 	}
 }
 
@@ -1051,5 +1114,157 @@ func TestBuildCodexResumeArgs_SandboxPermissionsPresent(t *testing.T) {
 	}
 	if foundSandboxIdx > foundThreadIdx {
 		t.Error("sandbox_permissions should come before thread_id in args")
+	}
+}
+
+// --- Thinking tag on same line tests (bug fix) ---
+// These test the fix for the bug where  anticicontent... antici on one line
+// caused the parser to never exit thinking mode.
+
+func TestCodexResumeOutput_ThinkingOpenCloseSameLine(t *testing.T) {
+	//  anticicontent... antici all on one line, content follows on next lines
+	input := "--------\n" +
+		"user\n" +
+		"hello\n" +
+		"codex\n" +
+		codexThinkStart + "Let me think about this." + codexThinkEnd + "\n" +
+		"\n" +
+		"Here is my answer.\n"
+	events := parseResumeOutput(input)
+
+	var thinkingEvents, contentEvents []StreamEvent
+	for _, ev := range events {
+		if ev.Type == "thinking" {
+			thinkingEvents = append(thinkingEvents, ev)
+		}
+		if ev.Type == "content" {
+			contentEvents = append(contentEvents, ev)
+		}
+	}
+	if len(thinkingEvents) == 0 {
+		t.Fatal("expected at least one thinking event")
+	}
+	if !strings.Contains(thinkingEvents[0].Content, "Let me think about this") {
+		t.Errorf("expected thinking content, got %q", thinkingEvents[0].Content)
+	}
+	if len(contentEvents) == 0 {
+		t.Fatal("expected at least one content event (BUG: all content treated as thinking)")
+	}
+	if !strings.Contains(contentEvents[0].Content, "Here is my answer") {
+		t.Errorf("expected content, got %q", contentEvents[0].Content)
+	}
+}
+
+func TestCodexResumeOutput_ThinkingOpenCloseSeparateLines(t *testing.T) {
+	//  antici on its own line, content lines, then  antici on its own line
+	input := "--------\n" +
+		"user\n" +
+		"hello\n" +
+		"codex\n" +
+		codexThinkStart + "\n" +
+		"First thought\n" +
+		"Second thought\n" +
+		codexThinkEnd + "\n" +
+		"\n" +
+		"The actual response.\n"
+	events := parseResumeOutput(input)
+
+	var thinkingEvents, contentEvents []StreamEvent
+	for _, ev := range events {
+		if ev.Type == "thinking" {
+			thinkingEvents = append(thinkingEvents, ev)
+		}
+		if ev.Type == "content" {
+			contentEvents = append(contentEvents, ev)
+		}
+	}
+	if len(thinkingEvents) == 0 {
+		t.Fatal("expected at least one thinking event")
+	}
+	if !strings.Contains(thinkingEvents[0].Content, "First thought") {
+		t.Errorf("expected thinking content, got %q", thinkingEvents[0].Content)
+	}
+	if len(contentEvents) == 0 {
+		t.Fatal("expected at least one content event")
+	}
+	if !strings.Contains(contentEvents[0].Content, "actual response") {
+		t.Errorf("expected content, got %q", contentEvents[0].Content)
+	}
+}
+
+func TestCodexResumeOutput_ThinkingCloseInlineInMiddle(t *testing.T) {
+	//  antici starts thinking, then on a subsequent line the  antici
+	// closing tag appears at the end (not at the start of the line)
+	input := "--------\n" +
+		"user\n" +
+		"hello\n" +
+		"codex\n" +
+		codexThinkStart + "\n" +
+		"I am thinking" + codexThinkEnd + "\n" +
+		"\n" +
+		"My response.\n"
+	events := parseResumeOutput(input)
+
+	var thinkingEvents, contentEvents []StreamEvent
+	for _, ev := range events {
+		if ev.Type == "thinking" {
+			thinkingEvents = append(thinkingEvents, ev)
+		}
+		if ev.Type == "content" {
+			contentEvents = append(contentEvents, ev)
+		}
+	}
+	if len(thinkingEvents) == 0 {
+		t.Fatal("expected at least one thinking event")
+	}
+	if len(contentEvents) == 0 {
+		t.Fatal("expected at least one content event (BUG: inline close tag not detected)")
+	}
+	if !strings.Contains(contentEvents[0].Content, "My response") {
+		t.Errorf("expected content, got %q", contentEvents[0].Content)
+	}
+}
+
+func TestCodexSplitThinking_WithTagPairs(t *testing.T) {
+	text := codexThinkOpen + "I am thinking" + codexThinkClose + "\n\nThe response"
+	thinking, content := codexSplitThinking(text)
+	if !strings.Contains(thinking, "I am thinking") {
+		t.Errorf("expected thinking, got %q", thinking)
+	}
+	if !strings.Contains(content, "The response") {
+		t.Errorf("expected content, got %q", content)
+	}
+}
+
+func TestCodexSplitThinking_NewlineOnly(t *testing.T) {
+	text := "Just thinking\n\nThe content"
+	thinking, content := codexSplitThinking(text)
+	if thinking != "Just thinking" {
+		t.Errorf("expected 'Just thinking', got %q", thinking)
+	}
+	if content != "The content" {
+		t.Errorf("expected 'The content', got %q", content)
+	}
+}
+
+func TestCodexSplitThinking_NoSeparator(t *testing.T) {
+	text := "Just content"
+	thinking, content := codexSplitThinking(text)
+	if thinking != "" {
+		t.Errorf("expected empty thinking, got %q", thinking)
+	}
+	if content != "Just content" {
+		t.Errorf("expected 'Just content', got %q", content)
+	}
+}
+
+func TestCodexSplitThinking_OnlyOpenTag(t *testing.T) {
+	text := codexThinkOpen + "Just thinking, no close tag"
+	thinking, content := codexSplitThinking(text)
+	if !strings.Contains(thinking, "Just thinking") {
+		t.Errorf("expected thinking content, got %q", thinking)
+	}
+	if content != "" {
+		t.Errorf("expected empty content, got %q", content)
 	}
 }
