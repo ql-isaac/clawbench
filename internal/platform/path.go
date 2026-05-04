@@ -13,13 +13,6 @@ func IsWindows() bool {
 	return runtime.GOOS == "windows"
 }
 
-// TempDir returns the OS-appropriate temporary directory.
-// On Unix: typically /tmp
-// On Windows: typically %TEMP% or %TMP% (e.g. C:\Users\xxx\AppData\Local\Temp)
-func TempDir() string {
-	return os.TempDir()
-}
-
 // UserHomeDir returns the user's home directory in a cross-platform way.
 func UserHomeDir() string {
 	home, err := os.UserHomeDir()

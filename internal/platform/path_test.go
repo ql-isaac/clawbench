@@ -13,13 +13,6 @@ func TestIsWindows(t *testing.T) {
 	}
 }
 
-func TestTempDir(t *testing.T) {
-	dir := TempDir()
-	if dir == "" {
-		t.Error("TempDir() returned empty string")
-	}
-}
-
 func TestUserHomeDir(t *testing.T) {
 	home := UserHomeDir()
 	if home == "" {
