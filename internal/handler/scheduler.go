@@ -180,6 +180,13 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 		}
 		task.MaxRuns = req.MaxRuns
 
+		// Editing a completed task implies reactivation — the user wants it to run again.
+		// Reset status to active and clear runCount so it starts fresh.
+		if task.Status == "completed" {
+			task.Status = "active"
+			task.RunCount = 0
+		}
+
 		// Update task
 		if err := service.GlobalScheduler.UpdateTask(task); err != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to update task: %v", err)))

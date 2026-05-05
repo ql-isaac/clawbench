@@ -159,7 +159,7 @@ func (s *Scheduler) UpdateTask(task *model.ScheduledTask) error {
 	nextRun := schedule.Next(time.Now())
 	task.NextRunAt = &nextRun
 
-	// If task is active, remove old cron entry and re-register atomically
+	// If task is active (or reactivated from completed), remove old cron entry and re-register atomically
 	if task.Status == "active" {
 		s.mu.Lock()
 		if entryID, ok := s.entries[task.ID]; ok {
@@ -170,6 +170,14 @@ func (s *Scheduler) UpdateTask(task *model.ScheduledTask) error {
 		if err := s.registerTaskLocked(task); err != nil {
 			s.mu.Unlock()
 			return fmt.Errorf("failed to re-register task: %w", err)
+		}
+		s.mu.Unlock()
+	} else if task.Status != "active" {
+		// Remove from cron if task is not active (completed/paused/deleted)
+		s.mu.Lock()
+		if entryID, ok := s.entries[task.ID]; ok {
+			s.cron.Remove(entryID)
+			delete(s.entries, task.ID)
 		}
 		s.mu.Unlock()
 	}
