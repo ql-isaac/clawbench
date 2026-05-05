@@ -149,6 +149,10 @@ pre :deep(code) {
     overflow-wrap: break-word;
 }
 
+.raw-content-pre.word-wrap :deep(code .code-line) {
+    align-items: stretch;
+}
+
 .raw-content-pre.word-wrap :deep(code .line-num) {
     position: static;
     border-right: 1px solid var(--border-color);
