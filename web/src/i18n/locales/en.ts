@@ -150,6 +150,7 @@ export default {
     },
     contentBlocks: {
       scheduledTaskCreated: 'Scheduled task created',
+      taskDeleted: 'Scheduled task deleted',
       edit: 'Edit',
       task: 'Task:',
       frequency: 'Frequency:',

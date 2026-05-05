@@ -150,6 +150,7 @@ export default {
     },
     contentBlocks: {
       scheduledTaskCreated: '定时任务已创建',
+      taskDeleted: '定时任务已删除',
       edit: '编辑',
       task: '任务：',
       frequency: '频率：',

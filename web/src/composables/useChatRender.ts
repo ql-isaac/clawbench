@@ -23,7 +23,7 @@ export function useChatRender(options) {
 
   // Sync blockProposals with latest task data from store (global polling updates store.state.tasks)
   watch(() => store.state.tasks, (tasks) => {
-    if (!tasks || tasks.length === 0) return
+    if (!tasks) return
     for (const key of Object.keys(blockProposals)) {
       const proposal = blockProposals[key].proposal
       if (proposal.task_id) {
@@ -39,6 +39,11 @@ export function useChatRender(options) {
               max_runs: task.maxRuns,
               prompt: task.prompt,
             }
+          }
+        } else {
+          // Task no longer in list — it was deleted
+          if (!blockProposals[key].deleted) {
+            blockProposals[key] = { ...blockProposals[key], deleted: true }
           }
         }
       }
@@ -75,18 +80,22 @@ export function useChatRender(options) {
   }
 
   function renderTextBlock(text, msgId, blockIdx) {
-    const proposalMatch = text.match(/<schedule-proposal>([\s\S]*?)<\/schedule-proposal>/)
-    if (proposalMatch) {
-      const proposalKey = `${msgId}-${blockIdx}`
-      if (!blockProposals[proposalKey]) {
-        try {
-          const proposal = JSON.parse(proposalMatch[1].trim())
-          blockProposals[proposalKey] = { proposal }
-        } catch (e) {
-          console.error('Failed to parse schedule proposal:', e)
+    // Detect all <schedule-proposal> tags — support multiple proposals per block
+    const proposalRegex = /<schedule-proposal\b[^>]*>([\s\S]*?)<\/schedule-proposal>/g
+    const proposalMatches = [...text.matchAll(proposalRegex)]
+    if (proposalMatches.length > 0) {
+      proposalMatches.forEach((match, proposalIdx) => {
+        const proposalKey = `${msgId}-${blockIdx}-${proposalIdx}`
+        if (!blockProposals[proposalKey]) {
+          try {
+            const proposal = JSON.parse(match[1].trim())
+            blockProposals[proposalKey] = { proposal }
+          } catch (e) {
+            console.error('Failed to parse schedule proposal:', e)
+          }
         }
-      }
-      const cleanText = text.replace(/<schedule-proposal>[\s\S]*?<\/schedule-proposal>/, '').trim()
+      })
+      const cleanText = text.replace(/<schedule-proposal\b[^>]*>[\s\S]*?<\/schedule-proposal>/g, '').trim()
       return cleanText ? renderMarkdown(cleanText) : ''
     }
     // Detect <ask-question> tags — strip from text and store for interactive rendering
@@ -166,18 +175,20 @@ export function useChatRender(options) {
         for (let bi = 0; bi < msg.blocks.length; bi++) {
           const block = msg.blocks[bi]
           if (block.type === 'text') {
-            const proposalKey = `${msg.id}-${bi}`
-            const existing = blockProposals[proposalKey]
-            if (existing && existing.proposal.task_id) continue
-            const proposalMatch = block.text.match(/<schedule-proposal>([\s\S]*?)<\/schedule-proposal>/)
-            if (proposalMatch) {
+            // Extract all <schedule-proposal> tags (support multiple per block)
+            const proposalRegex = /<schedule-proposal\b[^>]*>([\s\S]*?)<\/schedule-proposal>/g
+            const proposalMatches = [...block.text.matchAll(proposalRegex)]
+            proposalMatches.forEach((match, proposalIdx) => {
+              const proposalKey = `${msg.id}-${bi}-${proposalIdx}`
+              const existing = blockProposals[proposalKey]
+              if (existing && existing.proposal.task_id) return // Don't overwrite if already has task_id
               try {
-                const proposal = JSON.parse(proposalMatch[1].trim())
+                const proposal = JSON.parse(match[1].trim())
                 blockProposals[proposalKey] = { proposal }
               } catch (e) {
                 console.error('Failed to parse schedule proposal:', e)
               }
-            }
+            })
             // Also extract <ask-question> tags for interactive rendering
             const askKey = `${msg.id}-${bi}`
             if (!blockAskQuestions[askKey]) {

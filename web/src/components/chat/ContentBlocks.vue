@@ -40,23 +40,26 @@
         <AlertCircle :size="14" class="warning-icon" />
         <span class="warning-text">{{ getWarningText(block) }}</span>
       </div>
-      <!-- Schedule proposal card (inline in message) — must come before generic text block -->
-      <template v-else-if="block.type === 'text' && blockProposals[blockProposalsKey(bi)]">
-        <!-- Surrounding text (with proposal tag stripped) -->
+      <!-- Schedule proposal card(s) (inline in message) — must come before generic text block -->
+      <template v-else-if="block.type === 'text' && hasProposals(bi)">
+        <!-- Surrounding text (with proposal tags stripped) -->
         <div v-if="getBlockHtml(bi, block)" v-html="getBlockHtml(bi, block)"></div>
-        <div class="schedule-proposal-card">
+        <div v-for="(pKey, pIdx) in proposalKeys(bi)" :key="pIdx" class="schedule-proposal-card" :class="{ deleted: blockProposals[pKey].deleted }">
           <div class="proposal-header">
-            <span class="proposal-icon">⏰</span> {{ t('chat.contentBlocks.scheduledTaskCreated') }}
-            <button v-if="blockProposals[blockProposalsKey(bi)].proposal.task_id" class="proposal-edit-btn" @click.stop="$emit('edit-task', blockProposals[blockProposalsKey(bi)].proposal.task_id)" :title="t('chat.contentBlocks.edit')">
+            <span v-if="blockProposals[pKey].deleted" class="proposal-icon">🗑️</span>
+            <span v-else class="proposal-icon">⏰</span>
+            <template v-if="blockProposals[pKey].deleted">{{ t('chat.contentBlocks.taskDeleted') }}</template>
+            <template v-else>{{ t('chat.contentBlocks.scheduledTaskCreated') }}</template>
+            <button v-if="!blockProposals[pKey].deleted && blockProposals[pKey].proposal.task_id" class="proposal-edit-btn" @click.stop="$emit('edit-task', blockProposals[pKey].proposal.task_id)" :title="t('chat.contentBlocks.edit')">
               <Pencil :size="14" />
             </button>
           </div>
-          <div class="proposal-body">
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.task') }}</strong>{{ blockProposals[blockProposalsKey(bi)].proposal.name }}</div>
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.frequency') }}</strong>{{ humanizeCron(blockProposals[blockProposalsKey(bi)].proposal.cron_expr) }}</div>
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.executor') }}</strong>{{ getAgentIcon(blockProposals[blockProposalsKey(bi)].proposal.agent_id) }} {{ getAgentName(blockProposals[blockProposalsKey(bi)].proposal.agent_id) }}</div>
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.repeat') }}</strong>{{ repeatLabel(blockProposals[blockProposalsKey(bi)].proposal.repeat_mode, blockProposals[blockProposalsKey(bi)].proposal.max_runs) }}</div>
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.prompt') }}</strong>{{ truncate(blockProposals[blockProposalsKey(bi)].proposal.prompt, 80) }}</div>
+          <div v-if="!blockProposals[pKey].deleted" class="proposal-body">
+            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.task') }}</strong>{{ blockProposals[pKey].proposal.name }}</div>
+            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.frequency') }}</strong>{{ humanizeCron(blockProposals[pKey].proposal.cron_expr) }}</div>
+            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.executor') }}</strong>{{ getAgentIcon(blockProposals[pKey].proposal.agent_id) }} {{ getAgentName(blockProposals[pKey].proposal.agent_id) }}</div>
+            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.repeat') }}</strong>{{ repeatLabel(blockProposals[pKey].proposal.repeat_mode, blockProposals[pKey].proposal.max_runs) }}</div>
+            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.prompt') }}</strong>{{ truncate(blockProposals[pKey].proposal.prompt, 80) }}</div>
           </div>
         </div>
       </template>
@@ -162,9 +165,30 @@ function key(bi) {
   return props.msgId ? `db-${props.msgId}-${bi}` : `local-${props.msgIndex}-${bi}`
 }
 
-// Key for blockProposals lookup — matches the format used in useChatRender.ts
+// Key for blockProposals lookup — prefix format used in useChatRender.ts
 function blockProposalsKey(bi) {
   return `${props.msgId}-${bi}`
+}
+
+// Check if a block has any proposals (key prefix matches)
+function hasProposals(bi) {
+  const prefix = `${props.msgId}-${bi}-`
+  for (const key of Object.keys(props.blockProposals)) {
+    if (key.startsWith(prefix)) return true
+  }
+  return false
+}
+
+// Return all proposal keys for a block, sorted by proposal index
+function proposalKeys(bi) {
+  const prefix = `${props.msgId}-${bi}-`
+  return Object.keys(props.blockProposals)
+    .filter(key => key.startsWith(prefix))
+    .sort((a, b) => {
+      const idxA = parseInt(a.slice(prefix.length))
+      const idxB = parseInt(b.slice(prefix.length))
+      return idxA - idxB
+    })
 }
 
 const thinkingExpanded = ref({})
@@ -505,6 +529,18 @@ onUnmounted(() => {
   border-radius: 8px;
   overflow: hidden;
   background: color-mix(in srgb, var(--accent-color, #4a90d9) 6%, var(--bg-primary, #fff));
+}
+
+.schedule-proposal-card.deleted {
+  opacity: 0.5;
+  border-color: var(--border-color, #dee2e6);
+  background: var(--bg-secondary);
+}
+
+.schedule-proposal-card.deleted .proposal-header {
+  background: var(--bg-tertiary);
+  color: var(--text-muted, #999);
+  border-bottom-color: var(--border-color, #dee2e6);
 }
 
 .proposal-header {
