@@ -160,8 +160,10 @@ import { useI18n } from 'vue-i18n'
 import { MessageSquare, List, Plus, Trash2, Calendar, Volume2, Upload, Paperclip, FileImage, FileText, XCircle, Inbox, Send, Square, Cpu, ChevronDown, Check } from 'lucide-vue-next'
 import { baseName } from '@/utils/path.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
+import { useDialog } from '@/composables/useDialog.ts'
 
 const { t } = useI18n()
+const dialog = useDialog()
 
 const props = defineProps({
   inputDisabled: Boolean,
@@ -356,9 +358,9 @@ function handleCreateClick(e) {
   emit('show-agent-selector')
 }
 
-function handleDelete() {
+async function handleDelete() {
   if (!props.currentSessionId) return
-  if (confirm(t('chat.delete.confirm'))) {
+  if (await dialog.confirm(t('chat.delete.confirm'), { dangerous: true })) {
     emit('delete-session')
   }
 }

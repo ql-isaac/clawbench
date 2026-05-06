@@ -158,12 +158,14 @@ import { getFileType } from '@/utils/fileType.ts'
 import { dirName } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
 import { useAppMode } from '@/composables/useAppMode.ts'
+import { useDialog } from '@/composables/useDialog.ts'
 import SearchInput from '@/components/common/SearchInput.vue'
 import DirBreadcrumb from './DirBreadcrumb.vue'
 
 const toast = inject('toast', null)
 const { isAppMode } = useAppMode()
 const { t } = useI18n()
+const dialog = useDialog()
 
 const props = defineProps({
     entries: Array,
@@ -309,7 +311,7 @@ async function doPaste() {
 
 async function doNewFile() {
     ctxMenu.visible = false
-    const name = prompt(t('file.prompt.fileName'))
+    const name = await dialog.prompt(t('file.prompt.fileName'))
     if (!name || !name.trim()) return
     const dir = getDestDir(ctxMenu.entry)
     try {
@@ -332,7 +334,7 @@ async function doNewFile() {
 
 async function doNewFolder() {
     ctxMenu.visible = false
-    const name = prompt(t('file.prompt.folderName'))
+    const name = await dialog.prompt(t('file.prompt.folderName'))
     if (!name || !name.trim()) return
     const dir = getDestDir(ctxMenu.entry)
     try {
@@ -468,9 +470,9 @@ function doOpenAsProject() {
     })
 }
 
-function doRename() {
+async function doRename() {
     if (!ctxMenu.entry) return
-    const newName = prompt(t('file.prompt.newName'), ctxMenu.entry.name)
+    const newName = await dialog.prompt(t('file.prompt.newName'), { value: ctxMenu.entry.name })
     if (!newName || newName === ctxMenu.entry.name) { ctxMenu.visible = false; return }
     emit('rename', { path: ctxMenu.entry.path, name: newName })
     ctxMenu.visible = false

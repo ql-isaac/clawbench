@@ -72,8 +72,10 @@ import TaskExecDialog from '@/components/task/TaskExecDialog.vue'
 import { useAgents } from '@/composables/useAgents.ts'
 import { humanizeCron, repeatLabel, statusLabel, formatDateTime } from '@/utils/format.ts'
 import { store } from '@/stores/app.ts'
+import { useDialog } from '@/composables/useDialog.ts'
 
 const { t } = useI18n()
+const dialog = useDialog()
 
 const props = defineProps({
   open: Boolean,
@@ -161,7 +163,7 @@ async function resumeTask(id) {
 }
 
 async function deleteTask(id) {
-  if (!confirm(t('task.confirmDelete'))) return
+  if (!await dialog.confirm(t('task.confirmDelete'), { dangerous: true })) return
   try {
     await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
     await loadTasks()

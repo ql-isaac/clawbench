@@ -4,6 +4,7 @@ import { apiGet, apiPost } from '@/utils/api.ts'
 import { baseName, dirName } from '@/utils/path.ts'
 import { gt } from '@/composables/useLocale'
 import { useToast } from '@/composables/useToast'
+import { useDialog } from '@/composables/useDialog'
 
 interface DirEntry {
     name: string
@@ -310,7 +311,7 @@ async function selectFile(path: string, isImageFile = false, isAudioFile = false
 }
 
 async function deleteFile(filePath: string): Promise<void> {
-    if (!confirm(gt('file.header.confirmDelete', { name: baseName(filePath) }))) return
+    if (!await useDialog().confirm(gt('file.header.confirmDelete', { name: baseName(filePath) }), { dangerous: true })) return
     await apiPost('/api/file/delete', { path: filePath })
     if (state.currentFile?.path === filePath) {
         state.currentFile = null

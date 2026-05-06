@@ -180,6 +180,9 @@
 
     <!-- Toast - always rendered regardless of auth state -->
     <ToastNotification :toast="toast" />
+
+    <!-- Dialog overlay (confirm/prompt/alert) -->
+    <DialogOverlay />
   </div>
 </template>
 
@@ -200,6 +203,7 @@ import FileDetailsDialog from './components/file/FileDetailsDialog.vue'
 import GitHistoryDrawer from './components/git/GitHistoryDrawer.vue'
 import SearchDrawer from './components/common/SearchDrawer.vue'
 import ToastNotification from './components/common/ToastNotification.vue'
+import DialogOverlay from './components/common/DialogOverlay.vue'
 import SessionDrawer from './components/session/SessionDrawer.vue'
 import ProxyPanel from './components/proxy/ProxyPanel.vue'
 import QuoteQuestionBar from './components/common/QuoteQuestionBar.vue'

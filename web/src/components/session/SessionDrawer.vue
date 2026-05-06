@@ -84,6 +84,7 @@ import { ref, watch, computed } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useAgents } from '@/composables/useAgents.ts'
+import { useDialog } from '@/composables/useDialog.ts'
 import { formatRelativeTime } from '@/utils/format.ts'
 
 const { t } = useI18n()
@@ -99,6 +100,7 @@ const bottomSheetRef = ref(null)
 const sessions = ref([])
 const loading = ref(false)
 const { agents, loadAgents, getAgentIcon, getAgentName, isDefaultAgent, getDefaultModelId } = useAgents()
+const dialog = useDialog()
 
 /** Get the display name of an agent's default model. */
 function agentDefaultModelName(agentId) {
@@ -164,7 +166,7 @@ function createSession(agentId) {
 }
 
 async function deleteSession(sessionId) {
-  if (!confirm(t('session.confirmDelete'))) return
+  if (!await dialog.confirm(t('session.confirmDelete'), { dangerous: true })) return
   const session = sessions.value.find(s => s.id === sessionId)
   emit('delete', sessionId, session?.backend)
   // Reload list after a short delay to let the delete API complete

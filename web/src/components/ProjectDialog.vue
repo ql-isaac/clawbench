@@ -68,8 +68,10 @@ import ModalDialog from './common/ModalDialog.vue'
 import SearchInput from './common/SearchInput.vue'
 import DirBreadcrumb from './file/DirBreadcrumb.vue'
 import { baseName } from '@/utils/path.ts'
+import { useDialog } from '@/composables/useDialog.ts'
 
 const { t } = useI18n()
+const dialog = useDialog()
 
 const props = defineProps({
   open: Boolean,
@@ -169,7 +171,7 @@ async function loadBrowse() {
 }
 
 async function doNewFolder() {
-    const name = prompt(t('projectDialog.promptFolderName'))
+    const name = await dialog.prompt(t('projectDialog.promptFolderName'))
     if (!name || !name.trim()) return
     const dir = browsePath.value
     try {
@@ -179,12 +181,12 @@ async function doNewFolder() {
             body: JSON.stringify({ path: dir, name: name.trim() })
         })
         if (resp.ok) await loadBrowse()
-        else alert(t('projectDialog.createFailed'))
-    } catch (_) { alert(t('projectDialog.createFailed')) }
+        else await dialog.alert(t('projectDialog.createFailed'))
+    } catch (_) { await dialog.alert(t('projectDialog.createFailed')) }
 }
 
 async function doRename(item) {
-    const newName = prompt(t('projectDialog.promptNewName'), item.name)
+    const newName = await dialog.prompt(t('projectDialog.promptNewName'), { value: item.name })
     if (!newName || newName === item.name) return
     try {
         const resp = await fetch('/api/file/rename', {
@@ -195,13 +197,13 @@ async function doRename(item) {
         if (resp.ok) await loadBrowse()
         else {
             const err = await resp.json()
-            alert(t('projectDialog.renameFailedDetail', { error: err.error || '' }))
+            await dialog.alert(t('projectDialog.renameFailedDetail', { error: err.error || '' }))
         }
-    } catch (_) { alert(t('projectDialog.renameFailed')) }
+    } catch (_) { await dialog.alert(t('projectDialog.renameFailed')) }
 }
 
 async function doDelete(item) {
-    if (!window.confirm(t('projectDialog.confirmDelete', { name: item.name }))) return
+    if (!await dialog.confirm(t('projectDialog.confirmDelete', { name: item.name }), { dangerous: true })) return
     try {
         const resp = await fetch('/api/file/delete', {
             method: 'POST',
@@ -213,9 +215,9 @@ async function doDelete(item) {
             await loadBrowse()
         } else {
             const err = await resp.json()
-            alert(t('projectDialog.deleteFailedDetail', { error: err.error || '' }))
+            await dialog.alert(t('projectDialog.deleteFailedDetail', { error: err.error || '' }))
         }
-    } catch (_) { alert(t('projectDialog.deleteFailed')) }
+    } catch (_) { await dialog.alert(t('projectDialog.deleteFailed')) }
 }
 
 async function confirm() {
@@ -236,10 +238,10 @@ async function confirm() {
             const text = await resp.text()
             let msg = text
             try { msg = JSON.parse(text).error || msg } catch (_) {}
-            alert(t('projectDialog.setProjectFailedDetail', { error: msg }))
+            await dialog.alert(t('projectDialog.setProjectFailedDetail', { error: msg }))
         }
     } catch (err) {
-        alert(t('projectDialog.setProjectFailedDetail', { error: err.message }))
+        await dialog.alert(t('projectDialog.setProjectFailedDetail', { error: err.message }))
     }
 }
 </script>
