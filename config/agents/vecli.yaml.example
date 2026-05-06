@@ -1,0 +1,26 @@
+# =============================================================================
+# ClawBench Agent Configuration Example — VeCLI Backend
+# ClawBench 智能体配置示例 — VeCLI 后端
+# =============================================================================
+#
+# VeCLI — Volcengine (火山引擎) Doubao-powered coding assistant.
+# VeCLI — 火山引擎 Doubao 驱动的编码助手。
+# Output is plain text (not JSON Lines), metadata extracted from --session-summary.
+# 输出为纯文本（非 JSON Lines），元数据从 --session-summary 文件提取。
+# No session resume support.
+# 不支持会话恢复。
+#
+# This file is NOT loaded (the .yaml.example extension is ignored by LoadAgents).
+# 本文件不会被加载（.yaml.example 后缀会被 LoadAgents 忽略）。
+# To use, copy as e.g. my-vecli-agent.yaml and modify the config.
+# 实际使用时请复制为如 my-vecli-agent.yaml 并修改配置。
+# =============================================================================
+
+id: vecli
+name: VeCLI
+icon: 🌋
+specialty: 火山引擎 Doubao 驱动的编码助手
+backend: vecli
+model: doubao-seed-1-6-250615
+system_prompt: |
+  You are a versatile coding assistant powered by Volcengine VeCLI, capable of handling code, documentation, operations, and various tasks.

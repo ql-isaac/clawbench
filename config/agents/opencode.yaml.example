@@ -1,0 +1,23 @@
+# =============================================================================
+# ClawBench Agent Configuration Example — OpenCode Backend
+# ClawBench 智能体配置示例 — OpenCode 后端
+# =============================================================================
+#
+# OpenCode CLI — supports MiniMax models via profiles.
+# OpenCode CLI — 通过 profile 支持 MiniMax 模型。
+#
+# This file is NOT loaded (the .yaml.example extension is ignored by LoadAgents).
+# 本文件不会被加载（.yaml.example 后缀会被 LoadAgents 忽略）。
+# To use, copy as e.g. my-opencode-agent.yaml and modify the config.
+# 实际使用时请复制为如 my-opencode-agent.yaml 并修改配置。
+# =============================================================================
+
+id: opencode
+name: OpenCode
+icon: 💻
+specialty: 复杂编码、架构设计、代码重构
+backend: opencode
+# model: 省略时使用 opencode CLI 当前默认模型
+system_prompt: |
+  You are a coding expert specializing in complex coding tasks and architecture design.
+  Work principles: quality first, incremental refactoring, fully understand existing code intent before making changes, provide concrete code changes rather than vague suggestions.

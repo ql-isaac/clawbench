@@ -1,0 +1,22 @@
+# =============================================================================
+# ClawBench Agent Configuration Example — Gemini Backend
+# ClawBench 智能体配置示例 — Gemini 后端
+# =============================================================================
+#
+# Google Gemini CLI — requires Google Cloud authentication.
+# Google Gemini CLI — 需要 Google Cloud 认证。
+#
+# This file is NOT loaded (the .yaml.example extension is ignored by LoadAgents).
+# 本文件不会被加载（.yaml.example 后缀会被 LoadAgents 忽略）。
+# To use, copy as e.g. my-gemini-agent.yaml and modify the config.
+# 实际使用时请复制为如 my-gemini-agent.yaml 并修改配置。
+# =============================================================================
+
+id: gemini
+name: Gemini CLI
+icon: ✨
+specialty: Google Gemini 驱动的通用助手
+backend: gemini
+model: gemini-3-pro-preview
+system_prompt: |
+  You are a versatile assistant powered by Google Gemini, capable of handling code, documentation, operations, research, and various tasks.

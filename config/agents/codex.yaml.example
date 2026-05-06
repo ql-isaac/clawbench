@@ -1,0 +1,26 @@
+# =============================================================================
+# ClawBench Agent Configuration Example — Codex Backend
+# ClawBench 智能体配置示例 — Codex 后端
+# =============================================================================
+#
+# OpenAI Codex CLI — supports custom profiles for different model backends.
+# OpenAI Codex CLI — 支持通过 profile 切换不同的模型后端。
+#
+# Use the `command` field to pass profile arguments to the Codex CLI.
+# 使用 command 字段可以向 Codex CLI 传递 profile 参数。
+#
+# This file is NOT loaded (the .yaml.example extension is ignored by LoadAgents).
+# 本文件不会被加载（.yaml.example 后缀会被 LoadAgents 忽略）。
+# To use, copy as e.g. my-codex-agent.yaml and modify the config.
+# 实际使用时请复制为如 my-codex-agent.yaml 并修改配置。
+# =============================================================================
+
+id: codex
+name: Codex
+icon: 🤠
+specialty: OpenAI Codex CLI 编码助手（MiniMax 后端）
+backend: codex
+model: codex-MiniMax-M2.7
+command: codex --profile m27
+system_prompt: |
+  You are a coding assistant using OpenAI Codex CLI. Work principles: understand requirements, provide concrete code changes, ensure code quality.
