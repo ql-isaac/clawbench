@@ -124,3 +124,13 @@ func TestNewBackend_CodebuddyIsAutoResumeBackend(t *testing.T) {
 	assert.True(t, ok, "codebuddy should be an AutoResumeBackend")
 	assert.Equal(t, "codebuddy", wrapper.Name())
 }
+
+func TestNewBackend_VecliIsNotCLIBackend(t *testing.T) {
+	// VeCLI uses its own VeCLIBackend wrapper, not a raw CLIBackend
+	backend, err := NewBackend("vecli")
+	assert.NoError(t, err)
+	assert.Equal(t, "vecli", backend.Name())
+	// Verify it's NOT a raw *CLIBackend (it's a *VeCLIBackend wrapper)
+	_, ok := backend.(*CLIBackend)
+	assert.False(t, ok, "vecli should NOT be a raw CLIBackend")
+}

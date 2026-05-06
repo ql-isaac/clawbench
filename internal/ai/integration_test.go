@@ -834,6 +834,7 @@ func TestIntegration_InvalidWorkDir(t *testing.T) {
 		{"codebuddy", "codebuddy"},
 		{"gemini", "gemini"},
 		{"opencode", "opencode"},
+		{"vecli", "vecli"},
 	}
 
 	for _, tc := range backends {
@@ -1253,6 +1254,148 @@ func TestIntegration_Qoder_SystemPromptInjection(t *testing.T) {
 	content := concatContent(events)
 	if !strings.Contains(content, marker) {
 		t.Logf("qoder did not include marker %q in response — AI compliance is non-deterministic; content: %s", marker, truncate(content, 200))
+	}
+}
+
+// --- VeCLI Integration Tests ---
+
+// requireVeCLIEnv ensures the VeCLI CLI can run in the test environment.
+func requireVeCLIEnv(t *testing.T) {
+	t.Helper()
+	requireCLIAvailable(t, "vecli")
+	// VeCLI uses VOLCENGINE_ACCESS_KEY + VOLCENGINE_SECRET_KEY env vars,
+	// or interactive login. If env vars are missing, the CLI will error.
+	// We don't skip here — let the actual test reveal the auth issue.
+}
+
+func TestIntegration_VeCLI_NewSession(t *testing.T) {
+	requireVeCLIEnv(t)
+	backend, err := NewBackend("vecli")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	ch, err := backend.ExecuteStream(ctx, ChatRequest{
+		Prompt:  "说一个字：好",
+		WorkDir: testWorkDir(),
+	})
+	require.NoError(t, err)
+
+	events := collectEvents(t, ch, 90*time.Second)
+
+	// VeCLI may fail due to API auth issues; skip gracefully
+	contentEvents := findEvents(events, "content")
+	if len(contentEvents) == 0 {
+		warningEvents := findEvents(events, "warning")
+		errorEvents := findEvents(events, "error")
+		t.Skipf("vecli produced no content events (likely auth/network issue); warnings: %d, errors: %d, event types: %v",
+			len(warningEvents), len(errorEvents), eventTypes(events))
+	}
+
+	requireEventSequence(t, events, "content", "metadata")
+	content := concatContent(events)
+	assert.NotEmpty(t, content, "should receive content from vecli")
+
+	metaEvents := findEvents(events, "metadata")
+	require.NotEmpty(t, metaEvents, "should have metadata event")
+	assert.NotEmpty(t, metaEvents[0].Meta.Model, "vecli metadata should contain model name from session-summary")
+	assert.NotZero(t, metaEvents[0].Meta.DurationMs, "vecli metadata should contain duration from session-summary")
+
+	doneEvents := findEvents(events, "done")
+	assert.NotEmpty(t, doneEvents, "should receive 'done' event")
+
+	errorEvents := findEvents(events, "error")
+	assert.Empty(t, errorEvents, "should not have error events")
+}
+
+func TestIntegration_VeCLI_StreamEvents(t *testing.T) {
+	requireVeCLIEnv(t)
+	backend, err := NewBackend("vecli")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	ch, err := backend.ExecuteStream(ctx, ChatRequest{
+		Prompt:  "1+1等于几？只回答数字",
+		WorkDir: testWorkDir(),
+	})
+	require.NoError(t, err)
+
+	events := collectEvents(t, ch, 90*time.Second)
+
+	contentEvents := findEvents(events, "content")
+	if len(contentEvents) == 0 {
+		warningEvents := findEvents(events, "warning")
+		t.Skipf("vecli produced no content events (likely auth/network issue); warnings: %d, event types: %v",
+			len(warningEvents), eventTypes(events))
+	}
+	assert.NotEmpty(t, contentEvents, "should have content events")
+
+	// VeCLI metadata comes from session-summary file (post-process)
+	metaEvents := findEvents(events, "metadata")
+	assert.NotEmpty(t, metaEvents, "should have metadata from session-summary")
+
+	// Should have raw_output event for debugging
+	rawEvents := findEvents(events, "raw_output")
+	assert.NotEmpty(t, rawEvents, "should have raw_output event")
+}
+
+func TestIntegration_VeCLI_CancelMidStream(t *testing.T) {
+	requireVeCLIEnv(t)
+	backend, err := NewBackend("vecli")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	ch, err := backend.ExecuteStream(ctx, ChatRequest{
+		Prompt:  "写一篇500字的文章，主题是春天的花园",
+		WorkDir: testWorkDir(),
+	})
+	require.NoError(t, err)
+
+	events := cancelOnFirstContent(t, ch, cancel)
+	contentEvents := findEvents(events, "content")
+	if len(contentEvents) == 0 {
+		t.Skipf("vecli produced no content before cancel (likely auth/network issue); event types: %v", eventTypes(events))
+	}
+	assert.NotEmpty(t, contentEvents, "should have received at least one content before cancel")
+}
+
+func TestIntegration_VeCLI_SystemPromptInjection(t *testing.T) {
+	requireVeCLIEnv(t)
+	backend, err := NewBackend("vecli")
+	require.NoError(t, err)
+
+	// VeCLI has no --system-prompt flag; prompt is injected as [System Instructions: ...]
+	const marker = "INTEGRATION_TEST_MARKER_V9K2"
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	model.ChatSystemPromptInterval = 10
+
+	ch, err := backend.ExecuteStream(ctx, ChatRequest{
+		Prompt:       "请重复以下标记：" + marker,
+		WorkDir:      testWorkDir(),
+		SystemPrompt: "你必须在你回复的开头包含标记 " + marker + "，这是系统级要求",
+	})
+	require.NoError(t, err)
+
+	events := collectEvents(t, ch, 90*time.Second)
+
+	contentEvents := findEvents(events, "content")
+	if len(contentEvents) == 0 {
+		t.Skipf("vecli produced no content events (likely auth/network issue); event types: %v", eventTypes(events))
+	}
+
+	requireEventSequence(t, events, "content", "metadata")
+
+	// Best-effort check — AI compliance is non-deterministic
+	content := concatContent(events)
+	if !strings.Contains(content, marker) {
+		t.Logf("vecli did not include marker %q in response — AI compliance is non-deterministic; content: %s", marker, truncate(content, 200))
 	}
 }
 

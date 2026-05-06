@@ -68,6 +68,7 @@ specialty: 复杂编码、架构设计、代码重构
 #   - "gemini"     → Gemini CLI (Google Gemini)
 #   - "codex"      → OpenAI Codex CLI
 #   - "qoder"      → Qoder CLI (Alibaba), supports AutoResume (same as claude), auto model routing
+#   - "vecli"      → VeCLI (Volcengine), plain text output, no session resume
 backend: claude
 
 # ----- Optional Fields / 可选字段 -----
@@ -85,6 +86,7 @@ backend: claude
 #   backend=gemini    → "gemini-3.1-pro"
 #   backend=codex     → "gpt-5.4"
 #   backend=qoder     → "auto" (default, auto-routing), or specific model names
+#   backend=vecli     → "doubao-seed-1-6-250615" (default, requires ARK access), "deepseek-v3-1-terminus", "kimi-k2-250905"
 model: claude-sonnet-4-6
 
 # system_prompt [string, optional]

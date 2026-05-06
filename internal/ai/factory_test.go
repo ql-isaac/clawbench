@@ -44,6 +44,16 @@ func TestNewBackend_Qoder(t *testing.T) {
 	assert.True(t, ok, "qoder should be wrapped in AutoResumeBackend")
 }
 
+func TestNewBackend_Vecli(t *testing.T) {
+	backend, err := NewBackend("vecli")
+	assert.NoError(t, err)
+	assert.NotNil(t, backend)
+	assert.Equal(t, "vecli", backend.Name())
+	// VeCLI is NOT wrapped in AutoResumeBackend (no ExitPlanMode detection)
+	_, ok := backend.(*VeCLIBackend)
+	assert.True(t, ok, "vecli should be a VeCLIBackend")
+}
+
 func TestNewBackend_Unsupported(t *testing.T) {
 	_, err := NewBackend("unsupported")
 	assert.Error(t, err)
