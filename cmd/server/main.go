@@ -335,6 +335,20 @@ func main() {
 		slog.Bool("dev_mode", devMode),
 	)
 
+	// Load .env file into process environment (before loading agents,
+	// so agent env ${VAR} references can be resolved at request time)
+	dotenvPath := filepath.Join(model.BinDir, ".env")
+	if _, err := os.Stat(dotenvPath); os.IsNotExist(err) {
+		dotenvPath = ".env"
+	}
+	if _, err := os.Stat(dotenvPath); err == nil {
+		if err := model.LoadDotEnv(dotenvPath); err != nil {
+			slog.Warn("failed to load .env file", slog.String("path", dotenvPath), slog.String("err", err.Error()))
+		} else {
+			slog.Info("loaded .env file", slog.String("path", dotenvPath))
+		}
+	}
+
 	// Load agent configurations
 	agentsDir := filepath.Join(model.BinDir, "config", "agents")
 	if _, err := os.Stat(agentsDir); os.IsNotExist(err) {

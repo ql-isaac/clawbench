@@ -415,7 +415,10 @@ func buildCodexResumeArgs(req ChatRequest, threadID string) []string {
 
 	// Resume does not support --dangerously-bypass-approvals-and-sandbox,
 	// use -c sandbox_permissions override instead.
-	args = append(args, "-c", "sandbox_permissions=[\"disk-full-read-access\"]")
+	// Must match the new-session sandbox level (full access), otherwise
+	// commands like Edit/Write will be silently blocked, causing the AI
+	// to exit without producing a text response.
+	args = append(args, "-c", "sandbox_permissions=[\"disk-full-read-access\",\"disk-full-write-access\"]")
 
 	// Restore model and provider via -c overrides (resume doesn't support -m/--profile)
 	if req.Model != "" {
@@ -471,7 +474,7 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 
 	cmd := exec.CommandContext(ctx, cmdBinary, fullArgs...)
 	cmd.Dir = req.WorkDir
-	cmd.Env = os.Environ() // inherit current environment (includes API keys)
+	cmd.Env = os.Environ() // inherit current environment (includes API keys from .env)
 
 	isResume := req.Resume && req.SessionID != ""
 
@@ -531,6 +534,7 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 			scanner.Buffer(buf, scannerMax)
 
 			parser := &CodexStreamParser{}
+			var lastCapturedSessionID string
 			for scanner.Scan() {
 				line := scanner.Text()
 
@@ -548,6 +552,17 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 
 				slog.Debug("codex stream: raw line", "session_id", req.SessionID, "line", line)
 				parser.ParseLine(line, ch)
+
+				// Early capture of external session ID (Codex thread_xxx).
+				// This allows the handler to persist the ID immediately, even if the stream
+				// is cancelled before turn.completed emits the metadata event.
+				if capturedID := parser.GetCapturedSessionID(); capturedID != "" && capturedID != lastCapturedSessionID {
+					lastCapturedSessionID = capturedID
+					select {
+					case ch <- StreamEvent{Type: "session_capture", Content: capturedID}:
+					default:
+					}
+				}
 
 				// Check context after parsing
 				select {

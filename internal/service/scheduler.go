@@ -262,6 +262,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		WorkDir:            projectPath,
 		SystemPrompt:       agent.SystemPrompt,
 		Model:              agent.Model,
+		Command:            agent.Command,
 		AgentID:            task.AgentID,
 		Resume:             false,
 		ScheduledExecution: true,

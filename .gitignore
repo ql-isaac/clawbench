@@ -3,6 +3,7 @@
 
 # Configuration files (keep local config private)
 config/config.yaml
+.env
 
 # Python (legacy scripts)
 venv/

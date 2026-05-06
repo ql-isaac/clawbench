@@ -17,7 +17,9 @@ func NewBackend(backendType string) (AIBackend, error) {
 		return geminiBackend, nil
 	case "codex":
 		return &CodexBackend{}, nil
+	case "qoder":
+		return &AutoResumeBackend{inner: qoderBackend}, nil
 	default:
-		return nil, fmt.Errorf("unsupported backend type: %s (supported: claude, codebuddy, opencode, gemini, codex)", backendType)
+		return nil, fmt.Errorf("unsupported backend type: %s (supported: claude, codebuddy, opencode, gemini, codex, qoder)", backendType)
 	}
 }

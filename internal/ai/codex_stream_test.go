@@ -982,6 +982,60 @@ func TestCodexResumeOutput_ExecBlockFlushedAtEOF(t *testing.T) {
 	}
 }
 
+func TestCodexResumeOutput_ExecBlockThenNoCodexResponse(t *testing.T) {
+	// Scenario: AI executes a read-only command (cat) and then the CLI exits
+	// without producing a text response. This happens when sandbox is read-only
+	// and the AI wants to Edit/Write but can't — it just stops.
+	// The parser must still flush the exec block and emit metadata+done.
+	input := "--------\n" +
+		"user\n" +
+		"edit this file\n" +
+		"codex\n" +
+		codexThinkStart + "I need to read the file first." + codexThinkEnd + "\n" +
+		"exec\n" +
+		"cat /home/user/config.yaml in /home/user succeeded in 9ms:\n" +
+		"key: value\n" +
+		"another: setting\n"
+	events := parseResumeOutput(input)
+
+	// Must have: thinking, tool_use (started), tool_use (completed), metadata, done
+	var thinkingCount, toolStarted, toolCompleted, metadataCount, doneCount int
+	for _, ev := range events {
+		switch ev.Type {
+		case "thinking":
+			thinkingCount++
+		case "tool_use":
+			if ev.Tool != nil {
+				if ev.Tool.Done {
+					toolCompleted++
+				} else {
+					toolStarted++
+				}
+			}
+		case "metadata":
+			metadataCount++
+		case "done":
+			doneCount++
+		}
+	}
+
+	if thinkingCount == 0 {
+		t.Error("expected thinking event")
+	}
+	if toolStarted == 0 {
+		t.Error("expected tool_use started event")
+	}
+	if toolCompleted == 0 {
+		t.Error("expected tool_use completed event (flushed at EOF)")
+	}
+	if metadataCount == 0 {
+		t.Error("expected metadata event")
+	}
+	if doneCount == 0 {
+		t.Error("expected done event")
+	}
+}
+
 // --- End-to-end resume flow: first session -> second session ---
 // Tests that simulate the complete two-session lifecycle.
 
@@ -1136,6 +1190,37 @@ func TestBuildCodexResumeArgs_SandboxPermissionsPresent(t *testing.T) {
 	}
 	if foundSandboxIdx > foundThreadIdx {
 		t.Error("sandbox_permissions should come before thread_id in args")
+	}
+}
+
+func TestBuildCodexResumeArgs_SandboxWriteAccess(t *testing.T) {
+	// Resume sandbox must include write access to match the new-session
+	// sandbox level (--dangerously-bypass-approvals-and-sandbox).
+	// Without write access, commands like Edit/Write are silently blocked,
+	// causing the AI to exit without producing a text response.
+	req := ChatRequest{
+		Prompt: "test",
+		Model:  "codex-MiniMax-M2.7",
+	}
+	args := buildCodexResumeArgs(req, "thread-id")
+
+	foundSandbox := false
+	for i, arg := range args {
+		if arg == "-c" && i+1 < len(args) {
+			val := args[i+1]
+			if strings.Contains(val, "sandbox_permissions") {
+				foundSandbox = true
+				if !strings.Contains(val, "disk-full-write-access") {
+					t.Errorf("sandbox_permissions must include disk-full-write-access, got: %s", val)
+				}
+				if !strings.Contains(val, "disk-full-read-access") {
+					t.Errorf("sandbox_permissions must include disk-full-read-access, got: %s", val)
+				}
+			}
+		}
+	}
+	if !foundSandbox {
+		t.Fatal("expected -c sandbox_permissions in resume args")
 	}
 }
 

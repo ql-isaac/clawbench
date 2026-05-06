@@ -34,6 +34,16 @@ func TestNewBackend_Gemini(t *testing.T) {
 	assert.Equal(t, "gemini", backend.Name())
 }
 
+func TestNewBackend_Qoder(t *testing.T) {
+	backend, err := NewBackend("qoder")
+	assert.NoError(t, err)
+	assert.NotNil(t, backend)
+	assert.Equal(t, "qoder", backend.Name())
+	// Verify AutoResumeBackend wrapping (Qoder has EnterPlanMode/ExitPlanMode)
+	_, ok := backend.(*AutoResumeBackend)
+	assert.True(t, ok, "qoder should be wrapped in AutoResumeBackend")
+}
+
 func TestNewBackend_Unsupported(t *testing.T) {
 	_, err := NewBackend("unsupported")
 	assert.Error(t, err)
