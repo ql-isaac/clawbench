@@ -38,7 +38,7 @@
         <Volume2 :size="14" />
       </button>
       <!-- Model chip (show for all agents, click only for multi-model) -->
-      <button class="chat-action-btn model-chip"
+      <button class="chat-action-btn model-chip" ref="modelChipRef"
         :class="{ clickable: isMultiModel(currentAgentId) }"
         @click.stop="toggleModelMenu"
         :title="isMultiModel(currentAgentId) ? t('chat.actions.switchModel') : currentModelName">
@@ -97,7 +97,8 @@
           :placeholder="pendingFiles.length > 0 ? t('chat.input.placeholderOptional') : loading ? t('chat.input.placeholderQueue') : t('chat.input.placeholder')"
           rows="1"
           @keydown.enter.exact.prevent="$emit('send', inputText.trim())"
-          @blur="autoResizeTextarea"></textarea>        <button v-if="!stopPrimed" class="chat-send-btn" :class="{ disabled: !hasInputContent && !hasQuickSend, queued: loading }" @click.stop="handleSendClick" :title="loading ? t('chat.input.enqueue') : t('chat.input.send')">
+          @blur="autoResizeTextarea"></textarea>
+        <button v-if="!stopPrimed" class="chat-send-btn" ref="sendBtnRef" :class="{ disabled: !hasInputContent && !hasQuickSend, queued: loading }" @click.stop="handleSendClick" :title="loading ? t('chat.input.enqueue') : t('chat.input.send')">
           <!-- Queue mode: inbox with down arrow (enqueue) -->
           <Inbox v-if="loading" :size="16" />
           <!-- Normal mode: paper plane (send) -->
@@ -108,62 +109,57 @@
         </button>
       </div>
       <!-- Teleported attach menu (avoids overflow:hidden clipping) -->
-      <Teleport to="body">
-        <div v-if="showAttachMenu" class="attach-menu" :style="menuStyle" @click.stop>
-          <!-- Current file group -->
-          <template v-if="currentFile?.path && !attachedFiles.includes(currentFile.path)">
-            <div class="attach-menu-group-title">{{ t('chat.attach.currentFile') }}</div>
-            <button class="attach-menu-item" @click="handleAttachFile(currentFile.path)">
-              <FileText :size="14" :stroke-width="1.5" />
-              <span class="attach-menu-item-name">{{ getFileName(currentFile.path) }}</span>
-            </button>
-          </template>
-          <!-- Recently referenced group -->
-          <template v-if="recentReferencedFiles.length > 0">
-            <div class="attach-menu-group-title">{{ t('chat.attach.recentReferences') }}</div>
-            <button v-for="item in recentReferencedFiles" :key="item.path" class="attach-menu-item" @click="handleAttachFile(item.path)">
-              <FileText :size="14" :stroke-width="1.5" />
-              <span class="attach-menu-item-name">{{ getFileName(item.path) }}</span>
-              <span class="attach-menu-item-count">×{{ item.count }}</span>
-            </button>
-          </template>
-          <!-- Separator + Upload -->
-          <div v-if="hasFileGroups" class="attach-menu-separator"></div>
-          <button class="attach-menu-item" @click="handleUploadClick">
-            <Upload :size="14" :stroke-width="1.5" />
-            <span>{{ t('chat.attach.uploadFile') }}</span>
+      <PopupMenu v-model:show="showAttachMenu" :target-element="attachMenuRef?.querySelector('.chat-attach-btn')" :max-width="200" :max-height="280" :menu-items-count="recentReferencedFiles.length + 2">
+        <!-- Current file group -->
+        <template v-if="currentFile?.path && !attachedFiles.includes(currentFile.path)">
+          <div class="attach-menu-group-title">{{ t('chat.attach.currentFile') }}</div>
+          <button class="attach-menu-item" @click="handleAttachFile(currentFile.path)">
+            <FileText :size="14" :stroke-width="1.5" />
+            <span class="attach-menu-item-name">{{ getFileName(currentFile.path) }}</span>
           </button>
-        </div>
-      </Teleport>
+        </template>
+        <!-- Recently referenced group -->
+        <template v-if="recentReferencedFiles.length > 0">
+          <div class="attach-menu-group-title">{{ t('chat.attach.recentReferences') }}</div>
+          <button v-for="item in recentReferencedFiles" :key="item.path" class="attach-menu-item" @click="handleAttachFile(item.path)">
+            <FileText :size="14" :stroke-width="1.5" />
+            <span class="attach-menu-item-name">{{ getFileName(item.path) }}</span>
+            <span class="attach-menu-item-count">×{{ item.count }}</span>
+          </button>
+        </template>
+        <!-- Separator + Upload -->
+        <div v-if="hasFileGroups" class="attach-menu-separator"></div>
+        <button class="attach-menu-item" @click="handleUploadClick">
+          <Upload :size="14" :stroke-width="1.5" />
+          <span>{{ t('chat.attach.uploadFile') }}</span>
+        </button>
+      </PopupMenu>
       <!-- Teleported quick-send menu -->
-      <Teleport to="body">
-        <div v-if="showQuickMenu" class="quick-send-menu" :style="quickMenuStyle" @click.stop>
-          <div class="quick-send-title">{{ t('chat.quickSend.title') }}</div>
-          <button v-for="(value, key) in quickSend" :key="key" class="quick-send-item" @click="handleQuickSend(value)">
-            {{ key }}
-          </button>
-        </div>
-      </Teleport>
+      <PopupMenu v-model:show="showQuickMenu" :target-element="sendBtnRef" anchor="right" :max-width="260" :max-height="280" :menu-items-count="Object.keys(quickSend).length">
+        <div class="quick-send-title">{{ t('chat.quickSend.title') }}</div>
+        <button v-for="(value, key) in quickSend" :key="key" class="quick-send-item" @click="handleQuickSend(value)">
+          {{ key }}
+        </button>
+      </PopupMenu>
       <!-- Teleported model switcher menu -->
-      <Teleport to="body">
-        <div v-if="showModelMenu" class="model-menu" :style="modelMenuStyle" @click.stop>
-          <div class="model-menu-title">{{ t('chat.modelSwitcher.title') }}</div>
-          <button v-for="m in agentModels" :key="m.id" class="model-menu-item" :class="{ active: m.id === currentModelId }" @click="selectModel(m)">
-            <Check v-if="m.id === currentModelId" :size="14" />
-            <span v-else class="model-menu-check-spacer"></span>
-            <span>{{ m.name }}</span>
-          </button>
-        </div>
-      </Teleport>
+      <PopupMenu v-model:show="showModelMenu" :target-element="modelChipRef" :max-width="220" :max-height="320" :menu-items-count="agentModels.length">
+        <div class="model-menu-title">{{ t('chat.modelSwitcher.title') }}</div>
+        <button v-for="m in agentModels" :key="m.id" class="model-menu-item" :class="{ active: m.id === currentModelId }" @click="selectModel(m)">
+          <Check v-if="m.id === currentModelId" :size="14" />
+          <span v-else class="model-menu-check-spacer"></span>
+          <span>{{ m.name }}</span>
+        </button>
+      </PopupMenu>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessageSquare, List, Plus, Trash2, Calendar, Volume2, Upload, Paperclip, FileImage, FileText, XCircle, Inbox, Send, Square, Cpu, ChevronDown, Check } from 'lucide-vue-next'
 import { baseName } from '@/utils/path.ts'
+import PopupMenu from '@/components/common/PopupMenu.vue'
 
 const { t } = useI18n()
 
@@ -211,11 +207,10 @@ const isDragOver = ref(false)
 const dragCounter = ref(0)
 const showAttachMenu = ref(false)
 const attachMenuRef = ref(null)
-const menuStyle = ref({})
 const showQuickMenu = ref(false)
-const quickMenuStyle = ref({})
+const sendBtnRef = ref(null)
 const showModelMenu = ref(false)
-const modelMenuStyle = ref({})
+const modelChipRef = ref(null)
 
 // Stop button two-click confirmation state
 const stopPrimed = ref(false)
@@ -431,31 +426,15 @@ function clearInput() {
 }
 
 function handleAttachFile(filePath) {
-  showAttachMenu.value = false
   emit('add-attached', filePath)
 }
 
 function handleUploadClick() {
-  showAttachMenu.value = false
   fileInputRef.value?.click()
 }
 
 function toggleAttachMenu() {
-  if (showAttachMenu.value) {
-    showAttachMenu.value = false
-    return
-  }
-  // Calculate menu position from the button's bounding rect
-  const btn = attachMenuRef.value?.querySelector('.chat-attach-btn')
-  if (btn) {
-    const rect = btn.getBoundingClientRect()
-    menuStyle.value = {
-      position: 'fixed',
-      bottom: `${window.innerHeight - rect.top + 4}px`,
-      left: `${rect.left}px`,
-    }
-  }
-  showAttachMenu.value = true
+  showAttachMenu.value = !showAttachMenu.value
 }
 
 function handleSendClick() {
@@ -469,42 +448,15 @@ function handleSendClick() {
 }
 
 function handleQuickSend(text) {
-  showQuickMenu.value = false
   emit('send', text)
 }
 
 function toggleQuickMenu() {
-  if (showQuickMenu.value) {
-    showQuickMenu.value = false
-    return
-  }
-  const sendBtn = document.querySelector('.chat-send-btn')
-  if (sendBtn) {
-    const rect = sendBtn.getBoundingClientRect()
-    quickMenuStyle.value = {
-      position: 'fixed',
-      bottom: `${window.innerHeight - rect.top + 4}px`,
-      right: `${window.innerWidth - rect.right}px`,
-    }
-  }
-  showQuickMenu.value = true
+  showQuickMenu.value = !showQuickMenu.value
 }
 
 function toggleModelMenu() {
-  if (showModelMenu.value) {
-    showModelMenu.value = false
-    return
-  }
-  const chipEl = document.querySelector('.model-chip')
-  if (chipEl) {
-    const rect = chipEl.getBoundingClientRect()
-    modelMenuStyle.value = {
-      position: 'fixed',
-      bottom: `${window.innerHeight - rect.top + 4}px`,
-      left: `${rect.left}px`,
-    }
-  }
-  showModelMenu.value = true
+  showModelMenu.value = !showModelMenu.value
 }
 
 function selectModel(model) {
@@ -512,27 +464,12 @@ function selectModel(model) {
   emit('switch-model', model)
 }
 
-// Close menu on outside click
-function handleClickOutside(e) {
-  // The teleported menu is outside attachMenuRef, so check both
-  const menuEl = document.querySelector('.attach-menu')
-  if (menuEl && menuEl.contains(e.target)) return
-  if (attachMenuRef.value && attachMenuRef.value.contains(e.target)) return
-  showAttachMenu.value = false
-  const quickMenuEl = document.querySelector('.quick-send-menu')
-  if (quickMenuEl && quickMenuEl.contains(e.target)) return
-  showQuickMenu.value = false
-  const modelMenuEl = document.querySelector('.model-menu')
-  if (modelMenuEl && modelMenuEl.contains(e.target)) return
-  showModelMenu.value = false
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
+// Menu mutual exclusion: opening one closes the others
+watch(showAttachMenu, (v) => { if (v) { showQuickMenu.value = false; showModelMenu.value = false } })
+watch(showQuickMenu, (v) => { if (v) { showAttachMenu.value = false; showModelMenu.value = false } })
+watch(showModelMenu, (v) => { if (v) { showAttachMenu.value = false; showQuickMenu.value = false } })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickOutside)
   clearTimeout(stopPrimeTimer)
 })
 
@@ -839,125 +776,6 @@ defineExpose({
   cursor: not-allowed;
 }
 
-/* Attach menu (teleported to body, uses fixed positioning) */
-.attach-menu {
-  position: fixed;
-  background: var(--bg-secondary, #fff);
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: 8px;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.12);
-  z-index: 9999;
-  min-width: 140px;
-  max-width: 200px;
-  padding: 3px 0;
-}
-
-.attach-menu-group-title {
-  padding: 4px 10px 1px;
-  font-size: 10px;
-  color: var(--text-muted, #999);
-  font-weight: 500;
-  letter-spacing: 0.3px;
-}
-
-.attach-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  width: 100%;
-  border: none;
-  background: none;
-  color: var(--text-primary);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  text-align: left;
-}
-
-.attach-menu-item:hover {
-  background: var(--accent-color, #0066cc);
-  color: #fff;
-}
-
-.attach-menu-item svg {
-  flex-shrink: 0;
-  width: 12px;
-  height: 12px;
-}
-
-.attach-menu-item-name {
-  font-family: monospace;
-  font-size: 11px;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  white-space: nowrap;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.attach-menu-item-name::-webkit-scrollbar {
-  display: none;
-}
-
-.attach-menu-item-count {
-  margin-left: auto;
-  font-size: 10px;
-  color: var(--text-muted, #999);
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-
-.attach-menu-item:hover .attach-menu-item-count {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.attach-menu-separator {
-  height: 1px;
-  background: var(--border-color, #e5e5e5);
-  margin: 3px 6px;
-}
-
-/* Quick-send menu (teleported to body, right-anchored) */
-.quick-send-menu {
-  position: fixed;
-  background: var(--bg-secondary, #fff);
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: 10px;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
-  z-index: 9999;
-  min-width: 140px;
-  max-width: 260px;
-  padding: 4px 0;
-}
-
-.quick-send-title {
-  padding: 6px 14px 2px;
-  font-size: 11px;
-  color: var(--text-muted, #999);
-  font-weight: 500;
-  letter-spacing: 0.3px;
-}
-
-.quick-send-item {
-  display: block;
-  width: 100%;
-  padding: 8px 14px;
-  border: none;
-  background: none;
-  color: var(--text-primary);
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.12s, color 0.12s;
-}
-
-.quick-send-item:hover {
-  background: var(--accent-color, #0066cc);
-  color: #fff;
-}
-
 /* Attachment tags row */
 .chat-attachment-tags {
   display: flex;
@@ -1203,19 +1021,106 @@ defineExpose({
   white-space: nowrap;
 }
 
-/* Model switcher menu (teleported to body) */
-.model-menu {
-  position: fixed;
-  background: var(--bg-secondary, #fff);
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: 8px;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.12);
-  z-index: 9999;
-  min-width: 140px;
-  max-width: 220px;
-  padding: 3px 0;
+</style>
+
+<!-- Unscoped styles for teleported menu content (PopupMenu uses Teleport to body, scoped styles won't reach it) -->
+<style>
+/* Attach menu content styles */
+.attach-menu-group-title {
+  padding: 4px 10px 1px;
+  font-size: 10px;
+  color: var(--text-muted, #999);
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 
+.attach-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.attach-menu-item:hover {
+  background: var(--accent-color, #0066cc);
+  color: #fff;
+}
+
+.attach-menu-item svg {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.attach-menu-item-name {
+  font-family: monospace;
+  font-size: 11px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.attach-menu-item-name::-webkit-scrollbar {
+  display: none;
+}
+
+.attach-menu-item-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted, #999);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.attach-menu-item:hover .attach-menu-item-count {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.attach-menu-separator {
+  height: 1px;
+  background: var(--border-color, #e5e5e5);
+  margin: 3px 6px;
+}
+
+/* Quick-send menu content styles */
+.quick-send-title {
+  padding: 6px 14px 2px;
+  font-size: 11px;
+  color: var(--text-muted, #999);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.quick-send-item {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+
+.quick-send-item:hover {
+  background: var(--accent-color, #0066cc);
+  color: #fff;
+}
+
+/* Model switcher menu content styles */
 .model-menu-title {
   padding: 4px 10px 1px;
   font-size: 10px;
