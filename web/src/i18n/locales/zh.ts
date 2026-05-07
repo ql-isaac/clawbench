@@ -625,5 +625,6 @@ export default {
     resetFontSize: '重置字体大小',
     gestures: '手势',
     rebuildSession: '重建会话',
+    rebuilding: '正在切换目录...',
   },
 } as const

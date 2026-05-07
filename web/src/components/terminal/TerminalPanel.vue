@@ -18,6 +18,12 @@
 
       <!-- Terminal viewport -->
       <div ref="terminalContainer" class="terminal-container" @click.self="focusTerminal">
+        <!-- Rebuild overlay -->
+        <div v-if="rebuilding" class="terminal-rebuild-overlay">
+          <span class="terminal-rebuild-spinner"></span>
+          <span>{{ t('terminal.rebuilding') }}</span>
+        </div>
+
         <!-- Error overlay -->
         <div v-if="showErrorOverlay" class="terminal-error-overlay">
           <p>{{ errorDisplayMessage }}</p>
@@ -138,7 +144,7 @@ const xterm = ref<Terminal | null>(null)
 const fitAddon = ref<FitAddon | null>(null)
 const showCommands = ref(false)
 const quickCommands = ref<{ label: string; command: string }[]>([])
-
+const rebuilding = ref(false)
 // Compute cwd from file manager's current directory (not the opened file)
 function computeCwd(): string {
   return store.state.currentDir || ''
@@ -432,6 +438,7 @@ function handleClose() {
 async function handleRebuild() {
   terminalKeys.reset()
   showCommands.value = false
+  rebuilding.value = true
 
   // Close session via HTTP API (synchronous — ensures PTY is dead and m.session = nil)
   try {
@@ -454,6 +461,8 @@ async function handleRebuild() {
     focusTerminal()
   } catch {
     // Error will be shown via overlay
+  } finally {
+    rebuilding.value = false
   }
 }
 
@@ -575,6 +584,34 @@ function executeCommand(cmd: { label: string; command: string }) {
 
 :root:not([data-theme="dark"]) .terminal-container {
   background: #eff1f5;
+}
+
+.terminal-rebuild-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  z-index: 8;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.terminal-rebuild-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: terminal-spin 0.6s linear infinite;
+}
+
+@keyframes terminal-spin {
+  to { transform: rotate(360deg); }
 }
 
 .gesture-hint {

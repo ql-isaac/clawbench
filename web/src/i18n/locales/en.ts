@@ -625,5 +625,6 @@ export default {
     resetFontSize: 'Reset font size',
     gestures: 'Gestures',
     rebuildSession: 'Rebuild Session',
+    rebuilding: 'Switching directory...',
   },
 } as const
