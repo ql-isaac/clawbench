@@ -352,6 +352,19 @@ watch(() => props.open, async (isOpen) => {
   }
 }, { immediate: true })
 
+// Watch currentDir changes — rebuild session if terminal is already open
+// and the directory has changed (e.g. user clicked "Open terminal here"
+// on a different directory in the file manager)
+watch(() => store.state.currentDir, async (newDir) => {
+  if (!props.open || connectionState.value !== 'connected') return
+  // currentCwd is absolute; compute expected absolute cwd from currentDir
+  const expectedCwd = newDir
+    ? store.state.projectRoot + '/' + newDir
+    : store.state.projectRoot
+  if (currentCwd.value === expectedCwd) return
+  await handleRebuild()
+})
+
 // Watch theme changes
 let themeObserver: MutationObserver | null = null
 

@@ -470,8 +470,10 @@ async function handleRefresh() {
 }
 
 function handleOpenTerminal(cwd) {
-    // currentDir already set by FileManager's doOpenTerminal
-    openDrawer('terminal')
+    // Force open terminal (not toggle) — if already open, the
+    // TerminalPanel watches currentDir changes and will auto-rebuild
+    terminalOpen.value = true
+    ensureDrawerOpen('terminal')
 }
 
 function scrollToLine(line) {
