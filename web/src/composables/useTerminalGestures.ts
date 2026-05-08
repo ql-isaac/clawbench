@@ -5,6 +5,7 @@ export interface GestureCallbacks {
   sendArrowDown: () => void
   sendArrowLeft: () => void
   sendArrowRight: () => void
+  sendTab: () => void
   onPinchZoom?: (delta: number) => void
   onGestureHint?: (symbol: string) => void
 }
@@ -16,6 +17,7 @@ type Direction = 'up' | 'down' | 'left' | 'right'
  * - Swipe left/right → arrow left/right
  * - Swipe up/down → arrow up/down
  * - Hold direction → auto-repeat arrow keys
+ * - Double-tap → Tab
  * - Pinch (two-finger) → zoom font size
  *
  * When gestures are disabled, all touch listeners are detached so that
@@ -32,6 +34,8 @@ export function useTerminalGestures(
   const PINCH_THRESHOLD = 10 // minimum px change before triggering zoom
   const REPEAT_INITIAL_DELAY = 500 // ms before auto-repeat starts
   const REPEAT_INTERVAL = 150 // ms between repeated arrow keys
+  const DOUBLE_TAP_MS = 300 // max ms between two taps for double-tap
+  const TAP_THRESHOLD = 10 // max px movement to still count as a tap
 
   // Gesture enable/disable state
   const enabled = ref(true)
@@ -50,6 +54,11 @@ export function useTerminalGestures(
   let initialPinchDistance = 0
   let lastPinchDistance = 0
   let accumulatedPinchDelta = 0
+
+  // Double-tap Tab state
+  let lastTapTime = 0
+  let lastTapX = 0
+  let lastTapY = 0
 
   function getTouchDistance(t1: Touch, t2: Touch): number {
     const dx = t1.clientX - t2.clientX
@@ -178,13 +187,30 @@ export function useTerminalGestures(
     // skip the legacy swipe-on-touchend logic
     if (wasDirection) return
 
-    // Quick swipe that didn't trigger in touchmove (fast flick)
     const touch = e.changedTouches[0]
     const dx = touch.clientX - touchStartX
     const dy = touch.clientY - touchStartY
     const dir = detectDirection(dx, dy)
     if (dir) {
+      // It's a swipe — send the arrow key
       sendArrow(dir)
+    } else if (Math.abs(dx) <= TAP_THRESHOLD && Math.abs(dy) <= TAP_THRESHOLD) {
+      // It's a tap (no significant movement) — check for double-tap
+      const now = Date.now()
+      const tapDx = touch.clientX - lastTapX
+      const tapDy = touch.clientY - lastTapY
+      const isDoubleTap = (now - lastTapTime) < DOUBLE_TAP_MS
+        && Math.abs(tapDx) < TAP_THRESHOLD * 2
+        && Math.abs(tapDy) < TAP_THRESHOLD * 2
+      if (isDoubleTap) {
+        callbacks.sendTab()
+        callbacks.onGestureHint?.('⇥')
+        lastTapTime = 0 // reset to avoid triple-tap
+      } else {
+        lastTapTime = now
+        lastTapX = touch.clientX
+        lastTapY = touch.clientY
+      }
     }
   }
 
@@ -232,6 +258,7 @@ export function useTerminalGestures(
       stopRepeat()
       isActive = false
       currentDirection = null
+      lastTapTime = 0
     }
     applyState()
   }

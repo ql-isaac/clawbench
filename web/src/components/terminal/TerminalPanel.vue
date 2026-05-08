@@ -236,6 +236,7 @@ const gestures = useTerminalGestures(terminalContainer, {
   sendArrowDown: terminalKeys.sendArrowDown,
   sendArrowLeft: terminalKeys.sendArrowLeft,
   sendArrowRight: terminalKeys.sendArrowRight,
+  sendTab: terminalKeys.sendTab,
   onPinchZoom: (delta: number) => applyFontSize(fontSize.value + delta),
   onGestureHint: (symbol: string) => {
     gestureHint.value = symbol

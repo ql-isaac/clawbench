@@ -7,15 +7,9 @@ import (
 	"syscall"
 )
 
-// setupProcessGroup sets the command to run in its own process group
-// so the entire group can be killed on cleanup.
-func setupProcessGroup(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
-}
-
 // killProcessGroupSig sends a signal to the process group of the given command.
+// pty.Start creates the shell with Setsid=true, which starts a new session
+// and process group — so Getpgid works to find and kill the whole group.
 func killProcessGroupSig(cmd *exec.Cmd, sig syscall.Signal) {
 	if cmd == nil || cmd.Process == nil {
 		return

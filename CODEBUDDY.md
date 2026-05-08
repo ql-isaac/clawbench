@@ -59,6 +59,7 @@ npx vitest run web/src/components/__tests__/gitGraphUtils.test.ts  # Single test
 - `internal/speech/` — TTS abstraction (`SpeechProvider` interface). Implementations: MiniMax (cloud), Edge TTS (cloud, free), Piper (local offline), Kokoro (local ONNX-based). `summarizer.go` provides TTS summarization via multiple AI backends (mmx-cli, claude, codebuddy, gemini, opencode, codex, qoder, vecli, ollama) for long-text compression before speech. `ollama_summarizer.go` calls Ollama HTTP API (`/api/chat`, stream:false) — the first direct HTTP client in the Go backend (all others shell out to CLI tools).
 - `internal/ssh/` — SSH tunnel server (`server.go`). Supports direct-tcpip channels (-L port forwarding), password auth, ECDSA host key generation/persistence. Integrates with ProxyRegistry for port validation.
 - `internal/rag/` — RAG history memory system. DuckDB vector store (`store.go`), text chunker (`chunker.go`), Ollama embedding client (`embedding.go`), indexer worker (`indexer.go`), search (`search.go`), cleanup worker (`cleanup.go`), entry point (`rag.go`). When `rag.enabled`, indexes chat messages after finalization and provides semantic search API. Cleanup worker runs regardless of RAG enablement to purge soft-deleted data past retention.
+- `internal/terminal/` — Interactive web terminal. `manager.go` (session lifecycle, single-session-per-project, zombie client kicking), `session.go` (PTY I/O pump, idle timeout, ring buffer replay, resize handling), `buffer.go` (RingBuffer: configurable line count/size/memory cap, line-split replay), `shell.go` + `shell_posix.go` / `shell_windows.go` (shell detection: $SHELL→/bin/sh on POSIX, pwsh→powershell→cmd on Windows; process group kill via SIGTERM→3s→SIGKILL), `protocol.go` (WebSocket JSON message types). Handler in `internal/handler/terminal.go` (WebSocket upgrade, status/close/config endpoints).
 - `internal/platform/` — Platform-specific adaptations (Windows paths).
 
 **Agent system:** YAML files in `config/agents/` define agents with id, backend, model, system_prompt, and optional `command` (custom CLI path). `config/rules.md` is always fully injected into every agent's system prompt at startup by `model.LoadAgents()` → `BuildCommonPrompt()`. It contains mandatory rules and CLI references (scheduled tasks, RAG search, etc.). Placeholders `{{AVAILABLE_AGENTS}}` and `{{PORT}}` are replaced at load time. The `<!-- SCHEDULED_BEGIN/END -->` markers in rules.md wrap the scheduled tasks section, which is stripped by `BuildCommonPrompt(true)` during scheduled executions (anti-recursion).
@@ -88,6 +89,15 @@ npx vitest run web/src/components/__tests__/gitGraphUtils.test.ts  # Single test
 3. Text blocks are extracted (excluding thinking/tool_use), chunked with 512-token sliding window, embedded via Ollama BGE-M3
 4. AI agents can search history via `GET /api/rag/search` (no auth, localhost only); RAG search rules and CLI reference are in `config/rules.md`
 5. Frontend browses forwarded ports via `PortForwardBrowser` component
+
+**Interactive terminal:**
+1. Frontend opens WebSocket to `GET /api/terminal/ws?cwd=<dir>`
+2. Handler resolves cwd, creates PTY session via `TerminalManager`
+3. Session pump: PTY stdout → RingBuffer → WebSocket (`output` messages); WebSocket `input` → PTY stdin
+4. On reconnect, RingBuffer replays buffered lines via `replay` message
+5. `resize` messages sync terminal dimensions (cols/rows) to PTY
+6. Single session per project; new client kicks old zombie; idle timeout closes PTY
+7. Close via `POST /api/terminal/close` or `close` WebSocket message → SIGTERM process group → SIGKILL
 
 **Soft-delete & cleanup:**
 1. Session deletion sets `deleted=1` on `chat_sessions` and `chat_history` instead of `DELETE FROM` — data stays in DB for RAG search
@@ -132,6 +142,14 @@ npx vitest run web/src/components/__tests__/gitGraphUtils.test.ts  # Single test
 - `useNotificationSound.ts` — Notification sound + haptic feedback.
 - `useNotification.ts` — Push notification support.
 - `useToast.ts` — Toast notification system.
+
+**Terminal architecture:**
+- `terminal/TerminalPanel.vue` — BottomSheet container; composes all terminal UI: xterm.js viewport, virtual key toolbar (7 groups with visual dividers), gesture overlay, error/rebuild overlays, quick commands popup.
+- `terminal/terminalCwd.ts` — CWD resolution logic (current file dir > file manager dir > requested cwd; mismatch detection for reopen prompt).
+- `useTerminalSession.ts` — WebSocket lifecycle (connect/disconnect/reconnect with 3 attempts), message parsing (input/resize/close → server; output/replay/status/exit/error ← server), idle timeout handling.
+- `useTerminalViewport.ts` — xterm.js FitAddon integration, ResizeObserver + visualViewport tracking (soft keyboard avoidance), debounced terminal resize.
+- `useTerminalKeys.ts` — Modifier key state machine (inactive/once/locked for Ctrl/Alt/Shift), `processInput()` transforms (Ctrl+A→\x01, Alt+X→\x1bX, Shift+Tab→\x1b[Z), send functions for all special keys (arrows, Home/End/PgUp/PgDn/Enter/Backspace/Delete/Ctrl+C/Ctrl+Z/Escape/Tab).
+- `useTerminalGestures.ts` — Termius-style touch gestures: swipe→arrow keys, hold-to-repeat, double-tap→Tab, pinch→zoom. Toggle on/off for xterm.js native touch selection compatibility.
 
 **Other key components:**
 - `file/FileManager.vue` + `FileViewer.vue` — Directory browser and file viewer (code/markdown/media). `FileDetailsDialog.vue` for file metadata. `FileHeader.vue` for viewer header.
@@ -188,6 +206,8 @@ npx vitest run web/src/components/__tests__/gitGraphUtils.test.ts  # Single test
 - **Green portable deployment:** All runtime data (SQLite DB, logs, uploads, SSH host keys, TTS models, auto-generated password) lives under `.clawbench/` next to the binary. Deleting that directory = clean uninstall.
 - **Zero-config startup:** `config/config.yaml` is optional. `model.ApplyDefaults()` (in `defaults.go`) fills all zero-value fields with sensible defaults. When `password` is empty, a random UUID is generated and persisted to `.clawbench/auto-password` for reuse across restarts. `ParsePresenceMap()` handles the bool-defaults problem (Go zero value is `false`, but `proxy.enabled` and `ssh.enabled` should default to `true`).
 - **Structured errors:** Backend uses `model.NotFound()`, `model.Forbidden()`, `model.Internal()` constructors for consistent HTTP error responses.
+- **Terminal virtual key groups:** Toolbar keys are grouped by type (modifiers, navigation, arrows, edit, symbols, shortcuts, actions) with visual dividers. Modifier keys use three-state toggle (inactive→once→locked); once auto-clears after next keypress, locked persists until tapped again.
+- **Terminal drawer lifecycle:** Closing the terminal drawer (❌ button, swipe-down, parent hides) disconnects WebSocket + disposes xterm instance. Next open creates a fresh Terminal + new PTY session. `cleanupTerminal()` consolidates disposal logic.
 
 ## Configuration
 
@@ -204,6 +224,7 @@ npx vitest run web/src/components/__tests__/gitGraphUtils.test.ts  # Single test
 | Proxy | `proxy.enabled`, `proxy.allowed_ports` |
 | SSH | `ssh.enabled`, `ssh.port`, `ssh.host_key` |
 | RAG | `rag.enabled`, `rag.ollama_base_url`, `rag.ollama_model` (bge-m3), `rag.chunk_size` (512), `rag.chunk_overlap` (64), `rag.poll_interval` (10s), `rag.batch_size` (10), `rag.search_limit` (5), `rag.retention_days` (90) |
+| Terminal | `terminal.enabled` (default: true), `terminal.idle_timeout` (default: 10m), `terminal.buffer_lines` (default: 2000), `terminal.max_line_bytes` (default: 65536), `terminal.max_buffer_mb` (default: 4), `terminal.quick_commands` (list of {label, command}) |
 | Dev | `dev.port`, `dev.frontend_port`, `dev.host` |
 | Logging | `log_dir`, `log_max_days`, `default_agent` |
 
@@ -214,4 +235,4 @@ Dev mode uses separate port (20002) and database (`ClawBench-dev.db`).
 - Go tests use `testify/assert`. Test files colocated with source (`*_test.go`).
 - Frontend tests use Vitest + `@vue/test-utils`. Located in `web/src/components/__tests__/`.
 - Many handler tests need a running test server — see `testutil_test.go` in handler package.
-- Key test packages: `ai/` (stream parsers, auto-resume, factory), `handler/` (auth, chat, files, git, proxy, scheduler, SSH info, TTS), `service/` (chat, proxy, scheduler, stream, uuid, soft-delete, cleanup), `speech/` (minimax, piper, kokoro, moss_tts_nano, ollama), `ssh/` (server), `rag/` (chunker, store, cleanup).
+- Key test packages: `ai/` (stream parsers, auto-resume, factory), `handler/` (auth, chat, files, git, proxy, scheduler, SSH info, TTS), `service/` (chat, proxy, scheduler, stream, uuid, soft-delete, cleanup), `speech/` (minimax, piper, kokoro, moss_tts_nano, ollama), `ssh/` (server), `rag/` (chunker, store, cleanup), `terminal/` (ring buffer, session/manager), `handler/` (terminal handler auth + cwd validation).
