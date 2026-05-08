@@ -40,19 +40,19 @@
 
       <!-- Virtual key toolbar -->
       <div class="terminal-toolbar">
-        <button class="toolbar-btn modifier gesture-toggle" :class="{ active: gestures.enabled.value }" @pointerdown.prevent="gestures.toggle(); focusTerminal()" @contextmenu.prevent :title="t('terminal.gestures')">
+        <button class="toolbar-btn modifier gesture-toggle" :class="{ active: gestures.enabled.value }" @click="gestures.toggle(); focusTerminal()" @contextmenu.prevent :title="t('terminal.gestures')">
           <HandIcon :size="14" />
         </button>
         <div class="toolbar-scroll">
-          <button class="toolbar-btn" @pointerdown.prevent="terminalKeys.sendEscape(); focusTerminal()" :title="'Esc'">Esc</button>
-          <button class="toolbar-btn" @pointerdown.prevent="terminalKeys.sendTab(); focusTerminal()" :title="'Tab'">Tab</button>
-          <button class="toolbar-btn modifier" :class="{ active: terminalKeys.activeModifiers.value.ctrl !== 'inactive', locked: terminalKeys.activeModifiers.value.ctrl === 'locked' }" @pointerdown.prevent="handleModifier('ctrl')" @contextmenu.prevent>Ctl</button>
-          <button class="toolbar-btn modifier" :class="{ active: terminalKeys.activeModifiers.value.alt !== 'inactive', locked: terminalKeys.activeModifiers.value.alt === 'locked' }" @pointerdown.prevent="handleModifier('alt')" @contextmenu.prevent>Alt</button>
-          <button class="toolbar-btn" @pointerdown.prevent="terminalKeys.sendCtrlC(); focusTerminal()" :title="'Ctrl+C'">C-C</button>
-          <button class="toolbar-btn" @pointerdown.prevent="session.sendInput('/'); focusTerminal()">/</button>
-          <button class="toolbar-btn" @pointerdown.prevent="session.sendInput('-'); focusTerminal()">-</button>
-          <button class="toolbar-btn" @pointerdown.prevent="session.sendInput('|'); focusTerminal()">|</button>
-          <button class="toolbar-btn" @pointerdown.prevent="session.sendInput('_'); focusTerminal()">_</button>
+          <button class="toolbar-btn" @click="terminalKeys.sendEscape(); focusTerminal()" :title="'Esc'">Esc</button>
+          <button class="toolbar-btn" @click="terminalKeys.sendTab(); focusTerminal()" :title="'Tab'">Tab</button>
+          <button class="toolbar-btn modifier" :class="{ active: terminalKeys.activeModifiers.value.ctrl !== 'inactive', locked: terminalKeys.activeModifiers.value.ctrl === 'locked' }" @click="handleModifier('ctrl')" @contextmenu.prevent>Ctl</button>
+          <button class="toolbar-btn modifier" :class="{ active: terminalKeys.activeModifiers.value.alt !== 'inactive', locked: terminalKeys.activeModifiers.value.alt === 'locked' }" @click="handleModifier('alt')" @contextmenu.prevent>Alt</button>
+          <button class="toolbar-btn" @click="terminalKeys.sendCtrlC(); focusTerminal()" :title="'Ctrl+C'">C-C</button>
+          <button class="toolbar-btn" @click="session.sendInput('/'); focusTerminal()">/</button>
+          <button class="toolbar-btn" @click="session.sendInput('-'); focusTerminal()">-</button>
+          <button class="toolbar-btn" @click="session.sendInput('|'); focusTerminal()">|</button>
+          <button class="toolbar-btn" @click="session.sendInput('_'); focusTerminal()">_</button>
           <button v-if="quickCommands.length > 0" class="toolbar-btn" @click="showCommands = !showCommands" :title="t('terminal.quickCommands')">
             <ListIcon :size="14" />
           </button>
