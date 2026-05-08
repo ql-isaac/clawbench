@@ -72,6 +72,11 @@ func main() {
 		os.Exit(cli.RunTaskCommand(os.Args[2:]))
 	}
 
+	// RAG subcommand dispatch (e.g., "clawbench rag search -q ...")
+	if len(os.Args) > 1 && os.Args[1] == "rag" {
+		os.Exit(cli.RunRAGCommand(os.Args[2:]))
+	}
+
 	// Parse CLI flags
 	devMode := false
 	cliPort := 0
