@@ -12,7 +12,7 @@
       <div v-if="loading" class="task-loading">{{ t('common.loading') }}</div>
       <div v-else-if="tasks.length === 0" class="task-empty">{{ t('task.noTasks') }}</div>
       <div v-for="task in tasks" :key="task.id" class="task-item" :class="[task.status, { 'has-unread': task.unreadCount > 0 }]">
-        <div class="task-item-main" @click="openExecDialog(task)">
+        <div class="task-item-main" @click="openEditDialog(task)">
           <div class="task-item-info">
             <div class="task-item-header">
               <span class="task-item-icon">{{ getAgentIcon(task.agentId) }}</span>
@@ -31,14 +31,8 @@
             </div>
           </div>
           <div class="task-item-actions">
-            <button class="task-action-btn edit" @click.stop="openEditDialog(task)" :title="t('common.edit')">
-              <Pencil :size="14" />
-            </button>
-            <button v-if="task.status === 'active'" class="task-action-btn pause" @click.stop="pauseTask(task.id)" :title="t('task.pause')">
-              <Pause :size="14" />
-            </button>
-            <button v-if="task.status === 'paused'" class="task-action-btn resume" @click.stop="resumeTask(task.id)" :title="t('task.resume')">
-              <Play :size="14" />
+            <button class="task-action-btn history" @click.stop="openExecDialog(task)" :title="t('task.exec.title')">
+              <History :size="14" />
             </button>
             <button class="task-action-btn delete" @click.stop="deleteTask(task.id)" :title="t('common.delete')">
               <Trash2 :size="14" />
@@ -64,7 +58,7 @@
 </template>
 
 <script setup>
-import { Clock, Plus, Pencil, Pause, Play, Trash2 } from 'lucide-vue-next'
+import { Clock, Plus, History, Trash2 } from 'lucide-vue-next'
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BottomSheet from '@/components/common/BottomSheet.vue'
@@ -145,24 +139,6 @@ async function onFormSaved() {
   loadTasks()
 }
 
-async function pauseTask(id) {
-  await fetch(`/api/tasks/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'pause' }),
-  })
-  await loadTasks()
-}
-
-async function resumeTask(id) {
-  await fetch(`/api/tasks/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'resume' }),
-  })
-  await loadTasks()
-}
-
 async function deleteTask(id) {
   if (!await dialog.confirm(t('task.confirmDelete'), { dangerous: true })) return
   try {
@@ -204,8 +180,8 @@ watch(() => props.open, async (val) => {
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 6px;
+  gap: 0;
+  padding: 4px 0;
   min-height: 0;
   overflow-y: auto;
   flex: 1;
@@ -213,46 +189,70 @@ watch(() => props.open, async (val) => {
 
 .task-loading,
 .task-empty {
-  padding: 24px 12px;
+  padding: 32px 12px;
   text-align: center;
   color: var(--text-muted, #999);
   font-size: 13px;
 }
 
 .task-item {
-  border-radius: 6px;
-  border: 1px solid var(--border-color, #e5e5e5);
-  overflow: hidden;
+  position: relative;
 }
 
 .task-item.completed {
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .task-item-main {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 10px 16px;
   cursor: pointer;
+  transition: background 0.15s;
+  gap: 8px;
+}
+
+@media (hover: hover) {
+  .task-item-main:hover {
+    background: var(--bg-tertiary, rgba(0, 0, 0, 0.03));
+  }
+}
+
+.task-item-main:active {
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
+}
+
+.task-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: var(--border-color, #e5e5e5);
+  opacity: 0.5;
 }
 
 .task-item-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .task-item-header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  min-width: 0;
 }
 
 .task-item-icon {
   font-size: 14px;
+  flex-shrink: 0;
 }
 
 .task-item-name {
@@ -262,6 +262,8 @@ watch(() => props.open, async (val) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .task-item-unread {
@@ -274,6 +276,7 @@ watch(() => props.open, async (val) => {
   flex-shrink: 0;
   min-width: 14px;
   text-align: center;
+  line-height: 1.3;
 }
 
 .task-item.has-unread .task-item-icon {
@@ -293,19 +296,20 @@ watch(() => props.open, async (val) => {
 
 .task-item-status {
   font-size: 9px;
-  padding: 1px 4px;
+  padding: 1px 5px;
   border-radius: 3px;
   font-weight: 500;
   flex-shrink: 0;
+  line-height: 1.4;
 }
 
 .task-item-status.active {
-  background: rgba(34, 197, 94, 0.15);
+  background: rgba(34, 197, 94, 0.12);
   color: #22c55e;
 }
 
 .task-item-status.paused {
-  background: rgba(234, 179, 8, 0.15);
+  background: rgba(234, 179, 8, 0.12);
   color: #eab308;
 }
 
@@ -315,8 +319,8 @@ watch(() => props.open, async (val) => {
 }
 
 .task-item-running-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--success-color, #22c55e);
   flex-shrink: 0;
@@ -334,27 +338,42 @@ watch(() => props.open, async (val) => {
   gap: 6px;
   font-size: 11px;
   color: var(--text-muted, #999);
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: wrap;
+}
+
+.task-item-cron {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
 }
 
 .task-item-next {
   font-size: 10px;
   color: var(--text-muted, #999);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-item-progress {
   font-weight: 500;
   color: var(--accent-color, #0066cc);
+  flex-shrink: 0;
 }
 
 .task-item-actions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
+  align-self: center;
 }
 
 .task-action-btn {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: none;
   color: var(--text-muted, #999);
@@ -364,16 +383,28 @@ watch(() => props.open, async (val) => {
   justify-content: center;
   border-radius: 4px;
   transition: all 0.15s;
+  opacity: 0;
+}
+
+.task-item-main:hover .task-action-btn,
+.task-action-btn:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .task-action-btn {
+    opacity: 0.6;
+  }
 }
 
 .task-action-btn:hover {
   color: var(--text-secondary, #666);
-  background: var(--bg-tertiary, #f0f0f0);
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
 }
 
 .task-action-btn.delete:hover {
   color: #dc3545;
-  background: var(--bg-tertiary, #f0f0f0);
+  background: rgba(220, 53, 69, 0.08);
 }
 
 .task-action-btn.exec.has-unread {

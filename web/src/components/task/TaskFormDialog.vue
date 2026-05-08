@@ -152,6 +152,15 @@
     </div>
 
     <template #footer>
+      <template v-if="mode === 'edit' && task">
+        <button v-if="task.status === 'active'" class="btn btn-warn" :disabled="saving" @click="pauseTask">
+          <Pause :size="13" /> {{ t('task.pause') }}
+        </button>
+        <button v-if="task.status === 'paused'" class="btn btn-success" :disabled="saving" @click="resumeTask">
+          <Play :size="13" /> {{ t('task.resume') }}
+        </button>
+        <span class="footer-spacer"></span>
+      </template>
       <button class="btn btn-primary" :disabled="saving" @click="submit">
         {{ mode === 'create' ? t('task.form.create') : t('task.form.save') }}
       </button>
@@ -163,7 +172,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Clock } from 'lucide-vue-next'
+import { Clock, Pause, Play } from 'lucide-vue-next'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useAgents } from '@/composables/useAgents.ts'
 import { humanizeCron } from '@/utils/format.ts'
@@ -330,6 +339,41 @@ async function submit() {
     emit('saved')
   } catch (err) {
     errors.value = { cronExpr: err.message || t('common.networkError') }
+  } finally {
+    saving.value = false
+  }
+}
+
+// Pause / Resume task
+async function pauseTask() {
+  if (!form.value.id || saving.value) return
+  saving.value = true
+  try {
+    await fetch(`/api/tasks/${form.value.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'pause' }),
+    })
+    emit('saved')
+  } catch (err) {
+    console.error('Failed to pause task:', err)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function resumeTask() {
+  if (!form.value.id || saving.value) return
+  saving.value = true
+  try {
+    await fetch(`/api/tasks/${form.value.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resume' }),
+    })
+    emit('saved')
+  } catch (err) {
+    console.error('Failed to resume task:', err)
   } finally {
     saving.value = false
   }
@@ -614,4 +658,28 @@ watch(() => props.open, (isOpen) => {
 }
 
 .btn-secondary:hover { background: #e0e0e0; }
+
+.footer-spacer {
+  flex: 1;
+}
+
+.btn-warn {
+  background: rgba(234, 179, 8, 0.12);
+  color: #eab308;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.btn-warn:hover { background: rgba(234, 179, 8, 0.2); }
+
+.btn-success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.btn-success:hover { background: rgba(34, 197, 94, 0.2); }
 </style>
