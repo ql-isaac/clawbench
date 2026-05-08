@@ -16,7 +16,7 @@ type ChatRequest struct {
 	Command               string // optional: custom command path for the AI backend CLI
 	AgentID               string // agent ID for logging and persistence
 	Resume                bool   // If true, resume an existing session instead of creating new
-	ScheduledExecution    bool   // If true, this is a scheduled task execution — block schedule-proposal creation
+	ScheduledExecution    bool   // If true, this is a scheduled task execution — skill-level anti-recursion block
 	AssistantMessageCount int    // Number of finalized assistant messages in the session (0 for new sessions)
 }
 

@@ -599,7 +599,7 @@ func executeStreamRun(
 	}
 }
 
-// finalizeStreamRun handles the finalize phase of a stream run: schedule-proposal detection,
+// finalizeStreamRun handles the finalize phase of a stream run: ask-question detection,
 // DB finalization, raw output saving, and determining the result.
 // It does NOT send a terminal SSE event.
 func finalizeStreamRun(
@@ -620,20 +620,6 @@ func finalizeStreamRun(
 			slog.String("session", sessionID),
 		)
 		blocks = convertAskQuestionBlocks(blocks)
-	}
-
-	// Detect <schedule-proposal> in the fully accumulated text blocks.
-	if !chatReq.ScheduledExecution {
-		for i := range blocks {
-			if blocks[i].Type == "text" && strings.Contains(blocks[i].Text, "<schedule-proposal") {
-				slog.Info("detected schedule-proposal tag in accumulated text block",
-					slog.String("session", sessionID),
-				)
-				if taskIDs := detectAndCreateScheduleProposals(blocks[i].Text, projectPath, sessionID, agentID); len(taskIDs) > 0 {
-					blocks[i].Text = injectTaskIDsIntoProposals(blocks[i].Text, taskIDs)
-				}
-			}
-		}
 	}
 
 	// Compute wall-clock duration and inject into metadata
@@ -840,137 +826,6 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// scheduleProposalRe matches <schedule-proposal>...</schedule-proposal> tags (compiled once at package level).
-var scheduleProposalRe = regexp.MustCompile(`<schedule-proposal\b[^>]*>([\s\S]*?)</schedule-proposal>`)
-
-// detectAndCreateScheduleProposals detects all <schedule-proposal> tags in text and automatically creates scheduled tasks.
-// It extracts the JSON content from each tag, validates it, and creates the task.
-// Errors are logged but don't interrupt the stream - the proposal tag is preserved for frontend display.
-// Returns a slice of created task IDs (one per successfully created proposal), in tag order.
-func detectAndCreateScheduleProposals(text, projectPath, sessionID, agentID string) []string {
-	allMatches := scheduleProposalRe.FindAllStringSubmatch(text, -1)
-	if len(allMatches) == 0 {
-		return nil
-	}
-
-	var taskIDs []string
-	for _, matches := range allMatches {
-		if len(matches) < 2 {
-			continue
-		}
-
-		jsonStr := strings.TrimSpace(matches[1])
-
-		// Parse the JSON
-		var proposal struct {
-			Name       string `json:"name"`
-			CronExpr   string `json:"cron_expr"`
-			AgentID    string `json:"agent_id"`
-			Prompt     string `json:"prompt"`
-			RepeatMode string `json:"repeat_mode"`
-			MaxRuns    int    `json:"max_runs"`
-		}
-
-		if err := json.Unmarshal([]byte(jsonStr), &proposal); err != nil {
-			slog.Error("failed to parse schedule proposal JSON",
-				slog.String("session", sessionID),
-				slog.String("error", err.Error()),
-			)
-			taskIDs = append(taskIDs, "") // preserve position for injectTaskIDsIntoProposals
-			continue
-		}
-
-		// Validate required fields
-		if proposal.Name == "" || proposal.CronExpr == "" || proposal.AgentID == "" || proposal.Prompt == "" {
-			slog.Error("schedule proposal missing required fields",
-				slog.String("session", sessionID),
-				slog.String("name", proposal.Name),
-				slog.String("cron_expr", proposal.CronExpr),
-				slog.String("agent_id", proposal.AgentID),
-				slog.String("prompt", proposal.Prompt),
-			)
-			taskIDs = append(taskIDs, "")
-			continue
-		}
-
-		// Use the agent from the proposal if specified, otherwise use the session's agent
-		effectiveAgentID := proposal.AgentID
-		if effectiveAgentID == "" {
-			effectiveAgentID = agentID
-		}
-
-		// Set defaults
-		if proposal.RepeatMode == "" {
-			proposal.RepeatMode = "unlimited"
-		}
-
-		// Create the task
-		task := &model.ScheduledTask{
-			ProjectPath: projectPath,
-			Name:        proposal.Name,
-			CronExpr:    proposal.CronExpr,
-			AgentID:     effectiveAgentID,
-			Prompt:      proposal.Prompt,
-			RepeatMode:  proposal.RepeatMode,
-			MaxRuns:     proposal.MaxRuns,
-			SessionID:   sessionID,
-		}
-
-		if err := service.GlobalScheduler.AddTask(task); err != nil {
-			slog.Error("failed to create scheduled task from proposal",
-				slog.String("session", sessionID),
-				slog.String("task_name", proposal.Name),
-				slog.String("error", err.Error()),
-			)
-			taskIDs = append(taskIDs, "")
-			continue
-		}
-
-		slog.Info("automatically created scheduled task from proposal",
-			slog.String("session", sessionID),
-			slog.String("task_id", task.ID),
-			slog.String("task_name", proposal.Name),
-			slog.String("cron_expr", proposal.CronExpr),
-		)
-		taskIDs = append(taskIDs, task.ID)
-	}
-	return taskIDs
-}
-
-// injectTaskIDsIntoProposals adds a "task_id" field to the JSON inside each <schedule-proposal> tag.
-// taskIDs is a slice of task IDs in the same order as the tags appear in the text.
-// Empty strings in taskIDs are skipped (tag is left unchanged).
-// This allows the frontend to link each proposal card to the created task for editing.
-func injectTaskIDsIntoProposals(text string, taskIDs []string) string {
-	idx := 0
-	return scheduleProposalRe.ReplaceAllStringFunc(text, func(match string) string {
-		if idx >= len(taskIDs) {
-			return match
-		}
-		taskID := taskIDs[idx]
-		idx++
-		if taskID == "" {
-			return match // preserve the original tag unchanged
-		}
-
-		// Extract JSON from this match
-		subMatches := scheduleProposalRe.FindStringSubmatch(match)
-		if len(subMatches) < 2 {
-			return match
-		}
-		var proposal map[string]any
-		if err := json.Unmarshal([]byte(strings.TrimSpace(subMatches[1])), &proposal); err != nil {
-			return match
-		}
-		proposal["task_id"] = taskID
-		updatedJSON, err := json.Marshal(proposal)
-		if err != nil {
-			return match
-		}
-		return "<schedule-proposal>" + string(updatedJSON) + "</schedule-proposal>"
-	})
 }
 
 // stringsContainsAnyBlock checks if any text ContentBlock contains the given substring.

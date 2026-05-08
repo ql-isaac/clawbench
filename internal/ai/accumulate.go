@@ -36,9 +36,6 @@ func AccumulateBlock(blocks *[]model.ContentBlock, event StreamEvent) {
 
 	switch event.Type {
 	case "content":
-		// Note: <schedule-proposal> detection is done in finalize phase on
-		// the fully accumulated text, not here on incremental deltas — the
-		// tag spans multiple delta events and is never complete in any single one.
 		// Coalesce incremental content deltas into the most recent text block.
 		if idx, found := findLastBlockOfType("text"); found {
 			(*blocks)[idx].Text += event.Content
