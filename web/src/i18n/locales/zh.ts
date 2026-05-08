@@ -171,6 +171,7 @@ export default {
       delete: '删除',
       lastRun: '上次',
       nextRun: '下次',
+      status: '状态：',
       statusActive: '运行中',
       statusRunning: '执行中',
       statusPaused: '已暂停',

@@ -171,6 +171,7 @@ export default {
       delete: 'Delete',
       lastRun: 'Last',
       nextRun: 'Next',
+      status: 'Status:',
       statusActive: 'Active',
       statusRunning: 'Running',
       statusPaused: 'Paused',

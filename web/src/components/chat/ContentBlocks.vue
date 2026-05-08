@@ -64,6 +64,7 @@
             <div class="stask-row"><strong>{{ t('chat.contentBlocks.executor') }}</strong>{{ getAgentIcon(blockTasks[sKey].task.agentId) }} {{ getAgentName(blockTasks[sKey].task.agentId) }}</div>
             <div class="stask-row"><strong>{{ t('chat.contentBlocks.repeat') }}</strong>{{ repeatLabel(blockTasks[sKey].task.repeatMode, blockTasks[sKey].task.maxRuns) }}</div>
             <div class="stask-status">
+              <strong>{{ t('chat.contentBlocks.status') }}</strong>
               <span class="stask-status-dot" :class="statusClass(blockTasks[sKey].task)"></span>
               {{ statusLabel(blockTasks[sKey].task) }}
             </div>
