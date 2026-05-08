@@ -75,7 +75,11 @@ func NewStore(dbPath string) (*Store, error) {
 
 // InitStore creates the RAG store using the standard .clawbench location.
 func InitStore() (*Store, error) {
-	dbPath := filepath.Join(model.BinDir, ".clawbench", "rag.duckdb")
+	dbName := "rag.duckdb"
+	if model.DevMode {
+		dbName = "rag-dev.duckdb"
+	}
+	dbPath := filepath.Join(model.BinDir, ".clawbench", dbName)
 	return NewStore(dbPath)
 }
 

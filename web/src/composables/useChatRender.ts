@@ -21,20 +21,31 @@ export function useChatRender(options) {
     updateRenderedContents(true)
   })
 
-  // Sync blockTasks with latest task data from store (global polling updates store.state.tasks)
+  // Sync blockTasks with latest task data from store (global polling updates store.state.tasks).
+  // Use a tasks Map for O(1) lookup instead of .find() on every key, and avoid deep: true
+  // which triggers expensive recursive comparison on the entire tasks array every 2s.
   watch(() => store.state.tasks, (tasks) => {
-    if (!tasks) return
-    for (const key of Object.keys(blockTasks)) {
+    if (!tasks || tasks.length === 0) return
+    const keys = Object.keys(blockTasks)
+    if (keys.length === 0) return
+    // Build a Map for O(1) task lookup by ID
+    const taskMap = new Map(tasks.map(t => [t.id, t]))
+    let changed = false
+    for (const key of keys) {
       const entry = blockTasks[key]
       if (entry.deleted || !entry.task) continue
-      const updated = tasks.find(t => t.id === entry.taskId)
+      const updated = taskMap.get(entry.taskId)
       if (!updated) {
         entry.deleted = true
-      } else {
+        changed = true
+      } else if (updated !== entry.task) {
         entry.task = updated
+        changed = true
       }
     }
-  }, { deep: true })
+    // If nothing changed, skip reactive notification to prevent unnecessary re-renders
+    // (Vue's reactive() tracks mutations; only trigger if we actually changed something)
+  })
 
   async function fetchTaskData(key, taskId) {
     if (blockTasks[key]?.task || blockTasks[key]?.loading) return
@@ -244,7 +255,9 @@ export function useChatRender(options) {
         for (let bi = 0; bi < msg.blocks.length; bi++) {
           const block = msg.blocks[bi]
           if (block.type === 'text') {
-            // Extract all <scheduled-task id="..." /> tags
+            // Extract <scheduled-task id="..." /> tags only.
+            // <ask-question> parsing is handled lazily in renderTextBlock()
+            // to avoid duplicating expensive regex work on every session load.
             const scheduledTaskRegex = /<scheduled-task\s+id="([^"]+)"\s*\/>/g
             let tagIdx = 0
             let match
@@ -254,54 +267,6 @@ export function useChatRender(options) {
               const key = `${msg.id}-${bi}-${tagIdx}`
               fetchTaskData(key, taskId)
               tagIdx++
-            }
-            // Also extract <ask-question> tags for interactive rendering.
-            // Same two-pass strategy as renderTextBlock: standard match first,
-            // then fallback for unclosed tags (missing </ask-question>).
-            // The fallback iterates from the LAST <ask-question> occurrence backward
-            // to skip prose references and find the real structured question.
-            const askKey = `${msg.id}-${bi}`
-            if (!blockAskQuestions[askKey]) {
-              let askMatch = block.text.match(/<ask-question\b[^>]*>([\s\S]*?)<\/ask-question>/)
-              if (!askMatch) {
-                // Fallback: unclosed tag — find the LAST <ask-question> and capture
-                // from it to end-of-text. Earlier matches are likely prose references.
-                const allOpenTags = [...block.text.matchAll(/<ask-question\b[^>]*>/g)]
-                for (let j = allOpenTags.length - 1; j >= 0; j--) {
-                  const startIdx = allOpenTags[j].index
-                  const afterTag = block.text.slice(startIdx)
-                  const subMatch = afterTag.match(/<ask-question\b[^>]*>([\s\S]+)$/)
-                  if (!subMatch) continue
-                  let probe = subMatch[1].trim()
-                  if (probe.startsWith('```')) {
-                    const nlIdx = probe.indexOf('\n')
-                    if (nlIdx !== -1) probe = probe.slice(nlIdx + 1).trim()
-                  }
-                  if (!probe.startsWith('{') && !probe.startsWith('[')) {
-                    continue // Prose reference, not a real payload
-                  }
-                  askMatch = subMatch
-                  break
-                }
-              }
-              if (askMatch) {
-                try {
-                  let askContent = askMatch[1].trim()
-                  // Strip markdown code fences (```json ... ```) that some models wrap around the JSON
-                  if (askContent.startsWith('```')) {
-                    const nlIdx = askContent.indexOf('\n')
-                    if (nlIdx !== -1) askContent = askContent.slice(nlIdx + 1).trim()
-                    const lastFence = askContent.lastIndexOf('```')
-                    if (lastFence !== -1) askContent = askContent.slice(0, lastFence).trim()
-                  }
-                  const questions = JSON.parse(askContent)
-                  if (questions.questions && Array.isArray(questions.questions)) {
-                    blockAskQuestions[askKey] = questions
-                  }
-                } catch (e) {
-                  console.error('Failed to parse ask-question:', e)
-                }
-              }
             }
           }
         }

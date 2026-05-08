@@ -97,7 +97,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { handleToolAction, shouldAutoExpandTool } from '@/utils/renderToolDetail.ts'
 import { getToolIcon } from '@/utils/icons'
@@ -181,22 +181,35 @@ function blockTaskKey(bi) {
   return `${props.msgId}-${bi}`
 }
 
-// Check if a block has any scheduled tasks (key prefix matches)
-function hasScheduledTasks(bi) {
+// Pre-computed index: block index → sorted array of scheduled task keys.
+// Built once when blockTasks keys change, avoiding O(n) scan per block per render.
+const taskKeyIndex = computed(() => {
   const msgIdVal = props.msgId
-  if (!msgIdVal) return false
-  const prefix = `${msgIdVal}-${bi}-`
-  return Object.keys(props.blockTasks).some(k => k.startsWith(prefix))
+  if (!msgIdVal) return {}
+  const index = {}
+  const prefix = `${msgIdVal}-`
+  for (const k of Object.keys(props.blockTasks)) {
+    if (!k.startsWith(prefix)) continue
+    // Key format: "msgId-blockIdx-tagIdx" — extract blockIdx
+    const rest = k.slice(prefix.length)
+    const dashIdx = rest.indexOf('-')
+    if (dashIdx === -1) continue
+    const bi = rest.slice(0, dashIdx)
+    ;(index[bi] || (index[bi] = [])).push(k)
+  }
+  // Sort each group by key (tag index is already part of the key string)
+  for (const bi of Object.keys(index)) index[bi].sort()
+  return index
+})
+
+// Check if a block has any scheduled tasks
+function hasScheduledTasks(bi) {
+  return !!(taskKeyIndex.value[bi]?.length)
 }
 
 // Return all scheduled task keys for a block, sorted by tag index
 function scheduledTaskKeys(bi) {
-  const msgIdVal = props.msgId
-  if (!msgIdVal) return []
-  const prefix = `${msgIdVal}-${bi}-`
-  return Object.keys(props.blockTasks)
-    .filter(k => k.startsWith(prefix))
-    .sort()
+  return taskKeyIndex.value[bi] || []
 }
 
 function statusClass(task) {

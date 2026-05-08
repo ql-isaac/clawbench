@@ -362,11 +362,13 @@ watch(() => props.open, async (isOpen) => {
 // and the directory has changed (e.g. user clicked "Open terminal here"
 // on a different directory in the file manager)
 watch(() => store.state.currentDir, async (newDir) => {
+  console.log('[terminal watch] currentDir changed:', newDir, 'open:', props.open, 'connectionState:', connectionState.value, 'currentCwd:', currentCwd.value)
   if (!props.open || connectionState.value !== 'connected') return
   // currentCwd is absolute; compute expected absolute cwd from currentDir
   const expectedCwd = newDir
     ? store.state.projectRoot + '/' + newDir
     : store.state.projectRoot
+  console.log('[terminal watch] expectedCwd:', expectedCwd, 'vs currentCwd:', currentCwd.value, 'match:', currentCwd.value === expectedCwd)
   if (currentCwd.value === expectedCwd) return
   await handleRebuild()
 })
@@ -436,15 +438,17 @@ function handleClose() {
 }
 
 async function handleRebuild() {
+  console.log('[terminal rebuild] starting, computeCwd:', computeCwd(), 'currentCwd:', currentCwd.value)
   terminalKeys.reset()
   showCommands.value = false
   rebuilding.value = true
 
   // Close session via HTTP API (synchronous — ensures PTY is dead and m.session = nil)
   try {
-    await fetch('/api/terminal/close', { method: 'POST' })
-  } catch {
-    // Ignore — best effort
+    const resp = await fetch('/api/terminal/close', { method: 'POST' })
+    console.log('[terminal rebuild] close response:', resp.status)
+  } catch (e) {
+    console.warn('[terminal rebuild] close failed:', e)
   }
 
   // Reset session state (closes WS, clears errors, resets reconnect counter)
@@ -456,10 +460,14 @@ async function handleRebuild() {
   }
 
   // Reconnect with current cwd — backend will create a new session
+  const wsUrl = getWsUrl()
+  console.log('[terminal rebuild] connecting to:', wsUrl)
   try {
     await session.connect()
+    console.log('[terminal rebuild] connected, currentCwd:', currentCwd.value)
     focusTerminal()
-  } catch {
+  } catch (e) {
+    console.error('[terminal rebuild] connect failed:', e)
     // Error will be shown via overlay
   } finally {
     rebuilding.value = false
