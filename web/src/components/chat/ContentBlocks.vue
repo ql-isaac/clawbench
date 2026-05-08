@@ -224,11 +224,12 @@ function statusClass(task) {
 
 function statusLabel(task) {
   if (task.status === 'active') {
-    if (task.runningCount > 0) return `Running (${task.runCount} executions)`
-    return `Active (${task.runCount} executions)`
+    const execLabel = t('chat.contentBlocks.statusExecutions', { count: task.runCount })
+    if (task.runningCount > 0) return `${t('chat.contentBlocks.statusRunning')} (${execLabel})`
+    return `${t('chat.contentBlocks.statusActive')} (${execLabel})`
   }
-  if (task.status === 'paused') return 'Paused'
-  if (task.status === 'completed') return 'Completed'
+  if (task.status === 'paused') return t('chat.contentBlocks.statusPaused')
+  if (task.status === 'completed') return t('chat.contentBlocks.statusCompleted')
   return task.status
 }
 
@@ -238,9 +239,9 @@ function formatTime(iso) {
   const now = new Date()
   const diff = d.getTime() - now.getTime()
   const absDiff = Math.abs(diff)
-  if (absDiff < 60000) return 'just now'
-  if (absDiff < 3600000) return `${Math.round(absDiff / 60000)}m ${diff > 0 ? 'from now' : 'ago'}`
-  if (absDiff < 86400000) return `${Math.round(absDiff / 3600000)}h ${diff > 0 ? 'from now' : 'ago'}`
+  if (absDiff < 60000) return t('chat.contentBlocks.justNow')
+  if (absDiff < 3600000) return `${Math.round(absDiff / 60000)}m ${diff > 0 ? t('chat.contentBlocks.fromNow') : t('chat.contentBlocks.ago')}`
+  if (absDiff < 86400000) return `${Math.round(absDiff / 3600000)}h ${diff > 0 ? t('chat.contentBlocks.fromNow') : t('chat.contentBlocks.ago')}`
   return d.toLocaleDateString()
 }
 
