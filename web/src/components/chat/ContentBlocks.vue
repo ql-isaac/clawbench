@@ -40,40 +40,51 @@
         <AlertCircle :size="14" class="warning-icon" />
         <span class="warning-text">{{ getWarningText(block) }}</span>
       </div>
-      <!-- Schedule proposal card(s) (inline in message) — must come before generic text block -->
-      <template v-else-if="block.type === 'text' && hasProposals(bi)">
-        <!-- Surrounding text (with proposal tags stripped) -->
+      <!-- Scheduled task card(s) (inline in message) — must come before generic text block -->
+      <template v-else-if="block.type === 'text' && hasScheduledTasks(bi)">
         <div v-if="getBlockHtml(bi, block)" v-html="getBlockHtml(bi, block)"></div>
-        <div v-for="(pKey, pIdx) in proposalKeys(bi)" :key="pIdx" class="schedule-proposal-card" :class="{ deleted: blockProposals[pKey].deleted }">
-          <div class="proposal-header">
-            <span v-if="blockProposals[pKey].deleted" class="proposal-icon">🗑️</span>
-            <span v-else class="proposal-icon">⏰</span>
-            <template v-if="blockProposals[pKey].deleted">{{ t('chat.contentBlocks.taskDeleted') }}</template>
-            <template v-else>{{ t('chat.contentBlocks.scheduledTaskCreated') }}</template>
-            <button v-if="!blockProposals[pKey].deleted && blockProposals[pKey].proposal.task_id" class="proposal-edit-btn" @click.stop="$emit('edit-task', blockProposals[pKey].proposal.task_id)" :title="t('chat.contentBlocks.edit')">
+        <div v-for="(sKey, sIdx) in scheduledTaskKeys(bi)" :key="sIdx" class="scheduled-task-card" :class="{ deleted: blockTasks[sKey].deleted }">
+          <div class="stask-header">
+            <span v-if="blockTasks[sKey].deleted" class="stask-icon">🗑️</span>
+            <span v-else class="stask-icon">⏰</span>
+            <template v-if="blockTasks[sKey].deleted">{{ t('chat.contentBlocks.taskDeleted') }}</template>
+            <template v-else-if="blockTasks[sKey].loading">Loading...</template>
+            <template v-else>{{ blockTasks[sKey].task?.name || 'Scheduled Task' }}</template>
+            <button v-if="!blockTasks[sKey].deleted && !blockTasks[sKey].loading && blockTasks[sKey].task"
+                    class="stask-edit-btn" @click.stop="$emit('edit-task', blockTasks[sKey].taskId)" title="Edit">
               <Pencil :size="14" />
             </button>
           </div>
-          <div v-if="!blockProposals[pKey].deleted" class="proposal-body">
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.task') }}</strong>{{ blockProposals[pKey].proposal.name }}</div>
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.frequency') }}</strong>{{ humanizeCron(blockProposals[pKey].proposal.cron_expr) }}</div>
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.executor') }}</strong>{{ getAgentIcon(blockProposals[pKey].proposal.agent_id) }} {{ getAgentName(blockProposals[pKey].proposal.agent_id) }}</div>
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.repeat') }}</strong>{{ repeatLabel(blockProposals[pKey].proposal.repeat_mode, blockProposals[pKey].proposal.max_runs) }}</div>
-            <div class="proposal-row"><strong>{{ t('chat.contentBlocks.prompt') }}</strong>{{ truncate(blockProposals[pKey].proposal.prompt, 80) }}</div>
+          <div v-if="!blockTasks[sKey].deleted && !blockTasks[sKey].loading && blockTasks[sKey].task" class="stask-body">
+            <div class="stask-row"><strong>Frequency</strong>{{ humanizeCron(blockTasks[sKey].task.cronExpr) }}</div>
+            <div class="stask-row"><strong>Executor</strong>{{ getAgentIcon(blockTasks[sKey].task.agentId) }} {{ getAgentName(blockTasks[sKey].task.agentId) }}</div>
+            <div class="stask-row"><strong>Repeat</strong>{{ repeatLabel(blockTasks[sKey].task.repeatMode, blockTasks[sKey].task.maxRuns) }}</div>
+            <div class="stask-status">
+              <span class="stask-status-dot" :class="statusClass(blockTasks[sKey].task)"></span>
+              {{ statusLabel(blockTasks[sKey].task) }}
+            </div>
+            <div v-if="blockTasks[sKey].task.lastRunAt" class="stask-row"><strong>Last</strong>{{ formatTime(blockTasks[sKey].task.lastRunAt) }}</div>
+            <div v-if="blockTasks[sKey].task.nextRunAt" class="stask-row"><strong>Next</strong>{{ formatTime(blockTasks[sKey].task.nextRunAt) }}</div>
+            <div class="stask-actions">
+              <button v-if="blockTasks[sKey].task.status === 'active'" class="stask-action-btn" @click.stop="$emit('task-action', blockTasks[sKey].taskId, 'pause')">Pause</button>
+              <button v-if="blockTasks[sKey].task.status === 'paused'" class="stask-action-btn" @click.stop="$emit('task-action', blockTasks[sKey].taskId, 'resume')">Resume</button>
+              <button v-if="blockTasks[sKey].task.status === 'active' || blockTasks[sKey].task.status === 'paused'" class="stask-action-btn" @click.stop="$emit('task-action', blockTasks[sKey].taskId, 'trigger')">Run Now</button>
+              <button class="stask-action-btn stask-action-danger" @click.stop="$emit('task-action', blockTasks[sKey].taskId, 'delete')">Delete</button>
+            </div>
           </div>
         </div>
       </template>
       <!-- Ask question card (from <ask-question> XML tag in text) — must come before generic text block -->
-      <template v-else-if="block.type === 'text' && blockAskQuestions[blockProposalsKey(bi)]">
+      <template v-else-if="block.type === 'text' && blockAskQuestions[blockTaskKey(bi)]">
         <!-- Surrounding text (with ask-question tag stripped) -->
         <div v-if="getBlockHtml(bi, block)" v-html="getBlockHtml(bi, block)"></div>
         <div class="chat-tool-call done" data-category="ask" @click.stop="$emit('toggle-tool', key(bi))">
           <component :is="getToolIcon('AskUserQuestion').icon" :size="12" class="tool-icon" />
           <span class="tool-name">{{ t('tool.askUser.name') }}</span>
-          <span class="tool-summary">{{ askQuestionSummary(blockAskQuestions[blockProposalsKey(bi)]) }}</span>
+          <span class="tool-summary">{{ askQuestionSummary(blockAskQuestions[blockTaskKey(bi)]) }}</span>
           <CheckCircle2 :size="14" color="#f59e0b" class="tool-warn" />
         </div>
-        <div v-if="expandedTools[key(bi)] || true" class="tool-detail" data-tool-name="AskUserQuestion" @click="handleToolDetailClick" v-html="formatToolInput(blockAskQuestions[blockProposalsKey(bi)], 'AskUserQuestion')"></div>
+        <div v-if="expandedTools[key(bi)] || true" class="tool-detail" data-tool-name="AskUserQuestion" @click="handleToolDetailClick" v-html="formatToolInput(blockAskQuestions[blockTaskKey(bi)], 'AskUserQuestion')"></div>
       </template>
       <!-- Text block: streaming uses throttled render to avoid UI freeze -->
       <div v-else-if="block.type === 'text'" v-html="getBlockHtml(bi, block)"></div>
@@ -143,7 +154,7 @@ const props = defineProps({
   msgId: { type: [String, Number], default: '' },
   msgIndex: { type: Number, default: 0 },
   expandedTools: { type: Object, default: () => ({}) },
-  blockProposals: { type: Object, default: () => ({}) },
+  blockTasks: { type: Object, default: () => ({}) },
   blockAskQuestions: { type: Object, default: () => ({}) },
   streaming: { type: Boolean, default: false },
   cancelled: { type: Boolean, default: false },
@@ -158,37 +169,63 @@ const props = defineProps({
   getAgentName: { type: Function, default: () => '' },
 })
 
-const emit = defineEmits(['toggle-tool', 'edit-task', 'send-message', 'render-flush'])
+const emit = defineEmits(['toggle-tool', 'edit-task', 'task-action', 'send-message', 'render-flush'])
 
 // Key helper: use msgId if available, otherwise msgIndex
 function key(bi) {
   return props.msgId ? `db-${props.msgId}-${bi}` : `local-${props.msgIndex}-${bi}`
 }
 
-// Key for blockProposals lookup — prefix format used in useChatRender.ts
-function blockProposalsKey(bi) {
+// Key for blockTasks/blockAskQuestions lookup — prefix format used in useChatRender.ts
+function blockTaskKey(bi) {
   return `${props.msgId}-${bi}`
 }
 
-// Check if a block has any proposals (key prefix matches)
-function hasProposals(bi) {
-  const prefix = `${props.msgId}-${bi}-`
-  for (const key of Object.keys(props.blockProposals)) {
-    if (key.startsWith(prefix)) return true
-  }
-  return false
+// Check if a block has any scheduled tasks (key prefix matches)
+function hasScheduledTasks(bi) {
+  const msgIdVal = props.msgId
+  if (!msgIdVal) return false
+  const prefix = `${msgIdVal}-${bi}-`
+  return Object.keys(props.blockTasks).some(k => k.startsWith(prefix))
 }
 
-// Return all proposal keys for a block, sorted by proposal index
-function proposalKeys(bi) {
-  const prefix = `${props.msgId}-${bi}-`
-  return Object.keys(props.blockProposals)
-    .filter(key => key.startsWith(prefix))
-    .sort((a, b) => {
-      const idxA = parseInt(a.slice(prefix.length))
-      const idxB = parseInt(b.slice(prefix.length))
-      return idxA - idxB
-    })
+// Return all scheduled task keys for a block, sorted by tag index
+function scheduledTaskKeys(bi) {
+  const msgIdVal = props.msgId
+  if (!msgIdVal) return []
+  const prefix = `${msgIdVal}-${bi}-`
+  return Object.keys(props.blockTasks)
+    .filter(k => k.startsWith(prefix))
+    .sort()
+}
+
+function statusClass(task) {
+  if (task.status === 'active') return 'status-active'
+  if (task.status === 'paused') return 'status-paused'
+  if (task.status === 'completed') return 'status-completed'
+  return ''
+}
+
+function statusLabel(task) {
+  if (task.status === 'active') {
+    if (task.runningCount > 0) return `Running (${task.runCount} executions)`
+    return `Active (${task.runCount} executions)`
+  }
+  if (task.status === 'paused') return 'Paused'
+  if (task.status === 'completed') return 'Completed'
+  return task.status
+}
+
+function formatTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = new Date()
+  const diff = d.getTime() - now.getTime()
+  const absDiff = Math.abs(diff)
+  if (absDiff < 60000) return 'just now'
+  if (absDiff < 3600000) return `${Math.round(absDiff / 60000)}m ${diff > 0 ? 'from now' : 'ago'}`
+  if (absDiff < 86400000) return `${Math.round(absDiff / 3600000)}h ${diff > 0 ? 'from now' : 'ago'}`
+  return d.toLocaleDateString()
 }
 
 const thinkingExpanded = ref({})
@@ -526,78 +563,98 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
-.schedule-proposal-card {
+.scheduled-task-card {
   margin: 8px 0;
-  border: 1px solid color-mix(in srgb, var(--accent-color, #4a90d9) 30%, var(--border-color, #dee2e6));
+  border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--accent-color, #4a90d9) 6%, var(--bg-primary, #fff));
+  background: var(--bg-secondary, #f5f5f5);
 }
-
-.schedule-proposal-card.deleted {
-  opacity: 0.5;
-  border-color: var(--border-color, #dee2e6);
-  background: var(--bg-secondary);
+.scheduled-task-card.deleted {
+  opacity: 0.6;
+  border-style: dashed;
 }
-
-.schedule-proposal-card.deleted .proposal-header {
-  background: var(--bg-tertiary);
-  color: var(--text-muted, #999);
-  border-bottom-color: var(--border-color, #dee2e6);
-}
-
-.proposal-header {
+.stask-header {
   display: flex;
   align-items: center;
-  background: color-mix(in srgb, var(--accent-color, #4a90d9) 12%, transparent);
-  color: var(--accent-color, #4a90d9);
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent-color, #4a90d9) 15%, var(--border-color, #dee2e6));
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary, #eee);
+  font-weight: 500;
+  font-size: 0.9em;
 }
-
-.proposal-icon {
-  margin-right: 4px;
+.stask-icon {
+  font-size: 1.1em;
 }
-
-.proposal-edit-btn {
+.stask-edit-btn {
   margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
+  background: none;
   border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--accent-color, #4a90d9);
   cursor: pointer;
-  transition: background 0.15s;
+  color: var(--text-secondary, #666);
+  padding: 2px 4px;
+  border-radius: 4px;
 }
-
-.proposal-edit-btn:hover {
-  background: color-mix(in srgb, var(--accent-color, #4a90d9) 20%, transparent);
+.stask-edit-btn:hover {
+  background: var(--bg-hover, #ddd);
 }
-
-.proposal-edit-btn svg {
-  flex-shrink: 0;
-  opacity: 0.8;
+.stask-body {
+  padding: 8px 12px;
+  font-size: 0.85em;
 }
-
-.proposal-body {
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.6;
+.stask-row {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
 }
-
-.proposal-row {
-  margin-bottom: 4px;
+.stask-row strong {
+  min-width: 70px;
+  color: var(--text-secondary, #666);
 }
-
-.proposal-row strong {
-  color: var(--text-secondary, #495057);
+.stask-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.stask-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.stask-status-dot.status-active {
+  background: #4caf50;
+}
+.stask-status-dot.status-paused {
+  background: #ff9800;
+}
+.stask-status-dot.status-completed {
+  background: #9e9e9e;
+}
+.stask-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 6px;
+  flex-wrap: wrap;
+}
+.stask-action-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  background: var(--bg-secondary, #f5f5f5);
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.stask-action-btn:hover {
+  background: var(--bg-hover, #e0e0e0);
+}
+.stask-action-danger {
+  color: #d32f2f;
+  border-color: #d32f2f;
+}
+.stask-action-danger:hover {
+  background: #ffebee;
 }
 </style>
 
