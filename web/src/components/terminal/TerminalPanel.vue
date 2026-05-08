@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="terminal-header" @click.self="focusTerminal">
         <div class="terminal-header-left">
-          <TerminalIcon :size="16" />
+          <TerminalIcon :size="14" />
           <span class="terminal-title">{{ t('terminal.title') }}</span>
           <span v-if="currentCwd" class="terminal-cwd" :title="currentCwd">{{ shortCwd }}</span>
         </div>
@@ -581,11 +581,26 @@ function executeCommand(cmd: { label: string; command: string }) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 0 8px;
+  height: 28px;
+  border-bottom: none;
   flex-shrink: 0;
   background: var(--bg-secondary);
   gap: 8px;
+  position: relative;
+  z-index: 2;
+}
+
+.terminal-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 8px;
+  background: linear-gradient(to bottom, var(--bg-secondary), transparent);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .terminal-header-left {
@@ -597,7 +612,7 @@ function executeCommand(cmd: { label: string; command: string }) {
 
 .terminal-title {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
   white-space: nowrap;
   color: var(--text-primary);
 }
@@ -657,6 +672,9 @@ function executeCommand(cmd: { label: string; command: string }) {
   overflow: hidden;
   position: relative;
   background: #1e1e2e;
+  margin-top: -8px;
+  padding-top: 8px;
+  z-index: 1;
 }
 
 /* Hide xterm.js scrollbar — mobile terminal uses gestures/swipe for navigation,

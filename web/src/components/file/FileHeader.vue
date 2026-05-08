@@ -225,7 +225,7 @@ onBeforeUnmount(() => {
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 6px;
     margin-left: auto;
     flex-shrink: 0;
 }
