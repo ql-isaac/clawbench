@@ -80,11 +80,6 @@
             <button class="toolbar-btn" @click="terminalKeys.sendArrowRight(); focusTerminal()" title="→">→</button>
           </div>
           <div class="key-divider"></div>
-          <!-- Group: Edit -->
-          <div class="key-group">
-            <button class="toolbar-btn" @click="terminalKeys.sendDelete(); focusTerminal()" title="Delete">Del</button>
-          </div>
-          <div class="key-divider"></div>
           <!-- Group: Symbols -->
           <div class="key-group">
             <button class="toolbar-btn" @click="session.sendInput('/'); focusTerminal()">/</button>
