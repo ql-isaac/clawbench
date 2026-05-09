@@ -21,26 +21,26 @@ defineProps({
 <style>
 .toast {
     position: fixed;
-    bottom: 80px;
+    top: 8px;
     left: 0;
     right: 0;
     margin: 0 auto;
-    background: var(--accent-color, #4a90d9);
+    background: color-mix(in srgb, var(--accent-color) 85%, var(--bg-tertiary));
     color: #fff;
-    border-radius: 24px;
-    padding: 10px 18px;
+    border-radius: 16px;
+    padding: 6px 14px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     font-size: 13px;
     font-weight: 500;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-md);
     cursor: pointer;
     z-index: 9999;
     white-space: normal;
     width: fit-content;
-    min-width: 120px;
-    max-width: 95vw;
+    min-width: 80px;
+    max-width: 88vw;
     text-align: left;
     line-height: 1.4;
     -webkit-tap-highlight-color: transparent;
@@ -49,32 +49,32 @@ defineProps({
 }
 
 .toast-error {
-    background: rgba(185, 50, 50, 0.78);
+    background: color-mix(in srgb, #ef4444 78%, var(--bg-tertiary));
 }
 
 [data-theme="dark"] .toast-error {
-    background: rgba(140, 35, 35, 0.75);
+    background: color-mix(in srgb, #ef4444 55%, var(--bg-tertiary));
 }
 
 .toast-success {
-    background: #27ae60;
+    background: color-mix(in srgb, #22c55e 78%, var(--bg-tertiary));
 }
 
 [data-theme="dark"] .toast-success {
-    background: #1e8449;
+    background: color-mix(in srgb, #22c55e 55%, var(--bg-tertiary));
 }
 
 .toast-info {
-    background: #3498db;
+    background: color-mix(in srgb, var(--accent-color) 78%, var(--bg-tertiary));
 }
 
 [data-theme="dark"] .toast-info {
-    background: #2c3e50;
+    background: color-mix(in srgb, var(--accent-color) 55%, var(--bg-tertiary));
 }
 
 [data-theme="dark"] .toast {
-    background: #1a3a5c;
-    color: #e6edf3;
+    background: color-mix(in srgb, var(--accent-color) 40%, var(--bg-tertiary));
+    color: var(--text-primary);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
@@ -99,6 +99,6 @@ defineProps({
 .toast-enter-from,
 .toast-leave-to {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(-12px);
 }
 </style>
