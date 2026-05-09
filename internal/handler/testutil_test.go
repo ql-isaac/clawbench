@@ -143,7 +143,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			label TEXT NOT NULL,
 			command TEXT NOT NULL,
-			hidden INTEGER NOT NULL DEFAULT 0,
+			disabled INTEGER NOT NULL DEFAULT 0,
 			auto_execute INTEGER NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -153,7 +153,6 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			label TEXT NOT NULL,
 			command TEXT NOT NULL,
-			hidden INTEGER NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

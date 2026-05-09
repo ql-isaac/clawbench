@@ -98,7 +98,7 @@
           rows="1"
           @keydown.enter.exact.prevent="$emit('send', inputText.trim())"
           @blur="autoResizeTextarea"></textarea>
-        <button v-if="!stopPrimed" class="chat-send-btn" ref="sendBtnRef" :class="{ disabled: !hasInputContent && !hasQuickSend, queued: loading }" @click.stop="handleSendClick" :title="loading ? t('chat.input.enqueue') : t('chat.input.send')">
+        <button v-if="!stopPrimed" class="chat-send-btn" ref="sendBtnRef" :class="{ queued: loading }" @click.stop="handleSendClick" :title="loading ? t('chat.input.enqueue') : t('chat.input.send')">
           <!-- Queue mode: inbox with down arrow (enqueue) -->
           <Inbox v-if="loading" :size="16" />
           <!-- Normal mode: paper plane (send) -->
@@ -135,9 +135,9 @@
         </button>
       </PopupMenu>
       <!-- Teleported quick-send menu -->
-      <PopupMenu v-model:show="showQuickMenu" :target-element="sendBtnRef" anchor="right" :max-width="260" :max-height="280" :menu-items-count="visibleItems.length + 1">
+      <PopupMenu v-model:show="showQuickMenu" :target-element="sendBtnRef" anchor="right" :max-width="260" :max-height="280" :menu-items-count="quickSendItems.length + 1">
         <div class="quick-send-title">{{ t('chat.quickSend.title') }}</div>
-        <button v-for="item in visibleItems" :key="item.id" class="quick-send-item" @click="handleQuickSend(item.command)">
+        <button v-for="item in quickSendItems" :key="item.id" class="quick-send-item" @click="handleQuickSend(item.command)">
           {{ item.label }}
         </button>
         <div class="quick-send-divider" />
@@ -172,7 +172,7 @@ import { useQuickSend } from '@/composables/useQuickSend'
 const { t } = useI18n()
 const dialog = useDialog()
 const quickSendStore = useQuickSend()
-const { visibleItems, fetchItems } = quickSendStore
+const { items: quickSendItems, fetchItems } = quickSendStore
 
 const props = defineProps({
   inputDisabled: Boolean,
@@ -261,8 +261,6 @@ watch(() => props.currentSessionId, (newId, oldId) => {
 const uploadingFiles = computed(() => props.pendingFiles.filter(f => f.uploading))
 
 const hasInputContent = computed(() => inputText.value.trim() || props.pendingFiles.length > 0 || props.attachedFiles.length > 0)
-
-const hasQuickSend = computed(() => visibleItems.value.length > 0)
 
 // Extract recently referenced files from message history
 const recentReferencedFiles = computed(() => {
@@ -452,7 +450,7 @@ function handleSendClick() {
     emit('send', inputText.value.trim())
   } else if (props.pendingFiles.length > 0 || props.attachedFiles.length > 0) {
     emit('send', '')
-  } else if (visibleItems.value.length > 0) {
+  } else {
     toggleQuickMenu()
   }
 }

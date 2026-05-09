@@ -29,7 +29,6 @@ func ServeChatQuickSend(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Label   string `json:"label"`
 			Command string `json:"command"`
-			Hidden  bool   `json:"hidden"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -44,14 +43,14 @@ func ServeChatQuickSend(w http.ResponseWriter, r *http.Request) {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 			return
 		}
-		id, err := service.AddChatQuickSend(req.Label, req.Command, req.Hidden)
+		id, err := service.AddChatQuickSend(req.Label, req.Command)
 		if err != nil {
 			slog.Error("failed to add chat quick-send item", slog.String("error", err.Error()))
 			writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]any{
-			"id": id, "label": req.Label, "command": req.Command, "hidden": req.Hidden,
+			"id": id, "label": req.Label, "command": req.Command,
 		})
 
 	case http.MethodPut:
@@ -104,7 +103,6 @@ func ServeChatQuickSendByID(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Label   string `json:"label"`
 			Command string `json:"command"`
-			Hidden  bool   `json:"hidden"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -119,7 +117,7 @@ func ServeChatQuickSendByID(w http.ResponseWriter, r *http.Request) {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 			return
 		}
-		if err := service.UpdateChatQuickSend(id, req.Label, req.Command, req.Hidden); err != nil {
+		if err := service.UpdateChatQuickSend(id, req.Label, req.Command); err != nil {
 			slog.Error("failed to update chat quick-send item", slog.String("error", err.Error()))
 			writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
 			return

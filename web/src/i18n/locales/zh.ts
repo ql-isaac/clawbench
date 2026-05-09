@@ -108,7 +108,6 @@ export default {
       editItem: '编辑项目',
       itemLabel: '名称',
       itemCommand: '消息内容',
-      itemHidden: '隐藏（不在快捷菜单中显示）',
       itemRequired: '名称和消息内容不能为空',
       itemSaved: '项目已保存',
       itemDeleted: '项目已删除',

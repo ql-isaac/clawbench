@@ -158,7 +158,6 @@ func InitDB(runFromServer ...bool) error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			label TEXT NOT NULL,
 			command TEXT NOT NULL,
-			hidden INTEGER NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -362,13 +361,12 @@ type ChatQuickSendItem struct {
 	ID        int64  `json:"id"`
 	Label     string `json:"label"`
 	Command   string `json:"command"`
-	Hidden    bool   `json:"hidden"`
 	SortOrder int    `json:"sort_order"`
 }
 
 // GetChatQuickSend returns all quick-send items ordered by sort_order.
 func GetChatQuickSend() ([]ChatQuickSendItem, error) {
-	rows, err := DB.Query("SELECT id, label, command, hidden, sort_order FROM chat_quick_send ORDER BY sort_order")
+	rows, err := DB.Query("SELECT id, label, command, sort_order FROM chat_quick_send ORDER BY sort_order")
 	if err != nil {
 		return nil, err
 	}
@@ -376,31 +374,25 @@ func GetChatQuickSend() ([]ChatQuickSendItem, error) {
 	var items []ChatQuickSendItem
 	for rows.Next() {
 		var item ChatQuickSendItem
-		var hidden int
-		if err := rows.Scan(&item.ID, &item.Label, &item.Command, &hidden, &item.SortOrder); err != nil {
+		if err := rows.Scan(&item.ID, &item.Label, &item.Command, &item.SortOrder); err != nil {
 			return nil, err
 		}
-		item.Hidden = hidden == 1
 		items = append(items, item)
 	}
 	return items, nil
 }
 
 // AddChatQuickSend inserts a new quick-send item and returns its ID.
-func AddChatQuickSend(label, command string, hidden bool) (int64, error) {
+func AddChatQuickSend(label, command string) (int64, error) {
 	var maxOrder sql.NullInt64
 	_ = DB.QueryRow("SELECT MAX(sort_order) FROM chat_quick_send").Scan(&maxOrder)
 	sortOrder := 0
 	if maxOrder.Valid {
 		sortOrder = int(maxOrder.Int64) + 1
 	}
-	hiddenInt := 0
-	if hidden {
-		hiddenInt = 1
-	}
 	result, err := DB.Exec(
-		"INSERT INTO chat_quick_send (label, command, hidden, sort_order) VALUES (?, ?, ?, ?)",
-		label, command, hiddenInt, sortOrder,
+		"INSERT INTO chat_quick_send (label, command, sort_order) VALUES (?, ?, ?)",
+		label, command, sortOrder,
 	)
 	if err != nil {
 		return 0, err
@@ -409,14 +401,10 @@ func AddChatQuickSend(label, command string, hidden bool) (int64, error) {
 }
 
 // UpdateChatQuickSend updates an existing quick-send item.
-func UpdateChatQuickSend(id int64, label, command string, hidden bool) error {
-	hiddenInt := 0
-	if hidden {
-		hiddenInt = 1
-	}
+func UpdateChatQuickSend(id int64, label, command string) error {
 	_, err := DB.Exec(
-		"UPDATE chat_quick_send SET label = ?, command = ?, hidden = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-		label, command, hiddenInt, id,
+		"UPDATE chat_quick_send SET label = ?, command = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		label, command, id,
 	)
 	return err
 }

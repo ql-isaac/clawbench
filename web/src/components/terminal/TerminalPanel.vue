@@ -819,17 +819,12 @@ function openEditDialog() {
 .key-group {
   display: flex;
   align-items: center;
-  gap: 0;
-}
-
-/* Collapse borders between adjacent buttons inside a group */
-.key-group .toolbar-btn + .toolbar-btn {
-  margin-left: -1px;
+  gap: 2px;
 }
 
 /* Add spacing between groups */
 .key-group + .key-group {
-  margin-left: 4px;
+  margin-left: 6px;
 }
 
 .toolbar-btn {
@@ -840,7 +835,7 @@ function openEditDialog() {
   height: 28px;
   padding: 0 5px;
   border: 1px solid var(--border-color);
-  border-radius: 0;
+  border-radius: 4px;
   background: var(--bg-key);
   color: var(--text-primary);
   font-size: 11px;
@@ -920,7 +915,7 @@ function openEditDialog() {
 /* Button group colors — after all .toolbar-btn rules to win cascade */
 .toolbar-btn.btn-modifier {
   background: var(--bg-tertiary);
-  border-color: var(--bg-tertiary);
+  border-color: color-mix(in srgb, var(--text-muted) 35%, var(--border-color));
 }
 
 .toolbar-btn.btn-nav {

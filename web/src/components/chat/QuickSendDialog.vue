@@ -19,12 +19,9 @@
         >
           <template #item="{ element: item }">
             <div class="qs-item-wrapper">
-              <div class="qs-row" :class="{ 'qs-hidden': item.hidden }">
+              <div class="qs-row">
                 <span class="qs-drag-handle">≡</span>
-                <span class="qs-label">
-                  <EyeOffIcon v-if="item.hidden" :size="12" class="qs-badge-dim" />
-                  {{ item.label }}
-                </span>
+                <span class="qs-label">{{ item.label }}</span>
                 <span class="qs-cmd" :title="item.command">{{ item.command }}</span>
                 <button class="qs-action" @click="editItem(item)" :title="t('chat.quickSend.editItem')">
                   <PencilIcon :size="14" />
@@ -61,11 +58,6 @@
         <input type="text" class="form-input" v-model="form.command" :placeholder="t('chat.quickSend.itemCommand')" />
       </div>
       <div v-if="formError" class="form-error">{{ formError }}</div>
-
-      <label class="form-checkbox">
-        <input type="checkbox" v-model="form.hidden" />
-        <span>{{ t('chat.quickSend.itemHidden') }}</span>
-      </label>
     </div>
 
     <template #footer>
@@ -85,7 +77,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import ModalDialog from '@/components/common/ModalDialog.vue'
-import { Send as SendIcon, PencilIcon, Trash2Icon, PlusIcon, ChevronLeftIcon, EyeOffIcon } from 'lucide-vue-next'
+import { Send as SendIcon, PencilIcon, Trash2Icon, PlusIcon, ChevronLeftIcon } from 'lucide-vue-next'
 import { useQuickSend, type QuickSendItem } from '@/composables/useQuickSend'
 import { useToast } from '@/composables/useToast'
 
@@ -102,7 +94,7 @@ const { items, reorderItems, addItem, updateItem, deleteItem } = useQuickSend()
 const localItems = ref<QuickSendItem[]>([...items.value])
 const currentPage = ref<'list' | 'edit'>('list')
 const editingItem = ref<QuickSendItem | null>(null)
-const form = ref({ label: '', command: '', hidden: false })
+const form = ref({ label: '', command: '' })
 const formError = ref('')
 const saving = ref(false)
 const deleteConfirmId = ref<number | null>(null)
@@ -136,14 +128,14 @@ function goBackIfEdit() {
 
 function editItem(item: QuickSendItem) {
   editingItem.value = item
-  form.value = { label: item.label, command: item.command, hidden: item.hidden }
+  form.value = { label: item.label, command: item.command }
   formError.value = ''
   currentPage.value = 'edit'
 }
 
 function addNewItem() {
   editingItem.value = null
-  form.value = { label: '', command: '', hidden: false }
+  form.value = { label: '', command: '' }
   formError.value = ''
   currentPage.value = 'edit'
 }
@@ -161,9 +153,9 @@ async function saveItem() {
   try {
     let ok: boolean
     if (editingItem.value) {
-      ok = await updateItem(editingItem.value.id, { label, command, hidden: form.value.hidden })
+      ok = await updateItem(editingItem.value.id, { label, command })
     } else {
-      ok = await addItem({ label, command, hidden: form.value.hidden })
+      ok = await addItem({ label, command })
     }
 
     if (ok) {
@@ -231,10 +223,6 @@ async function onDragEnd() {
   transition: background 0.12s;
 }
 
-.qs-row.qs-hidden {
-  opacity: 0.55;
-}
-
 .qs-row:hover {
   background: var(--bg-tertiary, #f5f5f5);
 }
@@ -259,14 +247,6 @@ async function onDragEnd() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.qs-badge-dim {
-  color: var(--text-muted, #999);
-  flex-shrink: 0;
 }
 
 .qs-cmd {
@@ -392,21 +372,6 @@ async function onDragEnd() {
 .form-error {
   font-size: 12px;
   color: #e53e3e;
-}
-
-.form-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.form-checkbox input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent-color, #0066cc);
 }
 
 .modal-btn {

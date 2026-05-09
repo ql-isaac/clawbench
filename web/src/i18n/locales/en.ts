@@ -108,7 +108,6 @@ export default {
       editItem: 'Edit item',
       itemLabel: 'Label',
       itemCommand: 'Message',
-      itemHidden: 'Hidden (not shown in quick menu)',
       itemRequired: 'Label and message are required',
       itemSaved: 'Item saved',
       itemDeleted: 'Item deleted',

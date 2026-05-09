@@ -5,7 +5,6 @@ export interface QuickSendItem {
   id: number
   label: string
   command: string
-  hidden: boolean
   sort_order: number
 }
 
@@ -15,8 +14,6 @@ const loaded = ref(false)
 const showEditDialog = ref(false)
 
 export function useQuickSend() {
-  const visibleItems = computed(() => items.value.filter(i => !i.hidden))
-
   async function fetchItems(force = false) {
     if (loaded.value && !force) return
     try {
@@ -28,7 +25,7 @@ export function useQuickSend() {
     }
   }
 
-  async function addItem(item: { label: string; command: string; hidden?: boolean }): Promise<boolean> {
+  async function addItem(item: { label: string; command: string }): Promise<boolean> {
     try {
       await apiPost('/api/chat/quick-send', item)
       await fetchItems(true)
@@ -38,7 +35,7 @@ export function useQuickSend() {
     }
   }
 
-  async function updateItem(id: number, item: { label: string; command: string; hidden?: boolean }): Promise<boolean> {
+  async function updateItem(id: number, item: { label: string; command: string }): Promise<boolean> {
     try {
       await apiPut(`/api/chat/quick-send/${id}`, item)
       await fetchItems(true)
@@ -77,7 +74,6 @@ export function useQuickSend() {
 
   return {
     items,
-    visibleItems,
     fetchItems,
     addItem,
     updateItem,
