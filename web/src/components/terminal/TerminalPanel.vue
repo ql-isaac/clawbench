@@ -228,6 +228,22 @@ const viewport = useTerminalViewport(xterm, terminalContainer)
 // Terminal keys
 const terminalKeys = useTerminalKeys(session.sendInput)
 
+let touchScrollRemainder = 0
+
+function handleTerminalTouchScroll(deltaY: number) {
+  const term = xterm.value
+  if (!term) return
+
+  const lineHeightOption = typeof term.options.lineHeight === 'number' ? term.options.lineHeight : 1
+  const rowHeight = Math.max(1, fontSize.value * lineHeightOption)
+  touchScrollRemainder += deltaY / rowHeight
+  const lines = Math.trunc(touchScrollRemainder)
+  if (lines === 0) return
+
+  term.scrollLines(-lines)
+  touchScrollRemainder -= lines
+}
+
 // Terminal gestures (Termius-style: swipe arrows, long-press Esc, double-tap Tab, pinch zoom)
 const gestures = useTerminalGestures(terminalContainer, {
   sendArrowUp: terminalKeys.sendArrowUp,
@@ -239,6 +255,7 @@ const gestures = useTerminalGestures(terminalContainer, {
   sendEscape: terminalKeys.sendEscape,
   sendTab: terminalKeys.sendTab,
   onPinchZoom: (delta: number) => applyFontSize(fontSize.value + delta),
+  onTouchScroll: handleTerminalTouchScroll,
   onGestureHint: (symbol: string) => {
     gestureHint.value = symbol
     if (gestureHintTimer) clearTimeout(gestureHintTimer)
@@ -492,6 +509,7 @@ function handleReconnect() {
 }
 
 function cleanupTerminal() {
+  touchScrollRemainder = 0
   // Remove event handlers from container
   if (terminalContainer.value) {
     const wheelH = (terminalContainer.value as any).__terminalWheelHandler
@@ -675,10 +693,18 @@ function openEditDialog() {
   background: #1e1e2e;
 }
 
-/* Hide xterm.js scrollbar — mobile terminal uses gestures/swipe for navigation,
-   not a visible scrollbar. Prevents scrollbar flash when soft keyboard opens/closes. */
+/* Keep the terminal scrollbar as a thin position indicator instead of a wide rail. */
+.terminal-container :deep(.xterm-scrollable-element > .scrollbar.vertical),
 .terminal-container :deep(.xterm-scrollbar) {
-  display: none !important;
+  width: 2px !important;
+  right: 1px !important;
+  background: transparent !important;
+}
+
+.terminal-container :deep(.xterm-scrollable-element > .scrollbar > .slider) {
+  width: 2px !important;
+  left: 0 !important;
+  border-radius: 999px !important;
 }
 
 [data-theme="dark"] .terminal-container {

@@ -42,6 +42,7 @@ function setupGestures() {
   const sent: string[] = []
   const hints: string[] = []
   const zoomDeltas: number[] = []
+  const scrollDeltas: number[] = []
   const gestures = useTerminalGestures(ref(el), {
     sendArrowUp: () => sent.push('up'),
     sendArrowDown: () => sent.push('down'),
@@ -53,10 +54,11 @@ function setupGestures() {
     sendTab: () => sent.push('tab'),
     onPinchZoom: (delta) => zoomDeltas.push(delta),
     onGestureHint: (symbol) => hints.push(symbol),
+    onTouchScroll: (deltaY: number) => scrollDeltas.push(deltaY),
   })
   gestures.attach()
 
-  return { el, sent, hints, zoomDeltas, gestures }
+  return { el, sent, hints, zoomDeltas, scrollDeltas, gestures }
 }
 
 describe('useTerminalGestures', () => {
@@ -184,7 +186,36 @@ describe('useTerminalGestures', () => {
     expect(sent).toEqual([])
   })
 
-  it('restores fully native touch handling when gestures are disabled', () => {
+  it('scrolls terminal output with one-finger vertical drags when gestures are disabled', () => {
+    const { el, sent, scrollDeltas, gestures } = setupGestures()
+
+    gestures.toggle()
+    dispatchTouch(el, 'touchstart', [makeTouch(80, 100)])
+    const smallMove = dispatchTouch(el, 'touchmove', [makeTouch(82, 108)])
+    const firstScrollMove = dispatchTouch(el, 'touchmove', [makeTouch(84, 140)])
+    const secondScrollMove = dispatchTouch(el, 'touchmove', [makeTouch(84, 155)])
+
+    expect(gestures.enabled.value).toBe(false)
+    expect(sent).toEqual([])
+    expect(scrollDeltas).toEqual([40, 15])
+    expect(smallMove.preventDefault).not.toHaveBeenCalled()
+    expect(firstScrollMove.preventDefault).toHaveBeenCalled()
+    expect(secondScrollMove.preventDefault).toHaveBeenCalled()
+  })
+
+  it('stops a disabled-mode scroll sequence when a second finger is added', () => {
+    const { el, scrollDeltas, gestures } = setupGestures()
+
+    gestures.toggle()
+    dispatchTouch(el, 'touchstart', [makeTouch(80, 100)])
+    dispatchTouch(el, 'touchmove', [makeTouch(84, 140)])
+    dispatchTouch(el, 'touchmove', [makeTouch(84, 140), makeTouch(120, 140)])
+    dispatchTouch(el, 'touchmove', [makeTouch(84, 200)])
+
+    expect(scrollDeltas).toEqual([40])
+  })
+
+  it('restores native touch behavior when gestures are disabled before a scroll starts', () => {
     const { el, gestures } = setupGestures()
 
     gestures.toggle()

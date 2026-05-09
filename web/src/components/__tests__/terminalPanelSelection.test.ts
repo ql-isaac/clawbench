@@ -16,6 +16,7 @@ describe('TerminalPanel xterm selection defaults', () => {
     for (const title of gestureMappedKeys) {
       expect(source).toContain(`title="${title}"`)
     }
-    expect(source.match(/v-if="!gestures\.enabled\.value"/g)?.length).toBeGreaterThanOrEqual(8)
+    expect(source.match(/v-if="!gestures\.enabled\.value"/g)?.length).toBeGreaterThanOrEqual(4)
+    expect(source).toContain('v-show="!gestures.enabled.value" class="key-group"')
   })
 })

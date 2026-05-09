@@ -11,6 +11,7 @@ export interface GestureCallbacks {
   sendTab: () => void
   onPinchZoom?: (delta: number) => void
   onGestureHint?: (symbol: string) => void
+  onTouchScroll?: (deltaY: number) => void
 }
 
 type Direction = 'up' | 'down' | 'left' | 'right'
@@ -29,8 +30,8 @@ export function shouldPreventTerminalContextMenu(gesturesEnabled: boolean): bool
  * - Double-tap → Tab
  * - Pinch (two-finger) → zoom font size
  *
- * When gestures are disabled, all touch listeners are detached so that
- * xterm.js native touch selection (long-press to select) works normally.
+ * When gestures are disabled, command gestures are detached and one-finger
+ * vertical drags scroll xterm output without sending arrow-key input.
  *
  * Gestures are bound only to the xterm container element,
  * not the entire BottomSheet, to avoid conflicting with drawer drag.
@@ -51,10 +52,17 @@ export function useTerminalGestures(
   // Gesture enable/disable state
   const enabled = ref(true)
   let listenersAttached = false
+  let disabledScrollListenersAttached = false
 
   let touchStartX = 0
   let touchStartY = 0
   let isActive = false
+
+  let disabledScrollStartX = 0
+  let disabledScrollStartY = 0
+  let disabledScrollLastY = 0
+  let disabledScrollActive = false
+  let disabledScrollTracking = false
 
   // Direction tracking for hold-to-repeat
   let currentDirection: Direction | null = null
@@ -159,6 +167,14 @@ export function useTerminalGestures(
     lastPinchDistance = 0
     accumulatedPinchDelta = 0
     twoFingerMode = 'pending'
+  }
+
+  function resetDisabledScrollState() {
+    disabledScrollStartX = 0
+    disabledScrollStartY = 0
+    disabledScrollLastY = 0
+    disabledScrollActive = false
+    disabledScrollTracking = false
   }
 
   function detectDirection(dx: number, dy: number): Direction | null {
@@ -296,6 +312,57 @@ export function useTerminalGestures(
     resetGestureState()
   }
 
+  function onDisabledTouchStart(e: TouchEvent) {
+    if (e.touches.length !== 1) {
+      resetDisabledScrollState()
+      return
+    }
+
+    const touch = e.touches[0]
+    disabledScrollStartX = touch.clientX
+    disabledScrollStartY = touch.clientY
+    disabledScrollLastY = touch.clientY
+    disabledScrollActive = false
+    disabledScrollTracking = true
+  }
+
+  function onDisabledTouchMove(e: TouchEvent) {
+    if (e.touches.length !== 1 || !callbacks.onTouchScroll) {
+      resetDisabledScrollState()
+      return
+    }
+    if (!disabledScrollTracking) return
+
+    const touch = e.touches[0]
+    const dx = touch.clientX - disabledScrollStartX
+    const dy = touch.clientY - disabledScrollStartY
+    const absDx = Math.abs(dx)
+    const absDy = Math.abs(dy)
+
+    if (!disabledScrollActive) {
+      if (absDy < TAP_THRESHOLD || absDy <= absDx) return
+      disabledScrollActive = true
+    }
+
+    preventNativeTouch(e)
+    const deltaY = touch.clientY - disabledScrollLastY
+    if (deltaY !== 0) {
+      callbacks.onTouchScroll(deltaY)
+      disabledScrollLastY = touch.clientY
+    }
+  }
+
+  function onDisabledTouchEnd(e: TouchEvent) {
+    if (disabledScrollActive) {
+      preventNativeTouch(e)
+    }
+    resetDisabledScrollState()
+  }
+
+  function onDisabledTouchCancel() {
+    resetDisabledScrollState()
+  }
+
   function onTouchEnd(e: TouchEvent) {
     // Reset pinch state when one or both fingers lift
     if (e.touches.length < 2) {
@@ -384,18 +451,44 @@ export function useTerminalGestures(
     listenersAttached = false
   }
 
-  // Apply gesture state: attach when enabled, detach when disabled.
-  // Keep touch-action permissive enough for long-press/native selection; the
-  // handlers call preventDefault only after recognizing a terminal gesture.
+  function attachDisabledScrollListeners() {
+    if (disabledScrollListenersAttached || !callbacks.onTouchScroll) return
+    const el = elementRef.value
+    if (!el) return
+
+    el.addEventListener('touchstart', onDisabledTouchStart, { passive: false })
+    el.addEventListener('touchmove', onDisabledTouchMove, { passive: false })
+    el.addEventListener('touchend', onDisabledTouchEnd, { passive: false })
+    el.addEventListener('touchcancel', onDisabledTouchCancel, { passive: false })
+    disabledScrollListenersAttached = true
+  }
+
+  function detachDisabledScrollListeners() {
+    if (!disabledScrollListenersAttached) return
+    const el = elementRef.value
+    if (!el) return
+
+    el.removeEventListener('touchstart', onDisabledTouchStart)
+    el.removeEventListener('touchmove', onDisabledTouchMove)
+    el.removeEventListener('touchend', onDisabledTouchEnd)
+    el.removeEventListener('touchcancel', onDisabledTouchCancel)
+    disabledScrollListenersAttached = false
+    resetDisabledScrollState()
+  }
+
+  // Apply gesture state: attach terminal gesture listeners when enabled. When
+  // disabled, keep a small vertical-scroll handler because xterm's scrollable
+  // viewport is not the element users touch, so fully native panning has no
+  // scroll target on many mobile browsers.
   function applyState() {
     const el = elementRef.value
     if (enabled.value) {
+      detachDisabledScrollListeners()
       attachListeners()
       if (el) el.style.touchAction = 'manipulation'
     } else {
       detachListeners()
-      // Restore fully native touch handling so long-press can open the
-      // platform selection/copy UI instead of only allowing vertical panning.
+      attachDisabledScrollListeners()
       if (el) el.style.touchAction = 'auto'
     }
   }
@@ -404,6 +497,7 @@ export function useTerminalGestures(
     enabled.value = !enabled.value
     if (!enabled.value) {
       resetGestureState()
+      resetDisabledScrollState()
       lastTapTime = 0
     }
     applyState()
@@ -417,6 +511,7 @@ export function useTerminalGestures(
   // Called by TerminalPanel on unmount
   function detach() {
     detachListeners()
+    detachDisabledScrollListeners()
     const el = elementRef.value
     if (el) el.style.touchAction = ''
   }
