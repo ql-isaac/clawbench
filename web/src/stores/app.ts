@@ -152,7 +152,10 @@ async function setProject(path: string): Promise<void> {
 // File browser
 // =============================================
 
+let loadFilesSeq = 0 // monotonic counter to suppress stale concurrent loads
+
 async function loadFiles(dir = ''): Promise<void> {
+    const seq = ++loadFilesSeq // this call supersedes any earlier in-flight call
     const prevDir = state.currentDir
     const prevEntries = state.dirEntries.slice()
     const prevAllItems = state.allItems.slice()
@@ -160,17 +163,24 @@ async function loadFiles(dir = ''): Promise<void> {
     try {
         const url = dir ? `/api/dir?path=${encodeURIComponent(dir)}` : '/api/dir?path='
         const data = await apiGet<{ items: DirEntry[] }>(url)
+        // A newer loadFiles call started while we were awaiting — discard our result
+        if (seq !== loadFilesSeq) return
         state.currentDir = dir
         state.dirEntries = data.items || []
         state.allItems = state.dirEntries.slice()
     } catch (err) {
+        // A newer loadFiles call started — don't corrupt its state
+        if (seq !== loadFilesSeq) return
         // Roll back to previous state on failure
         state.currentDir = prevDir
         state.dirEntries = prevEntries
         state.allItems = prevAllItems
         useToast().show(gt('file.toast.dirLoadFailed'), { type: 'error', icon: '⚠️' })
     } finally {
-        state.dirLoading = false
+        // Only clear loading if we are still the latest call
+        if (seq === loadFilesSeq) {
+            state.dirLoading = false
+        }
     }
 }
 

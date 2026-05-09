@@ -25,6 +25,15 @@ beforeEach(() => {
   mockFetch.mockReset()
 })
 
+// Helper: match fetch calls that include an AbortSignal
+// (signal is an AbortSignal instance, so we use expect.any(AbortSignal))
+function expectFetchCalledWith(url: string, opts: Record<string, unknown>) {
+  expect(mockFetch).toHaveBeenCalledWith(url, {
+    ...opts,
+    signal: expect.any(AbortSignal),
+  })
+}
+
 describe('apiGet', () => {
   it('makes GET request with locale header', async () => {
     mockFetch.mockResolvedValue({
@@ -33,7 +42,7 @@ describe('apiGet', () => {
     })
 
     const result = await apiGet('/api/test')
-    expect(mockFetch).toHaveBeenCalledWith('/api/test', {
+    expectFetchCalledWith('/api/test', {
       headers: { 'X-Locale': 'en' },
     })
     expect(result).toEqual({ data: 'test' })
@@ -57,7 +66,7 @@ describe('apiPost', () => {
     })
 
     const result = await apiPost('/api/test', { name: 'test' })
-    expect(mockFetch).toHaveBeenCalledWith('/api/test', {
+    expectFetchCalledWith('/api/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Locale': 'en' },
       body: JSON.stringify({ name: 'test' }),
@@ -103,7 +112,7 @@ describe('apiDelete', () => {
     })
 
     const result = await apiDelete('/api/test/123')
-    expect(mockFetch).toHaveBeenCalledWith('/api/test/123', {
+    expectFetchCalledWith('/api/test/123', {
       method: 'DELETE',
       headers: { 'X-Locale': 'en' },
     })
@@ -125,7 +134,7 @@ describe('cancelChat', () => {
     mockFetch.mockResolvedValue({ ok: true })
 
     await cancelChat('session-123')
-    expect(mockFetch).toHaveBeenCalledWith(
+    expectFetchCalledWith(
       '/api/ai/chat/cancel?session_id=session-123',
       {
         method: 'POST',
@@ -140,7 +149,11 @@ describe('cancelChat', () => {
     await cancelChat('session/with+special')
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/ai/chat/cancel?session_id=session%2Fwith%2Bspecial',
-      expect.any(Object),
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'X-Locale': 'en' },
+        signal: expect.any(AbortSignal),
+      }),
     )
   })
 

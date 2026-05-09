@@ -393,9 +393,27 @@ func isNotDirError(err error) bool {
 func buildDirEntries(entries []os.DirEntry) []DirEntry {
 	var items []DirEntry
 	for _, entry := range entries {
-		info, infoErr := entry.Info()
+		// Try to get file info with a timeout to avoid blocking on
+		// unresponsive network mounts (e.g. NFS hard mounts).
+		info, infoErr := fileInfoWithTimeout(entry)
 		if infoErr != nil {
-			slog.Warn("failed to get file info", slog.String("name", entry.Name()), slog.String("err", infoErr.Error()))
+			// Timeout or error — use DirEntry.IsDir() as a fallback
+			// so the entry still appears in the listing (without size/modTime).
+			slog.Warn("failed to get file info, using fallback", slog.String("name", entry.Name()), slog.String("err", infoErr.Error()))
+			if entry.IsDir() {
+				items = append(items, DirEntry{Name: entry.Name(), Type: "dir"})
+			} else {
+				name := entry.Name()
+				entryType := "file"
+				if model.IsImageFile(name) {
+					entryType = "image"
+				}
+				items = append(items, DirEntry{
+					Name:      name,
+					Type:      entryType,
+					Supported: model.IsSupportedFile(name),
+				})
+			}
 			continue
 		}
 		if entry.IsDir() {
@@ -423,6 +441,28 @@ func buildDirEntries(entries []os.DirEntry) []DirEntry {
 		return items[i].Name < items[j].Name
 	})
 	return items
+}
+
+const fileInfoTimeout = 3 * time.Second
+
+// fileInfoWithTimeout calls entry.Info() with a timeout to avoid blocking
+// indefinitely on unresponsive network filesystems (e.g. NFS hard mounts).
+func fileInfoWithTimeout(entry os.DirEntry) (os.FileInfo, error) {
+	type result struct {
+		info os.FileInfo
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		info, err := entry.Info()
+		ch <- result{info, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.info, r.err
+	case <-time.After(fileInfoTimeout):
+		return nil, fmt.Errorf("timeout getting file info for %q after %v", entry.Name(), fileInfoTimeout)
+	}
 }
 
 // serveProjectsCreate handles POST /api/projects (create directory under watchDir).
