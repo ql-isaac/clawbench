@@ -36,6 +36,9 @@ func TestNewSessionAndClose(t *testing.T) {
 	if session.Cwd() != "/tmp" {
 		t.Errorf("expected cwd /tmp, got %s", session.Cwd())
 	}
+	if session.ID() == "" {
+		t.Error("expected non-empty session ID")
+	}
 }
 
 func TestSessionIdleTimeout(t *testing.T) {
@@ -65,7 +68,7 @@ func TestSessionIdleTimeout(t *testing.T) {
 	}
 }
 
-func TestManagerCloseSession(t *testing.T) {
+func TestManagerCloseAllSessions(t *testing.T) {
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "10m",
@@ -77,19 +80,13 @@ func TestManagerCloseSession(t *testing.T) {
 	mgr := NewManager(cfg, 20000)
 	defer mgr.Close()
 
-	// Close with no active session should not panic
-	mgr.CloseSession()
+	// Close with no active sessions should not panic
+	mgr.CloseAllSessions()
 
-	// Status should show no session
-	hasSession, cwd, running := mgr.Status()
-	if hasSession {
-		t.Error("expected no session after CloseSession")
-	}
-	if cwd != "" {
-		t.Errorf("expected empty cwd, got %s", cwd)
-	}
-	if running {
-		t.Error("expected not running")
+	// AllSessionStatus should return empty
+	sessions := mgr.AllSessionStatus()
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
 	}
 }
 
@@ -110,8 +107,17 @@ func TestManagerClearsSessionAfterShellExit(t *testing.T) {
 	if err != nil {
 		t.Skipf("PTY not available in this environment: %v", err)
 	}
+
+	// Set up onClose callback like HandleWebSocket does
+	sid := session.ID()
+	session.onClose = func() {
+		mgr.mu.Lock()
+		delete(mgr.sessions, sid)
+		mgr.mu.Unlock()
+	}
+
 	mgr.mu.Lock()
-	mgr.session = session
+	mgr.sessions[sid] = session
 	mgr.mu.Unlock()
 
 	if err := session.HandleInput("exit\r"); err != nil {
@@ -120,15 +126,15 @@ func TestManagerClearsSessionAfterShellExit(t *testing.T) {
 
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		hasSession, _, running := mgr.Status()
-		if !hasSession && !running {
+		sessions := mgr.AllSessionStatus()
+		if len(sessions) == 0 {
 			return
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
 
-	hasSession, cwdStatus, running := mgr.Status()
-	t.Fatalf("expected manager to clear exited shell session, got hasSession=%v cwd=%q running=%v", hasSession, cwdStatus, running)
+	sessions := mgr.AllSessionStatus()
+	t.Fatalf("expected manager to clear exited shell session, got %d sessions", len(sessions))
 }
 
 func TestManagerIsEnabled(t *testing.T) {
@@ -181,5 +187,58 @@ func TestManagerConfig(t *testing.T) {
 	}
 	if tc.BufferLines != 2000 {
 		t.Errorf("expected 2000 buffer lines, got %d", tc.BufferLines)
+	}
+}
+
+func TestManagerMultipleSessions(t *testing.T) {
+	cfg := model.TerminalConfig{
+		Enabled:      true,
+		IdleTimeout:  "10m",
+		BufferLines:  100,
+		MaxLineBytes: 65536,
+		MaxBufferMB:  4,
+		MaxSessions:  5,
+	}
+
+	mgr := NewManager(cfg, 20000)
+	defer mgr.Close()
+
+	tc := mgr.Config()
+
+	// Create multiple sessions
+	ids := make(map[string]bool)
+	for i := 0; i < 3; i++ {
+		session, err := NewSession("/tmp", "/tmp", tc)
+		if err != nil {
+			t.Skipf("PTY not available in this environment: %v", err)
+		}
+		sid := session.ID()
+		if sid == "" {
+			t.Error("expected non-empty session ID")
+		}
+		if ids[sid] {
+			t.Errorf("duplicate session ID: %s", sid)
+		}
+		ids[sid] = true
+
+		mgr.mu.Lock()
+		mgr.sessions[sid] = session
+		mgr.mu.Unlock()
+	}
+
+	sessions := mgr.AllSessionStatus()
+	if len(sessions) != 3 {
+		t.Errorf("expected 3 sessions, got %d", len(sessions))
+	}
+
+	// Close one by ID
+	for sid := range ids {
+		mgr.CloseSessionByID(sid)
+		break // only close one
+	}
+
+	sessions = mgr.AllSessionStatus()
+	if len(sessions) != 2 {
+		t.Errorf("expected 2 sessions after closing one, got %d", len(sessions))
 	}
 }

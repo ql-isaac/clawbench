@@ -12,6 +12,7 @@ export interface TerminalStatus {
 const NO_RECONNECT_CODES = new Set([
   'terminal_disabled',
   'shell_start_failed',
+  'session_limit',
 ])
 
 // Custom WebSocket close codes from the backend (4000-4999 per RFC 6455)
@@ -25,6 +26,7 @@ export function useTerminalSession(getWsUrl: () => string) {
   const errorMessage = ref('')
   const errorCode = ref('')
   const currentCwd = ref('')
+  const sessionId = ref('')
   const ws: Ref<WebSocket | null> = ref(null)
   let reconnectAttempts = 0
   const maxReconnectAttempts = 3
@@ -44,7 +46,12 @@ export function useTerminalSession(getWsUrl: () => string) {
       errorCode.value = ''
       fatalError = false
 
-      const url = getWsUrl()
+      // Build URL with session ID for reconnect (to reattach to existing PTY)
+      let url = getWsUrl()
+      if (sessionId.value) {
+        const sep = url.includes('?') ? '&' : '?'
+        url += `${sep}session=${encodeURIComponent(sessionId.value)}`
+      }
       const socket = new WebSocket(url)
 
       socket.onopen = () => {
@@ -129,6 +136,7 @@ export function useTerminalSession(getWsUrl: () => string) {
     }
     reconnectAttempts = maxReconnectAttempts // prevent reconnect
     fatalError = false
+    sessionId.value = '' // intentional close = next connect creates new session
     if (ws.value) {
       ws.value.close()
       ws.value = null
@@ -146,6 +154,7 @@ export function useTerminalSession(getWsUrl: () => string) {
     fatalError = false
     errorMessage.value = ''
     errorCode.value = ''
+    sessionId.value = '' // rebuild = new session
     if (ws.value) {
       ws.value.close()
       ws.value = null
@@ -190,7 +199,7 @@ export function useTerminalSession(getWsUrl: () => string) {
     onError = callbacks.onError ?? null
   }
 
-  function handleMessage(msg: { type: string; data?: string; cwd?: string; running?: boolean; code?: number; message?: string; errcode?: string }) {
+  function handleMessage(msg: { type: string; sessionId?: string; data?: string; cwd?: string; running?: boolean; code?: number; message?: string; errcode?: string }) {
     switch (msg.type) {
       case 'output':
         onOutput?.(msg.data ?? '')
@@ -199,10 +208,15 @@ export function useTerminalSession(getWsUrl: () => string) {
         onReplay?.(msg.data ?? '')
         break
       case 'status':
+        // Store session ID for reconnect
+        if (msg.sessionId) {
+          sessionId.value = msg.sessionId
+        }
         currentCwd.value = msg.cwd ?? ''
         onStatus?.({ running: msg.running ?? true, cwd: msg.cwd ?? '' })
         break
       case 'exit':
+        sessionId.value = '' // session is gone
         connectionState.value = 'disconnected'
         onExit?.(msg.code ?? 0)
         break
@@ -243,6 +257,7 @@ export function useTerminalSession(getWsUrl: () => string) {
     errorMessage,
     errorCode,
     currentCwd,
+    sessionId,
     connect,
     disconnect,
     reset,

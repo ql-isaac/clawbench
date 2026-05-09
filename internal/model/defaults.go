@@ -192,6 +192,9 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	if cfg.Terminal.MaxBufferMB <= 0 {
 		cfg.Terminal.MaxBufferMB = 4
 	}
+	if cfg.Terminal.MaxSessions <= 0 {
+		cfg.Terminal.MaxSessions = 10
+	}
 
 	return autoPassword
 }

@@ -541,14 +541,16 @@ async function handleRebuild() {
 }
 
 async function rebuildSession() {
-  // Close session via HTTP API (synchronous — ensures PTY is dead and m.session = nil)
+  // Close specific session via HTTP API (ensures PTY is dead)
   try {
-    await fetch('/api/terminal/close', { method: 'POST' })
+    const sid = session.sessionId.value
+    const url = sid ? `/api/terminal/close?session=${encodeURIComponent(sid)}` : '/api/terminal/close'
+    await fetch(url, { method: 'POST' })
   } catch {
     // Reconnect below will surface any remaining terminal errors.
   }
 
-  // Reset session state (closes WS, clears errors, resets reconnect counter)
+  // Reset session state (closes WS, clears errors, resets reconnect counter, clears sessionId)
   session.reset()
 
   // Clear terminal display

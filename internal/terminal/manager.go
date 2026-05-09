@@ -18,10 +18,11 @@ import (
 // It is a standalone service (not integrated with session_runtime.go) because
 // terminal sessions have a fundamentally different lifecycle from AI sessions.
 type Manager struct {
-	mu      sync.Mutex
-	session *Session
-	cfg     TerminalConfig
-	port    int
+	mu          sync.Mutex
+	sessions    map[string]*Session // keyed by session ID
+	cfg         TerminalConfig
+	port        int
+	maxSessions int
 }
 
 // GlobalManager is the package-level singleton, set from main.go.
@@ -35,6 +36,7 @@ type TerminalConfig struct {
 	BufferLines  int
 	MaxLineBytes int
 	MaxBufferMB  int
+	MaxSessions  int
 }
 
 // NewManager creates a new terminal manager.
@@ -45,30 +47,33 @@ func NewManager(cfg model.TerminalConfig, port int) *Manager {
 		BufferLines:  cfg.BufferLines,
 		MaxLineBytes: cfg.MaxLineBytes,
 		MaxBufferMB:  cfg.MaxBufferMB,
+		MaxSessions:  cfg.MaxSessions,
 	}
 	return &Manager{
-		cfg:  tc,
-		port: port,
+		sessions:    make(map[string]*Session),
+		cfg:         tc,
+		port:        port,
+		maxSessions: cfg.MaxSessions,
 	}
 }
 
 // Close shuts down the manager and all active sessions.
 func (m *Manager) Close() {
 	m.mu.Lock()
-	session := m.session
-	m.session = nil
+	sessions := m.sessions
+	m.sessions = make(map[string]*Session)
 	m.mu.Unlock()
 
-	if session != nil {
-		session.Close()
+	for _, s := range sessions {
+		s.Close()
 	}
-	slog.Info("terminal: manager closed")
+	slog.Info("terminal: manager closed", slog.Int("sessions", len(sessions)))
 }
 
 // HandleWebSocket handles a WebSocket connection request.
-// It creates a new session if none exists, or connects to an existing one.
-// If the project has changed, the old session is closed first.
-func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request, projectPath, cwd string) error {
+// If sessionID is provided and the session still exists, the client reconnects
+// to that session. Otherwise, a new session is created.
+func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request, projectPath, cwd, sessionID string) error {
 	m.mu.Lock()
 
 	// Check if terminal is disabled
@@ -77,31 +82,70 @@ func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request, projec
 		return fmt.Errorf("terminal disabled")
 	}
 
-	// Check for project mismatch — close old session if project changed
-	if m.session != nil && m.session.ProjectPath() != projectPath {
-		slog.Info("terminal: project changed, closing old session",
-			slog.String("old_project", m.session.ProjectPath()),
-			slog.String("new_project", projectPath),
-		)
-		m.session.Close()
-		m.session = nil
+	var session *Session
+
+	// Try to reconnect to existing session
+	if sessionID != "" {
+		if s, ok := m.sessions[sessionID]; ok && s.IsRunning() {
+			session = s
+			slog.Info("terminal: reconnecting to existing session",
+				slog.String("session", sessionID),
+			)
+		} else {
+			// Session expired or closed — will create a new one below
+			slog.Info("terminal: session not found, creating new",
+				slog.String("requested_session", sessionID),
+			)
+		}
 	}
 
 	// Create new session if needed
-	if m.session == nil {
-		session, err := NewSession(projectPath, cwd, m.cfg)
+	if session == nil {
+		// Enforce session limit
+		if m.maxSessions > 0 && len(m.sessions) >= m.maxSessions {
+			m.mu.Unlock()
+			// Upgrade to WebSocket just to send the error, then close
+			conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+				OriginPatterns: []string{
+					"http://" + r.Host,
+					"https://" + r.Host,
+					"http://localhost:*",
+					"https://localhost:*",
+					"http://127.0.0.1:*",
+					"https://127.0.0.1:*",
+				},
+			})
+			if err == nil {
+				sendWSError(conn, ErrCodeSessionLimit, fmt.Sprintf("max sessions (%d) reached", m.maxSessions))
+				conn.Close(websocket.StatusPolicyViolation, "session limit")
+			}
+			return nil
+		}
+
+		newSession, err := NewSession(projectPath, cwd, m.cfg)
 		if err != nil {
 			m.mu.Unlock()
 			return fmt.Errorf("failed to start terminal: %w", err)
 		}
-		m.session = session
+
+		// Set onClose callback so the session removes itself from the map
+		// when the PTY process exits
+		sid := newSession.ID()
+		newSession.onClose = func() {
+			m.mu.Lock()
+			delete(m.sessions, sid)
+			m.mu.Unlock()
+		}
+
+		m.sessions[sid] = newSession
+		session = newSession
 		slog.Info("terminal: new session created",
+			slog.String("session", sid),
 			slog.String("project", projectPath),
 			slog.String("cwd", cwd),
 		)
 	}
 
-	session := m.session
 	m.mu.Unlock()
 
 	// Upgrade to WebSocket. Keep this same-origin by default while allowing
@@ -120,7 +164,7 @@ func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request, projec
 		return fmt.Errorf("websocket upgrade failed: %w", err)
 	}
 
-	// Connect to the session (will kick any zombie client)
+	// Connect to the session (will kick any zombie client from reconnect race)
 	if err := session.Connect(conn); err != nil {
 		sendWSError(conn, ErrCodeShellFailed, err.Error())
 		conn.Close(websocket.StatusInternalError, "connect failed")
@@ -163,42 +207,83 @@ func (m *Manager) handleClientMessages(session *Session, conn *websocket.Conn) {
 				slog.Debug("terminal: resize error", slog.String("error", err.Error()))
 			}
 		case "close":
+			sid := session.ID()
 			session.Close()
 			m.mu.Lock()
-			if m.session == session {
-				m.session = nil
-			}
+			delete(m.sessions, sid)
 			m.mu.Unlock()
 			return
 		}
 	}
 }
 
-// CloseSession closes the current terminal session.
-func (m *Manager) CloseSession() {
+// CloseSessionByID closes a specific terminal session by ID.
+func (m *Manager) CloseSessionByID(id string) {
 	m.mu.Lock()
-	session := m.session
-	m.session = nil
+	session, ok := m.sessions[id]
+	if ok {
+		delete(m.sessions, id)
+	}
 	m.mu.Unlock()
 
-	if session != nil {
+	if ok {
 		session.Close()
 	}
 }
 
-// Status returns the current terminal session status.
-func (m *Manager) Status() (hasSession bool, cwd string, running bool) {
+// CloseAllSessions closes all terminal sessions.
+func (m *Manager) CloseAllSessions() {
+	m.mu.Lock()
+	sessions := m.sessions
+	m.sessions = make(map[string]*Session)
+	m.mu.Unlock()
+
+	for _, s := range sessions {
+		s.Close()
+	}
+}
+
+// SessionStatus returns info about a specific session.
+func (m *Manager) SessionStatus(id string) (found bool, cwd string, running bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.session == nil {
+	s, ok := m.sessions[id]
+	if !ok {
 		return false, "", false
 	}
-	if !m.session.IsRunning() {
-		m.session = nil
+	if !s.IsRunning() {
+		delete(m.sessions, id)
 		return false, "", false
 	}
-	return true, m.session.Cwd(), true
+	return true, s.Cwd(), true
+}
+
+// AllSessionStatus returns info about all active sessions.
+func (m *Manager) AllSessionStatus() []SessionInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var result []SessionInfo
+	for id, s := range m.sessions {
+		if !s.IsRunning() {
+			delete(m.sessions, id)
+			continue
+		}
+		result = append(result, SessionInfo{
+			ID:      id,
+			Cwd:     s.Cwd(),
+			Running: true,
+		})
+	}
+	return result
+}
+
+// SessionInfo describes a terminal session for API responses.
+type SessionInfo struct {
+	ID      string `json:"id"`
+	Cwd     string `json:"cwd"`
+	Running bool   `json:"running"`
 }
 
 // Config returns the terminal configuration for the frontend.

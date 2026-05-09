@@ -45,7 +45,10 @@ func TerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 		cwd = absCwd
 	}
 
-	if err := terminalMgr.HandleWebSocket(w, r, projectPath, cwd); err != nil {
+	// Get optional session ID for reconnect
+	sessionID := r.URL.Query().Get("session")
+
+	if err := terminalMgr.HandleWebSocket(w, r, projectPath, cwd, sessionID); err != nil {
 		slog.Error("terminal: websocket handler error", slog.String("error", err.Error()))
 		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "TerminalError")
 	}
@@ -60,12 +63,24 @@ func TerminalStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hasSession, cwd, running := terminalMgr.Status()
+	// If session ID is specified, return that session's status
+	if sessionID := r.URL.Query().Get("session"); sessionID != "" {
+		found, cwd, running := terminalMgr.SessionStatus(sessionID)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"enabled":    terminalMgr.IsEnabled(),
+			"hasSession": found,
+			"sessionId":  sessionID,
+			"cwd":        cwd,
+			"running":    running,
+		})
+		return
+	}
+
+	// No session ID — return all sessions
+	sessions := terminalMgr.AllSessionStatus()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"enabled":    terminalMgr.IsEnabled(),
-		"hasSession": hasSession,
-		"cwd":        cwd,
-		"running":    running,
+		"enabled":  terminalMgr.IsEnabled(),
+		"sessions": sessions,
 	})
 }
 
@@ -76,7 +91,12 @@ func TerminalClose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	terminalMgr.CloseSession()
+	// If session ID is specified, close only that session
+	if sessionID := r.URL.Query().Get("session"); sessionID != "" {
+		terminalMgr.CloseSessionByID(sessionID)
+	} else {
+		terminalMgr.CloseAllSessions()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 	})

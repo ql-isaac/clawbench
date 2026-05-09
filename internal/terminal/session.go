@@ -2,6 +2,8 @@ package terminal
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +26,7 @@ func killProcessGroup(cmd *exec.Cmd, sig syscall.Signal) {
 // Session represents a single PTY terminal session.
 type Session struct {
 	mu          sync.Mutex
+	id          string
 	projectPath string
 	cwd         string
 	cmd         *exec.Cmd
@@ -38,6 +41,17 @@ type Session struct {
 	running     bool
 	exitCode    int
 	closed      bool
+	onClose     func() // called by waitProcess after process exits (set by Manager)
+}
+
+// generateSessionID creates a random 8-byte hex string for session identification.
+func generateSessionID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp-based ID (should never happen)
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }
 
 // NewSession creates a new terminal session by starting a PTY in the given directory.
@@ -53,6 +67,7 @@ func NewSession(projectPath, cwd string, cfg TerminalConfig) (*Session, error) {
 	}
 
 	s := &Session{
+		id:          generateSessionID(),
 		projectPath: projectPath,
 		cwd:         cwd,
 		cmd:         cmd,
@@ -65,7 +80,10 @@ func NewSession(projectPath, cwd string, cfg TerminalConfig) (*Session, error) {
 
 	// Start idle timer (will be stopped when a client connects)
 	s.idleTimer = time.AfterFunc(s.idleTimeout, func() {
-		slog.Info("terminal: session idle timeout", slog.String("project", s.projectPath))
+		slog.Info("terminal: session idle timeout",
+			slog.String("project", s.projectPath),
+			slog.String("session", s.id),
+		)
 		s.Close()
 	})
 
@@ -78,6 +96,11 @@ func NewSession(projectPath, cwd string, cfg TerminalConfig) (*Session, error) {
 	go s.waitProcess()
 
 	return s, nil
+}
+
+// ID returns the unique session identifier.
+func (s *Session) ID() string {
+	return s.id
 }
 
 // readPTY reads output from the PTY and broadcasts it to the WebSocket client
@@ -146,6 +169,7 @@ func (s *Session) waitProcess() {
 	}
 	ptmx := s.ptmx
 	s.ptmx = nil
+	onClose := s.onClose
 	s.mu.Unlock()
 
 	if !alreadyClosed {
@@ -163,8 +187,14 @@ func (s *Session) waitProcess() {
 
 	slog.Info("terminal: process exited",
 		slog.String("project", s.projectPath),
+		slog.String("session", s.id),
 		slog.Int("exit_code", exitCode),
 	)
+
+	// Notify Manager to remove this session from the map
+	if onClose != nil {
+		onClose()
+	}
 }
 
 // Connect attaches a WebSocket client to this session.
@@ -182,7 +212,9 @@ func (s *Session) Connect(conn *websocket.Conn) error {
 	// WebSocket's read loop hasn't exited yet (e.g. reconnect scenario).
 	// Use StatusReplaced so the old client's frontend knows not to auto-reconnect.
 	if s.wsConn != nil {
-		slog.Info("terminal: kicking existing client for new connection")
+		slog.Info("terminal: kicking existing client for new connection",
+			slog.String("session", s.id),
+		)
 		s.wsMu.Lock()
 		s.wsConn.Close(StatusReplaced, "replaced by new client")
 		s.wsMu.Unlock()
@@ -202,11 +234,12 @@ func (s *Session) Connect(conn *websocket.Conn) error {
 		})
 	}
 
-	// Send current status
+	// Send current status with session ID
 	s.sendToClientUnlocked(ServerMessage{
-		Type:    "status",
-		Cwd:     s.cwd,
-		Running: true,
+		Type:      "status",
+		SessionID: s.id,
+		Cwd:       s.cwd,
+		Running:   true,
 	})
 
 	return nil
@@ -276,7 +309,10 @@ func (s *Session) Close() {
 	s.closed = true
 	s.running = false
 
-	slog.Info("terminal: closing session", slog.String("project", s.projectPath))
+	slog.Info("terminal: closing session",
+		slog.String("project", s.projectPath),
+		slog.String("session", s.id),
+	)
 
 	if s.idleTimer != nil {
 		s.idleTimer.Stop()
@@ -298,7 +334,10 @@ func (s *Session) Close() {
 			select {
 			case <-s.done:
 			case <-time.After(1 * time.Second):
-				slog.Warn("terminal: process did not exit after SIGKILL", slog.String("project", s.projectPath))
+				slog.Warn("terminal: process did not exit after SIGKILL",
+					slog.String("project", s.projectPath),
+					slog.String("session", s.id),
+				)
 			}
 		}
 	}
