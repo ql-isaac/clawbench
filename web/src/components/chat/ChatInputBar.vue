@@ -371,8 +371,10 @@ function onCreateTouchCancel(e) {
 }
 
 function onCreateContextMenu(e) {
-  // Desktop: right-click = create default session directly (same as long press)
   e.preventDefault()
+  // Skip if long-press timer already emitted within 300ms
+  // (mobile browsers fire contextmenu after a long-press, which would double-create)
+  if (Date.now() - lastCreateEmitTime < 300) return
   emit('create-session')
 }
 
