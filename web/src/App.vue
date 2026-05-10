@@ -248,7 +248,7 @@ import './assets/hljs-light-override.css'
 const isAuthenticated = ref(null)
 const { t } = useI18n()
 
-const activeTab = ref('browse')
+const activeTab = ref('chat')
 
 function switchTab(tab) {
   if (activeTab.value === tab) return
@@ -547,7 +547,8 @@ onMounted(async () => {
         await store.loadFiles(store.state.currentDir)
         await store.selectFile(lastFile)
         if (store.state.currentFile?.error) store.state.currentFile = null
-        if (store.state.currentFile) activeTab.value = 'viewer'
+        // 不再自动跳转到 viewer，保持默认 tab（chat）
+        // 用户切到 browse 时可以直接看到上次打开的文件
     }
 })
 

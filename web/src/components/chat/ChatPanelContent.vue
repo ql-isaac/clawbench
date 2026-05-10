@@ -471,12 +471,13 @@ provide('autoSpeech', autoSpeech)
 provide('layoutRefreshKey', layoutRefreshKey)
 
 // 子抽屉跟随聊天面板关闭；面板打开时刷新渲染（修复 display:none 期间的过时布局状态）
+// immediate: true 确保首次挂载时（active 已为 true）也会加载历史记录
 watch(() => props.active, async (val) => {
   if (!val) {
     session.sessionDrawerOpen.value = false
     session.taskDrawerOpen.value = false
   } else {
-    // Re-open: load history (with overlay) and fix stale layout state from v-show display:none
+    // Open/Re-open: load history (with overlay) and fix stale layout state from v-show display:none
     await session.loadHistory(false, true)
     // Bump layoutRefreshKey AFTER loadHistory so ChatMessageItem re-checks
     // collapse state with the fresh messages and valid scrollHeight.
@@ -484,7 +485,7 @@ watch(() => props.active, async (val) => {
       layoutRefreshKey.value++
     })
   }
-})
+}, { immediate: true })
 
 async function handleShowAgentSelector() {
   await agentsComposable.loadAgents()
