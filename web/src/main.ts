@@ -20,11 +20,17 @@ marked.use({
             if (lang === 'mermaid') {
                 return '<pre class="mermaid">' + escapeHtml(code) + '</pre>'
             }
+            // Fast path: known language → direct highlight (cheap)
+            if (lang && hljs.getLanguage(lang)) {
+                const highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+                return '<pre><code class="language-' + lang + '">' + highlighted + '</code></pre>'
+            }
+            // No language or unknown language: escapeHtml only.
+            // highlightAuto() is extremely expensive (tries all ~190 languages)
+            // and the result is rarely useful for chat messages — it causes
+            // significant jank on pages with many code blocks.
             const langClass = lang ? ' class="language-' + lang + '"' : ''
-            const highlighted = (lang && hljs.getLanguage(lang))
-                ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
-                : hljs.highlightAuto(code).value
-            return '<pre><code' + langClass + '>' + highlighted + '</code></pre>'
+            return '<pre><code' + langClass + '>' + escapeHtml(code) + '</code></pre>'
         },
     },
 })
