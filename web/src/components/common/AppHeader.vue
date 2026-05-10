@@ -35,26 +35,49 @@
       </Transition>
     </div>
 
-    <button class="locale-toggle" @click="toggleLocale" :title="currentLocale === 'zh' ? t('locale.switchToEn') : t('locale.switchToZh')">
-      {{ localeLabel }}
+    <button ref="settingsBtnRef" class="settings-toggle" @click="toggleSettingsMenu" :title="t('appHeader.settings')">
+      <Settings :size="20" />
     </button>
-    <button class="theme-toggle" @click="$emit('toggleTheme')" aria-label="Toggle theme">
-      <Moon v-if="theme === 'dark'" :size="20" />
-      <Sun v-else :size="20" />
-    </button>
+    <PopupMenu v-model:show="settingsMenuOpen" :target-element="settingsBtnRef" anchor="right" :max-width="200" :max-height="280" :menu-items-count="4">
+      <div class="settings-menu-title">{{ t('appHeader.settings') }}</div>
+      <button class="settings-menu-item" :class="{ active: currentLocale === 'zh' }" @click="handleLocaleSwitch('zh')">
+        <Check v-if="currentLocale === 'zh'" :size="14" />
+        <span v-else class="settings-menu-check-spacer"></span>
+        <span>中文</span>
+      </button>
+      <button class="settings-menu-item" :class="{ active: currentLocale === 'en' }" @click="handleLocaleSwitch('en')">
+        <Check v-if="currentLocale === 'en'" :size="14" />
+        <span v-else class="settings-menu-check-spacer"></span>
+        <span>English</span>
+      </button>
+      <div class="settings-menu-divider"></div>
+      <button class="settings-menu-item" :class="{ active: theme === 'dark' }" @click="handleThemeSwitch('dark')">
+        <Check v-if="theme === 'dark'" :size="14" />
+        <span v-else class="settings-menu-check-spacer"></span>
+        <Moon :size="14" />
+        <span>{{ t('appHeader.darkMode') }}</span>
+      </button>
+      <button class="settings-menu-item" :class="{ active: theme === 'light' }" @click="handleThemeSwitch('light')">
+        <Check v-if="theme === 'light'" :size="14" />
+        <span v-else class="settings-menu-check-spacer"></span>
+        <Sun :size="14" />
+        <span>{{ t('appHeader.lightMode') }}</span>
+      </button>
+    </PopupMenu>
   </header>
   </Teleport>
 </template>
 
 <script setup>
-import { Projector, ChevronDown, Search, Moon, Sun } from 'lucide-vue-next'
+import { Projector, ChevronDown, Search, Moon, Sun, Settings, Check } from 'lucide-vue-next'
 import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useLocale } from '@/composables/useLocale'
 import { baseName } from '@/utils/path.ts'
+import PopupMenu from '@/components/common/PopupMenu.vue'
 
 const { t } = useI18n()
-const { currentLocale, toggleLocale, localeLabel } = useLocale()
+const { currentLocale, setLocale } = useLocale()
 
 const props = defineProps({
     projectRoot: String,
@@ -63,6 +86,28 @@ const props = defineProps({
 const emit = defineEmits(['toggleTheme', 'openProjectDialog'])
 
 const toast = inject('toast')
+
+// Settings menu state
+const settingsBtnRef = ref(null)
+const settingsMenuOpen = ref(false)
+
+function toggleSettingsMenu() {
+    settingsMenuOpen.value = !settingsMenuOpen.value
+}
+
+function handleLocaleSwitch(lang) {
+    if (currentLocale.value !== lang) {
+        setLocale(lang)
+    }
+    settingsMenuOpen.value = false
+}
+
+function handleThemeSwitch(mode) {
+    if (props.theme !== mode) {
+        emit('toggleTheme')
+    }
+    settingsMenuOpen.value = false
+}
 
 const projectName = computed(() => {
     if (!props.projectRoot) return t('appHeader.selectProject')
@@ -367,32 +412,7 @@ onUnmounted(() => {
     transform: translateY(-4px);
 }
 
-.locale-toggle {
-    padding: 4px 8px;
-    border: 1px solid var(--border-color);
-    background: transparent;
-    cursor: pointer;
-    color: var(--text-secondary);
-    border-radius: var(--radius-sm);
-    transition: background 0.15s, border-color 0.15s;
-    flex-shrink: 0;
-    margin-left: auto;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.4;
-}
-
-.locale-toggle:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-}
-
-.locale-toggle:active {
-    transform: scale(0.95);
-}
-
-.theme-toggle {
+.settings-toggle {
     padding: 6px;
     border: none;
     background: transparent;
@@ -401,14 +421,72 @@ onUnmounted(() => {
     border-radius: var(--radius-sm);
     transition: background 0.15s;
     flex-shrink: 0;
+    margin-left: auto;
 }
 
-.theme-toggle:hover {
+.settings-toggle:hover {
     background: var(--bg-tertiary);
 }
 
-.theme-toggle svg {
+.settings-toggle svg {
     width: 20px;
     height: 20px;
+}
+</style>
+
+<!-- Unscoped styles for teleported settings menu content (PopupMenu uses Teleport to body, scoped styles won't reach it) -->
+<style>
+.settings-menu-title {
+    padding: 4px 10px 1px;
+    font-size: 10px;
+    color: var(--text-muted, #999);
+    font-weight: 500;
+    letter-spacing: 0.3px;
+}
+
+.settings-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    width: 100%;
+    border: none;
+    background: none;
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.settings-menu-item:hover {
+    background: var(--accent-color, #0066cc);
+    color: #fff;
+}
+
+.settings-menu-item.active {
+    color: var(--accent-color, #0066cc);
+    font-weight: 500;
+}
+
+.settings-menu-item.active:hover {
+    color: #fff;
+}
+
+.settings-menu-item svg {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+}
+
+.settings-menu-check-spacer {
+    width: 14px;
+    flex-shrink: 0;
+}
+
+.settings-menu-divider {
+    height: 1px;
+    background: var(--border-color, #e5e5e5);
+    margin: 3px 6px;
 }
 </style>

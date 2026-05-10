@@ -60,6 +60,9 @@ export default {
     projectPathNotFound: '项目路径不存在或已被删除',
     switchProjectFailed: '切换项目失败: {error}',
     switchProjectNetworkError: '切换项目失败: 网络错误',
+    settings: '设置',
+    darkMode: '深色模式',
+    lightMode: '浅色模式',
   },
   chat: {
     title: 'AI 对话',

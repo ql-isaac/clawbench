@@ -60,6 +60,9 @@ export default {
     projectPathNotFound: 'Project path does not exist or has been deleted',
     switchProjectFailed: 'Switch project failed: {error}',
     switchProjectNetworkError: 'Switch project failed: network error',
+    settings: 'Settings',
+    darkMode: 'Dark Mode',
+    lightMode: 'Light Mode',
   },
   chat: {
     title: 'AI Chat',
