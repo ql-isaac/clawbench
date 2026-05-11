@@ -259,6 +259,7 @@ async function deleteTask() {
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+  align-self: center;
 }
 
 .status-dot.active {

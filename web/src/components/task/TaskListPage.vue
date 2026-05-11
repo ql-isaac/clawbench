@@ -228,11 +228,12 @@ onMounted(refresh)
 
 .task-item-status {
   font-size: 9px;
-  padding: 1px 5px;
+  padding: 2px 5px;
   border-radius: 3px;
   font-weight: 500;
   flex-shrink: 0;
-  line-height: 1.4;
+  align-self: center;
+  line-height: 1.2;
 }
 
 .task-item-status.active {
@@ -256,6 +257,7 @@ onMounted(refresh)
   border-radius: 50%;
   background: var(--success-color, #22c55e);
   flex-shrink: 0;
+  align-self: center;
   animation: task-running-pulse 1.5s ease-in-out infinite;
 }
 

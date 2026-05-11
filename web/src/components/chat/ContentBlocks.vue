@@ -688,8 +688,8 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  display: inline-block;
   flex-shrink: 0;
+  align-self: center;
   margin-right: 4px;
 }
 
