@@ -149,7 +149,6 @@ function handleShowToolDetail(block) {
 function handleFileOpenInOverlay(filePath) {
   toolDetailOverlay.value.show = false
   openFilePath(filePath)
-  emit('close')
   emit('open-file', filePath)
 }
 
@@ -189,7 +188,6 @@ function handleContentClick(event) {
   const filePath = btn.getAttribute('data-file-path')
   if (filePath) {
     openFilePath(filePath)
-    emit('close')
     emit('open-file', filePath)
   }
 }
