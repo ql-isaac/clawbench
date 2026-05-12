@@ -209,12 +209,6 @@ func setupRAGStore(t *testing.T) *rag.Store {
 	return store
 }
 
-// setupMockEmbedder creates a mock EmbeddingClient pointing to a non-existent server.
-func setupMockEmbedder(t *testing.T) *rag.EmbeddingClient {
-	t.Helper()
-	return rag.NewEmbeddingClient("http://127.0.0.1:1", "bge-m3")
-}
-
 // setupWorkingMockEmbedder creates a mock EmbeddingClient backed by a test server
 // that returns valid 1024-dim embeddings.
 func setupWorkingMockEmbedder(t *testing.T) *rag.EmbeddingClient {

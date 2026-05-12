@@ -23,9 +23,7 @@ export interface UseChatSessionOptions {
   onConnectStream: (sessionId: string) => void
   onStopPolling: () => void
   onDisconnectStream: () => void
-  onMessage: () => void
   onOpen: () => void
-  isOpen: Ref<boolean>
   onStreamDone?: () => void
 }
 
@@ -45,9 +43,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     onConnectStream,
     onStopPolling,
     onDisconnectStream,
-    onMessage,
     onOpen,
-    isOpen,
     onStreamDone,
   } = options
 
@@ -338,7 +334,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     }
   }
 
-  function openSessionTab(tab) {
+  function openSessionTab() {
     sessionDrawerOpen.value = true
   }
 
@@ -391,6 +387,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         // Calculate total chat unread count for native badge
         const totalChatUnread = sessions.reduce((sum, s) => sum + (s.unreadCount || 0), 0)
+        void totalChatUnread // reserved for future native badge
 
         // Track running sessions for dock/chat button indicator
         store.state.chatRunning = newRunning.size > 0

@@ -1,5 +1,5 @@
 import { ref, reactive, nextTick, watch } from 'vue'
-import { marked, DOMPurify, mermaid } from '@/utils/globals.ts'
+import { marked, DOMPurify } from '@/utils/globals.ts'
 import { formatToolInput } from '@/utils/renderToolDetail.ts'
 import { renderKatexInString, renderMermaidInElement } from '@/composables/useMarkdownRenderer.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
@@ -87,24 +87,6 @@ export function useChatRender(options) {
     }
   })
 
-  async function fetchTaskData(key, taskId) {
-    if (blockTasks[key]?.task || blockTasks[key]?.loading) return
-    blockTasks[key] = { taskId, task: null, loading: true, deleted: false, error: false }
-    try {
-      const data = await apiGet(`/api/tasks/${taskId}`)
-      blockTasks[key].task = data
-    } catch (err: any) {
-      // 404 means task was deleted; other errors are transient
-      if (err?.message?.includes('404') || err?.message?.toLowerCase().includes('not found')) {
-        blockTasks[key].deleted = true
-      } else {
-        blockTasks[key].error = true
-      }
-    } finally {
-      blockTasks[key].loading = false
-    }
-  }
-
   // Batch-fetch task data using the list API to avoid per-task loading flicker.
   // ISS-013: delegates to taskBlockStore which does NOT mark deleted on network error.
   async function fetchBatchTaskData(taskKeys) {
@@ -152,7 +134,7 @@ export function useChatRender(options) {
     if (!skipEnhancements) {
       // Image styling, audio links, file path annotation: deferred to post-streaming
       const projectRoot = store.state.projectRoot
-      html = html.replace(/<img([^>]*)>/g, (match, attrs) => {
+      html = html.replace(/<img([^>]*)>/g, (_match, attrs) => {
         let cleanAttrs = attrs.replace(/\s*style="[^"]*"/i, '').replace(/\s*class="[^"]*"/i, '')
         // Convert local project file paths to /api/local-file/ URLs
         const srcMatch = cleanAttrs.match(/\bsrc="([^"]*)"/)
@@ -176,7 +158,7 @@ export function useChatRender(options) {
         return `<img${cleanAttrs} style="max-width: 200px; max-height: 200px; object-fit: cover; border-radius: 6px; margin: 4px 0; cursor: pointer;" class="chat-img-thumbnail">`
       })
       const audioExts = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma', '.opus']
-      html = html.replace(/<a href="([^"]+)">([^<]*)<\/a>/g, (match, href, text) => {
+      html = html.replace(/<a href="([^"]+)">([^<]*)<\/a>/g, (match, href) => {
         const lower = href.toLowerCase()
         if (audioExts.some(ext => lower.endsWith(ext))) {
           return `<div class="chat-audio-wrapper"><audio src="${href}" controls class="chat-audio-player"></audio></div>`

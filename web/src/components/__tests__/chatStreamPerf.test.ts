@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import {
   SCHEDULED_TASK_RE,
   extractScheduledTaskIds,
@@ -27,7 +27,7 @@ import {
  * When streaming=true, only marked + DOMPurify + table-wrap runs.
  * When streaming=false, the full pipeline runs.
  */
-function renderTextBlockDeferred(text, msgId, blockIdx, streaming = false) {
+function renderTextBlockDeferred(text, _msgId, _blockIdx, streaming = false) {
   if (streaming) {
     // Streaming: pure markdown only, no structured detection
     // This is the fast path — marked + DOMPurify + table-wrap

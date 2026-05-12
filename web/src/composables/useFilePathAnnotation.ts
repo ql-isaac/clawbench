@@ -1,4 +1,3 @@
-import { nextTick } from 'vue'
 import { escapeHtml } from '@/utils/html.ts'
 import { splitPath } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
@@ -163,7 +162,7 @@ export function annotateFilePaths(
 
     // Annotate <a> links that point to local files (append open button after the link)
     // Only matches non-http, non-anchor, non-mailto links
-    html = html.replace(/<a\s+([^>]*href="([^"]+)"[^>]*)>([\s\S]*?)<\/a>/gi, (match, attrs, href, linkContent) => {
+    html = html.replace(/<a\s+([^>]*href="([^"]+)"[^>]*)>([\s\S]*?)<\/a>/gi, (match, _attrs, href, _linkContent) => {
         // Skip external links, anchors, mailto, tel
         if (/^(https?:|\/\/|mailto:|tel:|#)/i.test(href)) return match
         // Resolve the href against baseDir (for MarkdownPreview) or projectRoot (for ChatPanel)

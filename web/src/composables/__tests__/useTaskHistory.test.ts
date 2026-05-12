@@ -60,7 +60,7 @@ vi.mock('@/composables/useChatRender.ts', () => ({
 
 // Import after mocks
 import { useTaskHistory } from '@/composables/useTaskHistory.ts'
-import { ref, nextTick } from 'vue'
+import { ref } from 'vue'
 
 beforeEach(() => {
   mockApiGet.mockReset()

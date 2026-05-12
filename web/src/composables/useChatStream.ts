@@ -1,7 +1,7 @@
 import { onUnmounted, type Ref } from 'vue'
 import { cancelChat } from '@/utils/api.ts'
 import { gt } from '@/composables/useLocale'
-import { FILE_MODIFYING_TOOLS, findLastBlockOfType, forceCleanupStreamingState } from '@/utils/chatStreamUtils.ts'
+import { FILE_MODIFYING_TOOLS, findLastBlockOfType } from '@/utils/chatStreamUtils.ts'
 
 export interface UseChatStreamOptions {
   messages: Ref<any[]>

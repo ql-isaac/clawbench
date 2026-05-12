@@ -57,7 +57,7 @@ describe('fetchItems', () => {
   it('uses cache on second call without force', async () => {
     mockApiGet.mockResolvedValue([makeItem()])
 
-    const { fetchItems, items } = useQuickSend()
+    const { fetchItems } = useQuickSend()
     await fetchItems(true)
     expect(mockApiGet).toHaveBeenCalledTimes(1)
 
@@ -78,7 +78,7 @@ describe('fetchItems', () => {
   it('silently fails on error', async () => {
     mockApiGet.mockRejectedValue(new Error('Network error'))
 
-    const { fetchItems, items } = useQuickSend()
+    const { fetchItems } = useQuickSend()
     await expect(fetchItems(true)).resolves.toBeUndefined()
   })
 

@@ -140,7 +140,7 @@ export function useTerminalGestures(
     }
   }
 
-  function startLongPress(e: TouchEvent) {
+  function startLongPress(_e: TouchEvent) {
     clearLongPress()
     longPressTriggered = false
     longPressTimer = setTimeout(() => {

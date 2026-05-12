@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeGraphData, LANE_WIDTH, LANE_COLORS, refLabelWidth, refLabelText, refLabelBg } from '@/utils/gitGraph'
+import { computeGraphData, LANE_COLORS, refLabelWidth, refLabelText, refLabelBg } from '@/utils/gitGraph'
 
 const ROW_HEIGHT = 64
 
@@ -515,7 +515,7 @@ describe('octopus merge cascade fork rendering', () => {
       { sha: 'fa', parents: ['root'], msg: 'fa' },
       { sha: 'root', parents: [], msg: 'root' },
     ]
-    const { lines, nodes } = computeGraphData(commits, ROW_HEIGHT)
+    const { lines } = computeGraphData(commits, ROW_HEIGHT)
 
     // The FORK from L0 to L3 (mrg -> fa) should use cascade, generating
     // more line segments than a simple bezier (1 path)
@@ -625,7 +625,7 @@ describe('lazy-load lane stability (previousShaToLane)', () => {
       { sha: 'f1', parents: ['m3'], msg: 'feature: work' },
       { sha: 'm3', parents: [], msg: 'root' },
     ]
-    const { nodes: fullNodes } = computeGraphData(fullPage, ROW_HEIGHT)
+    computeGraphData(fullPage, ROW_HEIGHT)
 
     // Without previousShaToLane, f1 may now be on the same lane as m3 (main line)
     // This is the lane shift that causes visual splitting
@@ -775,8 +775,8 @@ describe('branchNames on nodes', () => {
     // feature-a chain: aw2 -> aw1 -> ms
     // feature-b chain: bw1 -> ms
     // So ms should have both 'feature-a' and 'feature-b' in branchNames
-    const { nodes } = getConnections(OPEN_BRANCHES)
-    const msNode = nodes[4] // main: second (row 4)
+    const { nodes: msNodes } = getConnections(OPEN_BRANCHES)
+    const msNode = msNodes[4] // main: second (row 4)
 
     // Note: OPEN_BRANCHES doesn't have branch refs in the test data,
     // so branchNames will be empty. Let's test with refs instead.

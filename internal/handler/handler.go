@@ -153,17 +153,6 @@ func requireSessionID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return sessionID, true
 }
 
-// requireGitRepo checks that a .git directory exists in projectPath.
-// Writes 404 if not found. Returns true if repo exists.
-func requireGitRepo(w http.ResponseWriter, r *http.Request, projectPath string) bool {
-	gitDir := filepath.Join(projectPath, ".git")
-	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-		writeLocalizedError(w, r, model.NotFound(nil, "NotAGitRepo"))
-		return false
-	}
-	return true
-}
-
 // RegisterRoutes registers all HTTP routes with the given mux
 func RegisterRoutes(mux *http.ServeMux) {
 	register := func(pattern string, handler http.HandlerFunc) {

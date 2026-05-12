@@ -220,9 +220,7 @@ const { agents, loadAgents } = useAgents()
 // Task form composable (ISS-011 + ISS-012)
 const { form, errors, formError, saving, validate, submit: _submit, init } = useTaskForm({
   mode: computed(() => props.mode),
-  task: computed(() => props.task),
   onSuccess: (taskId) => emit('saved', taskId),
-  onClose: () => emit('close'),
 })
 
 // Frequency preset

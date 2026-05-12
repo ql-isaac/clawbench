@@ -152,7 +152,7 @@ export function useQuoteQuestion() {
     }, 400)
   }
 
-  async function sendMessage(userMessage: string, sessionId?: string) {
+  async function sendMessage(userMessage: string) {
     if (!quoteData.value || !userMessage.trim()) return
 
     const q = quoteData.value

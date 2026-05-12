@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -200,24 +198,6 @@ func TestRequireSessionID_Missing(t *testing.T) {
 	assert.False(t, ok)
 	assert.Empty(t, sessionID)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-// --- requireGitRepo ---
-
-func TestRequireGitRepo_Exists(t *testing.T) {
-	w := httptest.NewRecorder()
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
-	ok := requireGitRepo(w, httptest.NewRequest(http.MethodGet, "/", nil), dir)
-	assert.True(t, ok)
-}
-
-func TestRequireGitRepo_NotExists(t *testing.T) {
-	w := httptest.NewRecorder()
-	dir := t.TempDir()
-	ok := requireGitRepo(w, httptest.NewRequest(http.MethodGet, "/", nil), dir)
-	assert.False(t, ok)
-	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // --- requireProject (existing, verify unchanged) ---

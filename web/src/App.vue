@@ -150,7 +150,7 @@
         :sessionLabel="sessionIdentity.agentHeaderTitle.value"
         :sessionTitle="sessionIdentity.currentSessionTitle.value"
         :currentSessionId="sessionIdentity.currentSessionId.value"
-        @send="quoteQuestion.sendMessage($event, sessionIdentity.currentSessionId.value)"
+        @send="quoteQuestion.sendMessage($event)"
         @close="quoteQuestion.closeSheet()"
         @pin="quoteQuestion.pinBar()"
         @unpin="quoteQuestion.unpinBar()"

@@ -94,18 +94,6 @@ func newHealthyMockOllama(t *testing.T) (*EmbeddingClient, func()) {
 	return client, server.Close
 }
 
-// addUnindexedMessage inserts an unindexed message into chat_history.
-func addUnindexedMessage(t *testing.T, db *sql.DB, sessionID, role, content string) int64 {
-	t.Helper()
-	result, err := db.Exec(
-		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming, indexed) VALUES (?, ?, ?, ?, 'claude', 0, 0)",
-		"/test", role, content, sessionID,
-	)
-	require.NoError(t, err)
-	id, _ := result.LastInsertId()
-	return id
-}
-
 // ---------- NewIndexer ----------
 
 func TestNewIndexer_Construction(t *testing.T) {

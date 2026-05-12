@@ -40,9 +40,8 @@ type FileWatcher struct {
 var GlobalFileWatcher *FileWatcher
 
 const (
-	watchPushChSize   = 16
-	watchDebounceMs   = 200
-	watchHeartbeatSec = 30
+	watchPushChSize = 16
+	watchDebounceMs = 200
 )
 
 // InitFileWatcher creates the global FileWatcher and starts its event loop.

@@ -328,7 +328,6 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
   // ── Pre-compute merge-in counts per parent row ──
   // Used to offset merge-in bezier endpoints when multiple arrive at same parent
   const mergeInCount = new Map()  // parentRow -> count of merge-ins
-  const mergeInIndex = new Map()  // "parentRow:fromLane" -> index among siblings
   for (let row = 0; row < commits.length; row++) {
     const c = commits[row]
     if (c.isWT) continue

@@ -241,9 +241,7 @@ const session = useChatSession({
   onConnectStream: (sessionId) => stream.connectStream(sessionId),
   onStopPolling: () => stream.stopPolling(),
   onDisconnectStream: () => stream.disconnectStream(),
-  onMessage: () => emit('message'),
   onOpen: () => emit('open'),
-  isOpen: toRef(props, 'active'),
   onStreamDone: playNotificationSound,
 })
 

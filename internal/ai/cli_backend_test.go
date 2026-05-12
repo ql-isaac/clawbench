@@ -62,17 +62,6 @@ func TestCLIBackend_ExecuteStream_ContextCancellation(t *testing.T) {
 
 // --- CLIBackend filterLine helpers ---
 
-func TestDefaultFilterEmpty(t *testing.T) {
-	f := defaultFilterEmpty()
-
-	line, ok := f("")
-	assert.False(t, ok)
-
-	line, ok = f("hello")
-	assert.True(t, ok)
-	assert.Equal(t, "hello", line)
-}
-
 func TestFilterSkipNonJSON(t *testing.T) {
 	f := filterSkipNonJSON()
 

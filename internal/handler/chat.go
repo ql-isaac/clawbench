@@ -869,13 +869,6 @@ func CancelChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // stringsContainsAnyBlock checks if any text ContentBlock contains the given substring.
 func stringsContainsAnyBlock(blocks []model.ContentBlock, substr string) bool {
 	for _, b := range blocks {

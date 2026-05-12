@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue'
+import { ref } from 'vue'
 
 export type ModifierKey = 'ctrl' | 'alt' | 'shift'
 export type ModifierState = 'inactive' | 'once' | 'locked'

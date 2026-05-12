@@ -3,9 +3,7 @@ import { apiPost, apiPut } from '@/utils/api.ts'
 
 interface UseTaskFormOptions {
   mode: Ref<string>
-  task?: Ref<any>
   onSuccess: (taskId: number) => void
-  onClose: () => void
 }
 
 /** Map a server error message to the correct form field, or return '' for formError */
@@ -27,7 +25,7 @@ function mapServerError(error: string): { field?: string; message: string } {
 }
 
 export function useTaskForm(options: UseTaskFormOptions) {
-  const { mode, task, onSuccess, onClose } = options
+  const { mode, onSuccess } = options
 
   const saving = ref(false)
   const formError = ref('')

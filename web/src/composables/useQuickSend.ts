@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/utils/api'
 
 export interface QuickSendItem {

@@ -87,7 +87,9 @@ function getGraphInfo(commits, rowHeight = ROW_HEIGHT, previousShaToLane) {
 }
 
 // ─── Find continuation lines for a given lane's bottommost node ───
-function findContinuationLines(lines, nodeLane, nodeRow) {
+// Utility kept for documentation; disable eslint instead
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _findContinuationLines(_lines: any[], _nodeLane: number, _nodeRow: number) {
   const x = laneCx(nodeLane)
   const y1 = rowCy(nodeRow) + 5
   return lines.filter(l => l.fade && l.path.startsWith(`M${x},${y1}`))
@@ -332,7 +334,7 @@ const OCTOPUS = [
 ]
 
 describe('06-octopus-merge (real data)', () => {
-  const { nodes, connections, laneCount } = getGraphInfo(OCTOPUS)
+  const { connections, laneCount } = getGraphInfo(OCTOPUS)
 
   it('4 lanes (main + 3 features)', () => expect(laneCount).toBe(4))
 
@@ -367,7 +369,7 @@ const OPEN_BRANCHES = [
 ]
 
 describe('07-open-branches (real data)', () => {
-  const { nodes, connections, laneCount } = getGraphInfo(OPEN_BRANCHES)
+  const { nodes, connections } = getGraphInfo(OPEN_BRANCHES)
 
   it('feature-a on lane 0 (first-parent chain)', () => {
     expect(nodes[0].lane).toBe(0)
@@ -406,7 +408,7 @@ const LONG_LINEAR = [
 ]
 
 describe('08-long-linear (real data, first 10)', () => {
-  const { nodes, connections, laneCount } = getGraphInfo(LONG_LINEAR)
+  const { nodes, connections } = getGraphInfo(LONG_LINEAR)
 
   it('all on lane 0', () => {
     for (const n of nodes) expect(n.lane).toBe(0)
@@ -492,7 +494,7 @@ describe('partial loading - continuation lines with exact SVG paths', () => {
     const partial = OPEN_BRANCHES.slice(0, 4)
     // rows: 0=feature-a:work2(lane0), 1=feature-a:work1(lane0), 2=feature-b:work1(lane1), 3=main:third(lane1 or 2)
     // Rows 1,2,3 all have parent '5388f87' which is NOT loaded
-    const { lines, connections, nodes } = getGraphInfo(partial)
+    const { lines, nodes } = getGraphInfo(partial)
 
     const svgBottom = 4 * ROW_HEIGHT + ROW_HEIGHT // 230
 
@@ -542,7 +544,7 @@ describe('partial loading - continuation lines with exact SVG paths', () => {
     //        3=release:prep2(lane1), 4=release:prep1(lane1)
     // Row 1's first parent (91a7f14) not loaded → continuation on lane 0
     // Row 4's first parent (074dbaa) not loaded → continuation on lane 1
-    const { lines, nodes } = getGraphInfo(partial)
+    const { lines } = getGraphInfo(partial)
     const svgBottom = 5 * ROW_HEIGHT + ROW_HEIGHT // 276
 
     // Lane 0: bottom node needing continuation is row 1 (merge)
@@ -673,7 +675,7 @@ describe('every lane with unloaded parents has continuation lines', () => {
     }
 
     // For each lane needing continuation, verify there's a fade line with exact coordinates
-    for (const [lane, { row, node }] of lanesNeedingContinuation) {
+    for (const [lane, { row }] of lanesNeedingContinuation) {
       const x = laneCx(lane)
       const y1 = rowCy(row) + 5
       const expectedPath = `M${x},${y1} L${x},${svgBottom}`

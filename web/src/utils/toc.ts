@@ -1,5 +1,4 @@
 // Table of Contents extraction utilities
-import { splitPath } from './path.ts'
 
 export interface TocItem {
     level: number

@@ -207,17 +207,6 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 	return ch, nil
 }
 
-// defaultFilterEmpty returns a filterLine that skips empty lines.
-// This is the default behavior when filterLine is nil.
-func defaultFilterEmpty() func(string) (string, bool) {
-	return func(line string) (string, bool) {
-		if line == "" {
-			return "", false
-		}
-		return line, true
-	}
-}
-
 // filterSkipNonJSON returns a filterLine that skips empty lines and lines
 // that don't start with '{'.
 func filterSkipNonJSON() func(string) (string, bool) {

@@ -8,16 +8,6 @@ import {
 
 // ── Helpers ──
 
-/** Extract text content from HTML, stripping all tags */
-function stripTags(html: string): string {
-  return html.replace(/<[^>]*>/g, '').trim()
-}
-
-/** Check if HTML contains a specific CSS class */
-function hasClass(html: string, className: string): boolean {
-  return html.includes(`class="${className}"`) || html.includes(`class='${className}'`)
-}
-
 /** Check if HTML contains a specific substring */
 function contains(html: string, substring: string): boolean {
   return html.includes(substring)

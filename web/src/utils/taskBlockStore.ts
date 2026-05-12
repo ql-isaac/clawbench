@@ -18,7 +18,7 @@ export function createTaskBlockStore() {
   const blocks: Record<string, TaskBlockEntry> = reactive({})
 
   async function fetchBatchData(taskKeys: TaskKey[]): Promise<void> {
-    const pending = taskKeys.filter(({ key, taskId }) =>
+    const pending = taskKeys.filter(({ key }) =>
       !blocks[key]?.task && !blocks[key]?.loading
     )
     if (pending.length === 0) return
