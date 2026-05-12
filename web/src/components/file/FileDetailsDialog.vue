@@ -35,7 +35,7 @@ const props = defineProps({
 })
 defineEmits(['close'])
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const toast = inject('toast', null)
 
 function copyValue(value, event) {
@@ -84,7 +84,7 @@ const modified = computed(() => {
   })
   if (entry?.modified) {
     const d = new Date(entry.modified)
-    return d.toLocaleString()
+    return d.toLocaleString(locale.value === 'zh' ? 'zh-CN' : 'en-US')
   }
   return ''
 })

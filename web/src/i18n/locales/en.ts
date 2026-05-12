@@ -17,6 +17,7 @@ export default {
     networkError: 'Network error',
     remove: 'Remove',
     noData: 'No data',
+    ok: 'OK',
     listSeparator: ', ',
   },
   nav: {
@@ -200,6 +201,10 @@ export default {
       justNow: 'just now',
       fromNow: 'from now',
       ago: 'ago',
+      minutesAgo: '{count} min ago',
+      minutesFromNow: '{count} min from now',
+      hoursAgo: '{count} hr ago',
+      hoursFromNow: '{count} hr from now',
       close: 'Close',
       warningReasons: {
         user_cancel: 'User cancelled',

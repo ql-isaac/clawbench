@@ -98,7 +98,7 @@ import { handleToolAction, shouldAutoExpandTool } from '@/utils/renderToolDetail
 import { getToolIcon } from '@/utils/icons'
 import { CircleHelp, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, AlertTriangle, XCircle } from 'lucide-vue-next'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 // Reasons that indicate a severe issue (red error-level styling)
 const SEVERE_REASONS = new Set(['disconnect', 'timeout', 'restart', 'panic'])
@@ -251,9 +251,15 @@ function formatTime(iso) {
   const diff = d.getTime() - now.getTime()
   const absDiff = Math.abs(diff)
   if (absDiff < 60000) return t('chat.contentBlocks.justNow')
-  if (absDiff < 3600000) return `${Math.round(absDiff / 60000)}m ${diff > 0 ? t('chat.contentBlocks.fromNow') : t('chat.contentBlocks.ago')}`
-  if (absDiff < 86400000) return `${Math.round(absDiff / 3600000)}h ${diff > 0 ? t('chat.contentBlocks.fromNow') : t('chat.contentBlocks.ago')}`
-  return d.toLocaleDateString()
+  if (absDiff < 3600000) {
+    const count = Math.round(absDiff / 60000)
+    return diff > 0 ? t('chat.contentBlocks.minutesFromNow', { count }) : t('chat.contentBlocks.minutesAgo', { count })
+  }
+  if (absDiff < 86400000) {
+    const count = Math.round(absDiff / 3600000)
+    return diff > 0 ? t('chat.contentBlocks.hoursFromNow', { count }) : t('chat.contentBlocks.hoursAgo', { count })
+  }
+  return d.toLocaleDateString(locale.value === 'zh' ? 'zh-CN' : 'en-US')
 }
 
 const thinkingExpanded = ref({})

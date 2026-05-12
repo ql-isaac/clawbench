@@ -31,7 +31,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { copyText } from '@/utils/clipboard.ts'
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const props = defineProps({
   commit: Object,
@@ -52,7 +52,7 @@ function formatDate(dateStr) {
   if (!dateStr) return ''
   try {
     const d = new Date(dateStr)
-    return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    return d.toLocaleString(locale.value === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   } catch {
     return dateStr
   }

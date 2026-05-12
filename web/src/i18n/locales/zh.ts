@@ -17,6 +17,7 @@ export default {
     networkError: '网络错误',
     remove: '移除',
     noData: '暂无数据',
+    ok: '确定',
     listSeparator: '，',
   },
   nav: {
@@ -200,6 +201,10 @@ export default {
       justNow: '刚刚',
       fromNow: '后',
       ago: '前',
+      minutesAgo: '{count}分钟前',
+      minutesFromNow: '{count}分钟后',
+      hoursAgo: '{count}小时前',
+      hoursFromNow: '{count}小时后',
       close: '关闭',
       warningReasons: {
         user_cancel: '用户已中断',

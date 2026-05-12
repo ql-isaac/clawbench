@@ -64,7 +64,7 @@ import { useI18n } from 'vue-i18n'
 import { ChevronRight, Square } from 'lucide-vue-next'
 import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 import { useTaskHistory } from '@/composables/useTaskHistory.ts'
-import { formatDuration } from '@/utils/format.ts'
+import { formatDuration, formatRelativeTime } from '@/utils/format.ts'
 
 const props = defineProps({
   task: Object,
@@ -106,16 +106,6 @@ function formatAbsoluteTime(createdAt) {
   return `${y}-${mo}-${day} ${h}:${mi}:${s}`
 }
 
-function formatRelativeTime(createdAt) {
-  const diff = Date.now() - new Date(createdAt).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return t('common.justNow')
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
 
 function extractSummary(exec) {
   const { blocks } = chatRender.parseAssistantContent(exec.content || '{}')

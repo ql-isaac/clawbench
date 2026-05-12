@@ -209,7 +209,7 @@ import DirBreadcrumb from './DirBreadcrumb.vue'
 
 const toast = inject('toast', null)
 const { isAppMode } = useAppMode()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const dialog = useDialog()
 
 const props = defineProps({
@@ -562,9 +562,10 @@ function formatDate(modified) {
     if (!modified) return ''
     const d = new Date(modified)
     const isToday = d.toDateString() === new Date().toDateString()
+    const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
     return isToday
-        ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-        : `${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+        ? d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' })
+        : d.toLocaleDateString(loc, { month: '2-digit', day: '2-digit' })
 }
 
 function formatSize(size) {

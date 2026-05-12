@@ -4,6 +4,7 @@
  */
 import { baseName } from '@/utils/path.ts'
 import { gt } from '@/composables/useLocale'
+import i18n from '@/i18n'
 
 /**
  * Parse assistant content string into structured blocks.
@@ -118,11 +119,8 @@ export function formatMessageTime(createdAt: string): string {
   const diffDays = Math.floor(diffHours / 24)
   if (diffDays < 7) return gt('time.daysAgo', { count: diffDays })
 
-  const month = date.getMonth() + 1
-  const day = date.getDate()
-  const hour = date.getHours().toString().padStart(2, '0')
-  const minute = date.getMinutes().toString().padStart(2, '0')
-  return `${month}/${day} ${hour}:${minute}`
+  const d = new Date(createdAt)
+  return d.toLocaleDateString(i18n.global.locale.value === 'zh' ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 /**
