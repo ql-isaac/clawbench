@@ -142,12 +142,8 @@ func runRAGSearch(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("search failed: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("search failed: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "search"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -178,12 +174,8 @@ func runRAGMessage(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("message not found: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("message not found: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "get message"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -208,12 +200,8 @@ func runRAGSession(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("session not found: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("session not found: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "get session"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))

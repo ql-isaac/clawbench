@@ -286,12 +286,8 @@ func runCreate(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to create task: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("failed to create task: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "create task"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -311,12 +307,8 @@ func runList(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to list tasks: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("failed to list tasks: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "list tasks"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -342,12 +334,8 @@ func runGet(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to get task: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("failed to get task: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "get task"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -419,12 +407,8 @@ func runUpdate(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to update task: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("failed to update task: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "update task"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -450,12 +434,8 @@ func runDelete(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to delete task: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("failed to delete task: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "delete task"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -482,12 +462,8 @@ func runPause(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to pause task: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("failed to pause task: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "pause task"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -514,12 +490,8 @@ func runResume(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to resume task: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("failed to resume task: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "resume task"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -546,12 +518,8 @@ func runTrigger(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to trigger task: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("failed to trigger task: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "trigger task"); err != nil {
+		return outputError(err.Error())
 	}
 
 	fmt.Println(mustMarshal(result))
@@ -566,12 +534,8 @@ func runListAgents(args []string) int {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to list agents: %v", err))
 	}
-	if status != http.StatusOK {
-		errMsg, _ := result["error"].(string)
-		if errMsg == "" {
-			errMsg = fmt.Sprintf("HTTP %d", status)
-		}
-		return outputError(fmt.Sprintf("failed to list agents: %s", errMsg))
+	if err := checkHTTPResponse(result, status, "list agents"); err != nil {
+		return outputError(err.Error())
 	}
 
 	// Format as a readable table
