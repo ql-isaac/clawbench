@@ -1,17 +1,13 @@
 <template>
   <div class="content-blocks">
     <template v-for="(block, bi) in blocks" :key="bi">
-      <!-- Thinking block — styled as tool-call, opens overlay on click -->
-      <template v-if="block.type === 'thinking'">
-        <div
-          class="chat-tool-call done"
-          data-category="skill"
-          @click.stop="handleThinkingClick(block, key(bi))"
-        >
-          <component :is="Brain" :size="12" class="tool-icon" />
-          <span class="tool-name">{{ t('chat.message.deepThinking') }}</span>
+      <!-- Thinking block -->
+      <div v-if="block.type === 'thinking'" class="chat-thinking" @click.stop="handleThinkingClick(block, key(bi))">
+        <div class="thinking-header">
+          <component :is="Brain" :size="12" />
+          <span class="thinking-label">{{ t('chat.message.deepThinking') }}</span>
         </div>
-      </template>
+      </div>
       <!-- Tool use block -->
       <template v-else-if="block.type === 'tool_use'">
         <div class="chat-tool-call" :class="{ done: block.done, 'tool-error': block.status === 'error' }" :data-category="getToolIcon(block.name).category" @click.stop="handleToolClick(block, key(bi))">
@@ -460,6 +456,29 @@ onUnmounted(() => {
 
 :root[data-theme="dark"] .chat-warning-card .warning-text {
   color: #fcd34d;
+}
+
+/* Thinking block */
+.chat-thinking {
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-color, #0066cc) 15%, transparent);
+  border-radius: 6px;
+  margin: 4px 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.thinking-label {
+  font-weight: 500;
 }
 
 /* Thinking overlay text */
