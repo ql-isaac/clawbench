@@ -792,7 +792,7 @@ onUnmounted(() => {
     border-radius: 12px;
     padding: 4px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-    z-index: 100;
+    z-index: 1100;
     min-width: 140px;
 }
 
