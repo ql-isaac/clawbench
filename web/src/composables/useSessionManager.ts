@@ -203,6 +203,19 @@ export function useSessionManager(options: UseSessionManagerOptions) {
     }
   })
 
+  // When the page becomes visible after being in the background (e.g. mobile screen
+  // unlock), sync pendingMessages with the backend. SSE events (queue_consume,
+  // queue_update, queue_done) are dropped while the page is hidden, so the local
+  // pendingMessages may be stale — showing ghost "queuing" items that the backend
+  // has already consumed. This is the definitive fix for the semi-transparent
+  // pending overlay persisting after screen unlock.
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible' && pendingMessages.value.length > 0 && identity.currentSessionId.value) {
+      fetchQueue(identity.currentSessionId.value)
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
   // ── Register identity actions ──
 
   /** Wire the identity singleton's proxy callbacks to our unified methods.
@@ -235,6 +248,8 @@ export function useSessionManager(options: UseSessionManagerOptions) {
     deleteCurrentSession,
     // Cleanup (exposed for onStreamEnd and other edge cases)
     cleanupActiveStream,
+    // Visibility change cleanup — call removeEventListener on unmount
+    _visibilityHandler: handleVisibilityChange,
     // Identity registration
     registerIdentityActions,
   }

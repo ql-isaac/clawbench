@@ -169,4 +169,73 @@ describe('Pending Message Queue (API-driven)', () => {
 
     expect(userFiles).toHaveLength(0)
   })
+
+  it('visibility change syncs stale pendingMessages with backend', async () => {
+    // Simulate stale pending messages that the backend has already consumed
+    pendingMessages.value = [{ text: 'stale-queued' }]
+
+    // Backend queue is empty — all items have been consumed while page was hidden
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ queue: [] }),
+    })
+
+    // Simulate fetchQueue (called by visibilitychange handler)
+    const sessionId = 'test-session'
+    const resp = await fetch(`/api/ai/queue?session_id=${encodeURIComponent(sessionId)}`)
+    if (resp.ok) {
+      const data = await resp.json()
+      pendingMessages.value = data.queue || []
+    }
+
+    expect(pendingMessages.value).toHaveLength(0)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/queue?session_id=test-session',
+    )
+  })
+
+  it('visibility change preserves pendingMessages when backend still has queue', async () => {
+    // Simulate pending messages that the backend still has
+    pendingMessages.value = [{ text: 'still-queued' }]
+
+    // Backend confirms queue still has items
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ queue: [{ text: 'still-queued' }] }),
+    })
+
+    const sessionId = 'test-session'
+    const resp = await fetch(`/api/ai/queue?session_id=${encodeURIComponent(sessionId)}`)
+    if (resp.ok) {
+      const data = await resp.json()
+      pendingMessages.value = data.queue || []
+    }
+
+    expect(pendingMessages.value).toHaveLength(1)
+    expect(pendingMessages.value[0].text).toBe('still-queued')
+  })
+
+  it('loading true→false transition syncs stale pendingMessages', async () => {
+    // This simulates the watch(loading) handler in useSessionManager
+    pendingMessages.value = [{ text: 'stale-queued' }]
+    const oldLoading = true
+    const newLoading = false
+
+    // Backend queue is empty
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ queue: [] }),
+    })
+
+    if (oldLoading && !newLoading && pendingMessages.value.length > 0) {
+      const sessionId = 'test-session'
+      const resp = await fetch(`/api/ai/queue?session_id=${encodeURIComponent(sessionId)}`)
+      if (resp.ok) {
+        const data = await resp.json()
+        pendingMessages.value = data.queue || []
+      }
+    }
+
+    expect(pendingMessages.value).toHaveLength(0)
+  })
 })

@@ -248,7 +248,8 @@ const session = useChatSession({
 })
 
 // onStreamEnd: fires when current session stream completes with a reason
-// - 'done': normal completion → play sound, auto-speech; backend handles queue drain
+// - 'done': normal completion → play sound, auto-speech; queue sync handled by
+//   useSessionManager's watch(loading) safety net (loading true→false triggers fetchQueue)
 // - 'cancelled': user cancelled → clear locally for immediate UI response
 // - 'error': error occurred → don't touch pendingMessages; backend preserves queue
 function onStreamEnd(reason) {
@@ -264,9 +265,6 @@ function onStreamEnd(reason) {
         }
       }
     }
-    // Sync queue from backend — when SSE was disconnected (e.g. user left the page),
-    // queue_consume/queue_update events were missed and pendingMessages may be stale.
-    manager.fetchQueue(identity.currentSessionId.value)
   } else if (reason === 'cancelled') {
     // Backend already cleared queue; clear locally for immediate UI response
     manager.pendingMessages.value = []
@@ -581,6 +579,7 @@ onUnmounted(() => {
     session.stopGlobalPolling()
     session.stopMsgCountPolling()
     document.removeEventListener('visibilitychange', session.handleVisibilityChange)
+    document.removeEventListener('visibilitychange', manager._visibilityHandler)
     notification.closeAll()
 })
 </script>
