@@ -2,45 +2,42 @@
   <div class="task-overview">
     <!-- Scrollable content -->
     <div class="overview-scroll">
-      <!-- Info card -->
+      <!-- Header section -->
+      <div class="task-header">
+        <div class="task-title-row">
+          <span class="agent-icon">{{ getAgentIcon(task.agentId) }}</span>
+          <h2 class="task-name">{{ task.name }}</h2>
+          <span class="status-badge" :class="task.status">
+            <span v-if="task.runningCount > 0" class="status-dot running"></span>
+            <span v-else class="status-dot" :class="task.status"></span>
+            {{ statusText }}
+          </span>
+        </div>
+        <div class="task-meta-row">
+          <span class="task-id-value" @click="copyId" :title="t('common.copy')">#{{ task.id }}</span>
+          <span class="agent-name">{{ getAgentName(task.agentId) }}</span>
+        </div>
+      </div>
+
+      <!-- Schedule card -->
       <div class="overview-card">
-        <!-- Task ID -->
+        <h3 class="card-title">
+          <CalendarClock class="card-icon" :size="14" />
+          {{ t('task.form.frequency') }}
+        </h3>
         <div class="overview-row">
-          <span class="overview-label">ID</span>
-          <span class="overview-value task-id-value" @click="copyId" :title="t('common.copy')">{{ task.id }}</span>
+          <span class="overview-value font-mono">{{ task.cronExpr }}</span>
+          <span class="overview-subtext">{{ humanizeCron(task.cronExpr) }}</span>
         </div>
-        <!-- Status -->
-        <div class="overview-row">
-          <span class="overview-label">{{ t('chat.contentBlocks.status') }}</span>
-          <span class="overview-value">
-            <span class="status-dot" :class="task.status"></span>
-            <span :class="['status-text', task.status]">{{ statusText }}</span>
-          </span>
-        </div>
-        <!-- Frequency -->
-        <div class="overview-row">
-          <span class="overview-label">{{ t('chat.contentBlocks.frequency') }}</span>
-          <span class="overview-value">{{ humanizeCron(task.cronExpr) }}</span>
-        </div>
-        <!-- Agent -->
-        <div class="overview-row">
-          <span class="overview-label">{{ t('chat.contentBlocks.executor') }}</span>
-          <span class="overview-value">
-            <span class="agent-icon">{{ getAgentIcon(task.agentId) }}</span>
-            <span class="agent-name">{{ getAgentName(task.agentId) }}</span>
-          </span>
-        </div>
-        <!-- Repeat mode -->
+        <div class="overview-divider"></div>
         <div class="overview-row">
           <span class="overview-label">{{ t('chat.contentBlocks.repeat') }}</span>
           <span class="overview-value">{{ repeatLabel(task.repeatMode, task.maxRuns) }}</span>
         </div>
-        <!-- Run count -->
         <div v-if="task.runCount > 0" class="overview-row">
           <span class="overview-label">{{ t('chat.contentBlocks.statusExecutions', { count: task.runCount }) }}</span>
         </div>
-        <!-- Next run -->
-        <div v-if="task.nextRunAt" class="overview-row">
+        <div v-if="task.nextRunAt" class="overview-row highlight">
           <span class="overview-label">{{ t('chat.contentBlocks.nextRun') }}</span>
           <span class="overview-value">{{ formatDateTime(task.nextRunAt) }}</span>
         </div>
@@ -49,8 +46,14 @@
       <!-- Prompt preview card -->
       <div class="overview-card">
         <div class="prompt-header" @click="promptExpanded = !promptExpanded">
-          <span class="overview-label">{{ t('task.form.prompt') }}</span>
-          <span class="prompt-toggle">{{ promptExpanded ? '▾' : '▸' }}</span>
+          <h3 class="card-title">
+            <MessageSquare class="card-icon" :size="14" />
+            {{ t('task.form.prompt') }}
+          </h3>
+          <span class="prompt-toggle">
+            <ChevronUp v-if="promptExpanded" :size="16" />
+            <ChevronDown v-else :size="16" />
+          </span>
         </div>
         <div v-if="promptExpanded" class="prompt-body markdown-body" v-html="renderedPrompt"></div>
         <div v-else class="prompt-body collapsed">
@@ -62,47 +65,42 @@
 
     <!-- Fixed bottom action bar -->
     <div class="overview-actions">
-      <button class="action-btn" @click="$emit('edit')">
-        <Pencil :size="12" />
+      <button class="action-btn" @click="$emit('edit')" :title="t('common.edit')">
+        <Pencil :size="14" />
         <span class="action-text">{{ t('common.edit') }}</span>
       </button>
-      <button v-if="task.runCount > 0 || task.runningCount > 0" class="action-btn" @click="$emit('history')">
-        <Clock :size="12" />
+      <button v-if="task.runCount > 0 || task.runningCount > 0" class="action-btn" @click="$emit('history')" :title="t('task.history')">
+        <History :size="14" />
         <span class="action-text">{{ t('task.history') }}</span>
       </button>
       <span class="actions-spacer"></span>
       <template v-if="task.status === 'active'">
-        <button class="action-btn accent" :disabled="actionLoading" @click="triggerTask">
-          <Zap :size="12" />
+        <button class="action-btn accent" :disabled="actionLoading" @click="triggerTask" :title="t('task.run')">
+          <Zap :size="14" />
           <span class="action-text">{{ t('task.run') }}</span>
         </button>
-        <button class="action-btn warn" :disabled="actionLoading" @click="pauseTask">
-          <Pause :size="12" />
-          <span class="action-text">{{ t('task.pause') }}</span>
+        <button class="action-btn warn icon-only" :disabled="actionLoading" @click="pauseTask" :title="t('task.pause')">
+          <Pause :size="14" />
         </button>
-        <button class="action-btn danger" :disabled="actionLoading" @click="deleteTask">
-          <Trash2 :size="12" />
-          <span class="action-text">{{ t('task.delete') }}</span>
+        <button class="action-btn danger icon-only" :disabled="actionLoading" @click="deleteTask" :title="t('task.delete')">
+          <Trash2 :size="14" />
         </button>
       </template>
       <template v-else-if="task.status === 'paused'">
-        <button class="action-btn accent" :disabled="actionLoading" @click="triggerTask">
-          <Zap :size="12" />
+        <button class="action-btn accent" :disabled="actionLoading" @click="triggerTask" :title="t('task.run')">
+          <Zap :size="14" />
           <span class="action-text">{{ t('task.run') }}</span>
         </button>
-        <button class="action-btn success" :disabled="actionLoading" @click="resumeTask">
-          <Play :size="12" />
-          <span class="action-text">{{ t('task.resume') }}</span>
+        <button class="action-btn success icon-only" :disabled="actionLoading" @click="resumeTask" :title="t('task.resume')">
+          <Play :size="14" />
         </button>
-        <button class="action-btn danger" :disabled="actionLoading" @click="deleteTask">
-          <Trash2 :size="12" />
-          <span class="action-text">{{ t('task.delete') }}</span>
+        <button class="action-btn danger icon-only" :disabled="actionLoading" @click="deleteTask" :title="t('task.delete')">
+          <Trash2 :size="14" />
         </button>
       </template>
       <template v-else-if="task.status === 'completed'">
-        <button class="action-btn danger" :disabled="actionLoading" @click="deleteTask">
-          <Trash2 :size="12" />
-          <span class="action-text">{{ t('task.delete') }}</span>
+        <button class="action-btn danger icon-only" :disabled="actionLoading" @click="deleteTask" :title="t('task.delete')">
+          <Trash2 :size="14" />
         </button>
       </template>
     </div>
@@ -111,7 +109,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Pencil, Pause, Play, Zap, Trash2, Clock } from 'lucide-vue-next'
+import { Pencil, Pause, Play, Zap, Trash2, History, CalendarClock, MessageSquare, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useTaskOverview } from '@/composables/useTaskOverview.ts'
 import { useMarkdownRenderer } from '@/composables/useMarkdownRenderer'
@@ -171,6 +169,7 @@ const renderedPrompt = computed(() => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--bg-primary, #ffffff);
 }
 
 .overview-scroll {
@@ -182,106 +181,179 @@ const renderedPrompt = computed(() => {
   gap: 10px;
 }
 
-.overview-card {
-  background: var(--bg-secondary, #f5f5f5);
-  border-radius: 10px;
-  padding: 10px 12px;
+/* Header section */
+.task-header {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding-bottom: 4px;
 }
 
-.overview-row {
+.task-title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 22px;
+  gap: 6px;
 }
 
-.overview-label {
-  font-size: 12px;
-  color: var(--text-muted, #999);
-  flex-shrink: 0;
+.agent-icon {
+  font-size: 18px;
 }
 
-.overview-value {
-  font-size: 13px;
+.task-name {
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text-primary, #1a1a1a);
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  text-align: right;
+  margin: 0;
+  flex: 1;
   word-break: break-word;
 }
 
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.status-badge.active {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+
+.status-badge.paused {
+  background: rgba(234, 179, 8, 0.12);
+  color: #ca8a04;
+}
+
+.status-badge.completed {
+  background: rgba(156, 163, 175, 0.15);
+  color: #6b7280;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.status-dot.active { background: #16a34a; }
+.status-dot.paused { background: #ca8a04; }
+.status-dot.completed { background: #6b7280; }
+.status-dot.running {
+  background: #16a34a;
+  animation: task-running-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes task-running-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 6px 2px rgba(34, 197, 94, 0.2); }
+}
+
+.task-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
 .task-id-value {
-  font-size: 13px;
-  font-family: monospace;
-  color: var(--text-muted, #999);
+  font-family: 'SF Mono', 'Menlo', monospace;
   cursor: pointer;
-  user-select: all;
-  padding: 1px 4px;
-  border-radius: 3px;
-  transition: background 0.15s;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-tertiary, #f1f3f5);
+  transition: background 0.2s;
+}
+
+.task-id-value:hover {
+  background: var(--border-color, #e5e5e5);
 }
 
 .task-id-value:active {
   background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
 }
 
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  align-self: center;
+/* Cards */
+.overview-card {
+  background: var(--bg-secondary, #f8f9fa);
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.status-dot.active {
-  background: #22c55e;
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  margin: 0;
 }
 
-.status-dot.paused {
-  background: #eab308;
-}
-
-.status-dot.completed {
-  background: var(--text-muted, #999);
-}
-
-.status-dot.running {
-  background: #22c55e;
-  animation: task-running-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes task-running-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-  50% { opacity: 0.7; box-shadow: 0 0 6px 2px rgba(34, 197, 94, 0.2); }
-}
-
-.status-text.active {
-  color: #22c55e;
-}
-
-.status-text.paused {
-  color: #eab308;
-}
-
-.status-text.completed {
+.card-icon {
   color: var(--text-muted, #999);
 }
 
-.status-text.running {
-  color: #22c55e;
+.overview-divider {
+  height: 1px;
+  background: var(--border-color, #e5e5e5);
+  margin: 2px 0;
 }
 
-.agent-icon {
-  font-size: 14px;
+.overview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.agent-name {
+.overview-row.highlight {
+  background: rgba(0, 102, 204, 0.05);
+  padding: 6px;
+  border-radius: 6px;
+  margin: -2px -6px;
+}
+
+.overview-row.highlight .overview-value {
+  color: var(--accent-color, #0066cc);
+  font-weight: 500;
+}
+
+.overview-label {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  flex-shrink: 0;
+}
+
+.overview-value {
   font-size: 13px;
+  color: var(--text-primary, #1a1a1a);
+  text-align: right;
+  word-break: break-word;
+}
+
+.overview-value.font-mono {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  background: var(--bg-primary, #fff);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #e5e5e5);
+  font-size: 12px;
+}
+
+.overview-subtext {
+  font-size: 11px;
+  color: var(--text-muted, #999);
 }
 
 /* Prompt card */
@@ -291,27 +363,38 @@ const renderedPrompt = computed(() => {
   justify-content: space-between;
   cursor: pointer;
   user-select: none;
+  margin: -2px;
+  padding: 2px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.prompt-header:hover {
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .prompt-toggle {
-  font-size: 12px;
   color: var(--text-muted, #999);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Expanded: use global .markdown-body styles (content.css + markdown-common.css) */
+/* Expanded: use global .markdown-body styles */
 .prompt-body.markdown-body {
-  /* Override .markdown-body's own overflow-y: auto — scroll is on parent .overview-scroll */
   overflow-y: visible;
   max-width: 100%;
   padding: 6px 0 0;
   margin: 0;
   background: transparent;
+  font-size: 12px;
 }
 
 .prompt-body.collapsed {
   position: relative;
   overflow: hidden;
   max-height: 4.5em;
+  margin-top: 4px;
 }
 
 .prompt-preview-text {
@@ -334,7 +417,7 @@ const renderedPrompt = computed(() => {
   left: 0;
   right: 0;
   height: 2em;
-  background: linear-gradient(transparent, var(--bg-secondary, #f5f5f5));
+  background: linear-gradient(transparent, var(--bg-secondary, #f8f9fa));
   pointer-events: none;
 }
 
@@ -342,10 +425,10 @@ const renderedPrompt = computed(() => {
 .overview-actions {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border-top: none;
-  background: transparent;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-primary, #ffffff);
+  border-top: 1px solid var(--border-color, #e5e5e5);
   flex-shrink: 0;
 }
 
@@ -354,20 +437,28 @@ const renderedPrompt = computed(() => {
 }
 
 .action-btn {
-  height: 26px;
+  height: 28px;
   border: none;
-  border-radius: 13px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
-  color: var(--text-secondary, #666);
+  border-radius: 14px;
+  background: var(--bg-secondary, #f1f3f5);
+  color: var(--text-primary, #1a1a1a);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 0 8px;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 10px;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
+}
+
+/* Icon-only buttons */
+.action-btn.icon-only {
+  width: 28px;
+  padding: 0;
 }
 
 .action-text {
@@ -375,19 +466,19 @@ const renderedPrompt = computed(() => {
 }
 
 .action-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 @media (hover: hover) {
   .action-btn:hover:not(:disabled) {
-    background: rgba(0, 0, 0, 0.1);
-    color: var(--text-primary, #1a1a1a);
+    background: var(--border-color, #e5e5e5);
+    transform: translateY(-1px);
   }
 }
 
 .action-btn:active:not(:disabled) {
-  transform: scale(0.95);
+  transform: scale(0.96);
 }
 
 .action-btn.accent {
@@ -397,44 +488,40 @@ const renderedPrompt = computed(() => {
 
 @media (hover: hover) {
   .action-btn.accent:hover:not(:disabled) {
-    opacity: 0.85;
-    background: var(--accent-color, #0066cc);
-    color: #fff;
+    background: color-mix(in srgb, var(--accent-color, #0066cc) 85%, black);
   }
 }
 
 .action-btn.warn {
   background: rgba(234, 179, 8, 0.15);
-  color: #c9970a;
+  color: #b47d00;
 }
 
 @media (hover: hover) {
   .action-btn.warn:hover:not(:disabled) {
     background: rgba(234, 179, 8, 0.25);
-    color: #b5890a;
   }
 }
 
 .action-btn.success {
   background: rgba(34, 197, 94, 0.15);
-  color: #1a9e50;
+  color: #15803d;
 }
 
 @media (hover: hover) {
   .action-btn.success:hover:not(:disabled) {
     background: rgba(34, 197, 94, 0.25);
-    color: #168a44;
   }
 }
 
 .action-btn.danger {
-  background: rgba(220, 53, 69, 0.1);
-  color: #c4293c;
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
 }
 
 @media (hover: hover) {
   .action-btn.danger:hover:not(:disabled) {
-    background: rgba(220, 53, 69, 0.18);
+    background: rgba(239, 68, 68, 0.2);
   }
 }
 </style>

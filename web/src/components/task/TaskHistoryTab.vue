@@ -6,9 +6,15 @@
     </div>
     <!-- History content -->
     <div class="task-history-tab">
-    <div v-if="loading" class="history-empty">{{ t('common.loading') }}</div>
-    <div v-else-if="allExecutions.length === 0" class="history-empty">{{ t('task.exec.noExecutions') }}</div>
-    <div v-else>
+    <div v-if="loading" class="history-empty">
+      <Loader2 class="spin-icon" :size="20" />
+      <span>{{ t('common.loading') }}</span>
+    </div>
+    <div v-else-if="allExecutions.length === 0" class="history-empty">
+      <History class="empty-icon" :size="32" />
+      <span>{{ t('task.exec.noExecutions') }}</span>
+    </div>
+    <div v-else class="history-list">
       <div v-for="exec in allExecutions" :key="exec.id" class="execution-item" :class="{ running: isRunning(exec), unread: !isRunning(exec) && isUnreadDisplay(exec) }" @click="!isRunning(exec) && openDetail(exec)">
         <div class="execution-row">
           <div class="execution-info">
@@ -46,7 +52,7 @@
           <button v-if="isRunning(exec)" class="cancel-exec-btn" @click.stop="cancelExecution(exec.id)" :title="t('task.exec.cancel')">
             <Square :size="12" />
           </button>
-          <ChevronRight v-else :size="14" class="exec-chevron" />
+          <ChevronRight v-else :size="16" class="exec-chevron" />
         </div>
       </div>
     </div>
@@ -57,7 +63,7 @@
 <script setup>
 import { ref, watch, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronRight, Square } from 'lucide-vue-next'
+import { ChevronRight, Square, Loader2, History } from 'lucide-vue-next'
 import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 import { useTaskHistory } from '@/composables/useTaskHistory.ts'
 import { formatDuration, formatRelativeTime } from '@/utils/format.ts'
@@ -144,6 +150,7 @@ onUnmounted(() => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--bg-primary, #ffffff);
 }
 
 .history-header {
@@ -151,48 +158,83 @@ onUnmounted(() => {
   align-items: center;
   padding: 6px 12px;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
 }
 
 .task-history-tab {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  padding: 12px;
 }
 
 /* ── Empty state ── */
 .history-empty {
-  text-align: center;
-  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
   color: var(--text-muted, #999);
-  font-size: 13px;
+  font-size: 14px;
+}
+
+.spin-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+.empty-icon {
+  opacity: 0.5;
 }
 
 /* ── Execution items ── */
-.execution-item {
-  border-bottom: 1px solid var(--border-color, #e5e5e5);
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.execution-item:last-child {
-  border-bottom: none;
+.execution-item {
+  background: var(--bg-secondary, #f8f9fa);
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+@media (hover: hover) {
+  .execution-item:not(.running):hover {
+    border-color: var(--accent-color, #0066cc);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transform: translateY(-1px);
+  }
+}
+
+.execution-item:active:not(.running) {
+  background: var(--bg-tertiary, #eef1f4);
+  transform: translateY(0);
 }
 
 .execution-item.running {
-  background: color-mix(in srgb, var(--success-color, #22c55e) 6%, transparent);
+  background: color-mix(in srgb, var(--success-color, #16a34a) 5%, var(--bg-secondary, #f8f9fa));
+  border-color: color-mix(in srgb, var(--success-color, #16a34a) 30%, transparent);
 }
 
 .execution-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   cursor: pointer;
-  transition: background 0.15s;
 }
 
-@media (hover: hover) {
-  .execution-item:not(.running) .execution-row:hover {
-    background: var(--bg-secondary);
-  }
+.execution-item.running .execution-row {
+  cursor: default;
 }
 
 .execution-info {
@@ -200,7 +242,7 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
 }
 
 .execution-time-row {
@@ -210,16 +252,16 @@ onUnmounted(() => {
 }
 
 .exec-absolute-time {
-  font-size: 12px;
-  color: var(--text-primary);
-  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-primary, #1a1a1a);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .exec-relative-time {
-  font-size: 11px;
-  color: var(--text-muted, #999);
+  font-size: 12px;
+  color: var(--text-muted, #9ca3af);
   white-space: nowrap;
 }
 
@@ -230,73 +272,68 @@ onUnmounted(() => {
   border-radius: 50%;
   background: var(--accent-color, #0066cc);
   flex-shrink: 0;
-  animation: exec-unread-pulse 1.2s ease-in-out infinite;
+  animation: exec-unread-pulse 1.5s ease-in-out infinite;
 }
 
 @keyframes exec-unread-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.7); }
-}
-
-.execution-item.unread .exec-absolute-time {
-  color: var(--accent-color, #0066cc);
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0, 102, 204, 0.4); }
+  50% { opacity: 0.6; box-shadow: 0 0 6px 2px rgba(0, 102, 204, 0.2); }
 }
 
 .execution-item.unread {
-  animation: exec-unread-flash 0.8s ease-in-out infinite;
-}
-
-@keyframes exec-unread-flash {
-  0%, 100% { background: transparent; }
-  50% { background: color-mix(in srgb, var(--accent-color, #0066cc) 6%, transparent); }
+  border-left: 3px solid var(--accent-color, #0066cc);
 }
 
 /* ── Trigger type badges ── */
 .exec-trigger-type {
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-weight: 500;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
   flex-shrink: 0;
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .exec-trigger-type.manual {
   background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
+  color: #2563eb;
 }
 
 .exec-trigger-type.auto {
   background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
+  color: #16a34a;
 }
 
 /* ── Status badges ── */
 .exec-status-badge {
-  font-size: 0.7rem;
-  padding: 1px 6px;
+  font-size: 10px;
+  padding: 2px 6px;
   border-radius: 4px;
-  margin-left: 4px;
+  font-weight: 600;
+  margin-left: auto;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 .exec-status-badge.cancelled {
-  background: var(--color-bg-3, #f0f0f0);
-  color: var(--color-text-3, #999);
+  background: var(--bg-tertiary, #e5e7eb);
+  color: var(--text-secondary, #4b5563);
 }
 .exec-status-badge.failed {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
 }
 
 /* ── Summary ── */
 .exec-summary-row {
   display: flex;
   align-items: center;
-  gap: 6px;
 }
 
 .exec-summary {
-  font-size: 12px;
-  color: var(--text-secondary, #666);
+  font-size: 13px;
+  color: var(--text-secondary, #4b5563);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -306,7 +343,7 @@ onUnmounted(() => {
 }
 
 .exec-summary.empty {
-  color: var(--text-muted, #999);
+  color: var(--text-muted, #9ca3af);
   font-style: italic;
 }
 
@@ -314,29 +351,44 @@ onUnmounted(() => {
 .exec-meta-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
+  margin-top: 2px;
 }
 
 .exec-meta-tag {
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: var(--bg-tertiary, #f0f0f0);
-  color: var(--text-secondary, #666);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-primary, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  color: var(--text-secondary, #6b7280);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
 }
 
 .exec-meta-duration {
-  font-weight: 500;
-  color: var(--text-primary);
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+  background: rgba(0, 102, 204, 0.05);
+  border-color: rgba(0, 102, 204, 0.1);
 }
 
 /* ── Chevron ── */
 .exec-chevron {
   flex-shrink: 0;
-  color: var(--text-muted, #ccc);
+  color: var(--text-muted, #cbd5e1);
+  margin-left: 4px;
+  transition: transform 0.2s, color 0.2s;
+}
+
+@media (hover: hover) {
+  .execution-item:not(.running):hover .exec-chevron {
+    transform: translateX(2px);
+    color: var(--accent-color, #0066cc);
+  }
 }
 
 /* ── Running execution indicator ── */
@@ -344,41 +396,46 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--success-color, #22c55e);
+  background: #16a34a;
   flex-shrink: 0;
   animation: exec-running-pulse 1.5s ease-in-out infinite;
 }
 
 @keyframes exec-running-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-  50% { opacity: 0.7; box-shadow: 0 0 6px 2px rgba(34, 197, 94, 0.2); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 8px 3px rgba(22, 163, 74, 0.2); }
 }
 
 .exec-running-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--success-color, #22c55e);
+  color: #16a34a;
 }
 
 /* ── Cancel button ── */
 .cancel-exec-btn {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   border: none;
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.15s;
+  transition: all 0.2s;
 }
 
 @media (hover: hover) {
   .cancel-exec-btn:hover {
     background: rgba(239, 68, 68, 0.2);
+    transform: scale(1.05);
   }
+}
+
+.cancel-exec-btn:active {
+  transform: scale(0.95);
 }
 </style>

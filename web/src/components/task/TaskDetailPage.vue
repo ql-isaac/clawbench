@@ -32,6 +32,7 @@ defineEmits<{
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--bg-primary, #ffffff);
 }
 
 .detail-header {
@@ -39,10 +40,13 @@ defineEmits<{
   align-items: center;
   padding: 6px 12px;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
 }
 
 .detail-content {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
 }
 </style>

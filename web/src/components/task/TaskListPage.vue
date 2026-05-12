@@ -1,47 +1,59 @@
 <template>
   <div class="task-list-page">
     <div class="task-list-body">
-      <div v-if="loading && tasks.length === 0" class="task-loading">{{ t('common.loading') }}</div>
-      <div v-else-if="tasks.length === 0" class="task-empty">{{ t('task.noTasks') }}</div>
-      <template v-else>
+      <div v-if="loading && tasks.length === 0" class="task-loading">
+        <Loader2 class="loading-icon" :size="20" />
+        <span>{{ t('common.loading') }}</span>
+      </div>
+      <div v-else-if="tasks.length === 0" class="task-empty">
+        <CalendarX class="empty-icon" :size="32" />
+        <span>{{ t('task.noTasks') }}</span>
+      </div>
+      <div v-else class="task-items-container">
         <div
           v-for="task in tasks"
           :key="task.id"
           class="task-item"
           :class="[task.status, { 'has-unread': task.unreadCount > 0 }]"
+          @click="$emit('select', task.id)"
         >
-          <div class="task-item-main" @click="$emit('select', task.id)">
-            <div class="task-item-info">
-              <div class="task-item-header">
-                <span class="task-item-icon">{{ getAgentIcon(task.agentId) }}</span>
-                <span class="task-item-name">{{ task.name }}</span>
-                <span v-if="task.runningCount > 0" class="task-item-running-dot" :title="t('task.exec.running')"></span>
-                <span v-if="task.unreadCount > 0" class="task-item-unread">{{ task.unreadCount }}</span>
-                <span class="task-item-status" :class="task.status">{{ statusLabel(task.status) }}</span>
+          <div class="task-item-main">
+            <div class="task-item-header">
+              <span class="task-item-icon">{{ getAgentIcon(task.agentId) }}</span>
+              <span class="task-item-name">{{ task.name }}</span>
+              <span v-if="task.runningCount > 0" class="task-item-running-dot" :title="t('task.exec.running')"></span>
+              <span v-if="task.unreadCount > 0" class="task-item-unread">{{ task.unreadCount }}</span>
+              <span class="task-item-status" :class="task.status">{{ statusLabel(task.status) }}</span>
+            </div>
+            <div class="task-item-meta">
+              <div class="meta-item cron" :title="task.cronExpr">
+                <Clock class="meta-icon" :size="12" />
+                <span>{{ humanizeCron(task.cronExpr) }}</span>
               </div>
-              <div class="task-item-meta">
-                <span class="task-item-cron">{{ humanizeCron(task.cronExpr) }}</span>
-                <span class="task-item-repeat">{{ repeatLabel(task.repeatMode, task.maxRuns) }}</span>
-                <span v-if="task.repeatMode !== 'unlimited'" class="task-item-progress">{{ task.runCount }}/{{ task.maxRuns || 1 }}</span>
-              </div>
-              <div v-if="task.nextRunAt" class="task-item-next">
-                {{ t('task.nextRun', { time: formatDateTime(task.nextRunAt) }) }}
+              <div class="meta-item repeat">
+                <Repeat class="meta-icon" :size="12" />
+                <span>{{ repeatLabel(task.repeatMode, task.maxRuns) }}</span>
+                <span v-if="task.repeatMode !== 'unlimited'" class="task-progress">({{ task.runCount }}/{{ task.maxRuns || 1 }})</span>
               </div>
             </div>
-            <ChevronRight :size="16" class="task-item-chevron" />
+            <div v-if="task.nextRunAt" class="task-item-next">
+              <CalendarClock class="meta-icon" :size="12" />
+              <span>{{ t('task.nextRun', { time: formatDateTime(task.nextRunAt) }) }}</span>
+            </div>
           </div>
+          <ChevronRight :size="16" class="task-item-chevron" />
         </div>
-      </template>
+      </div>
     </div>
     <!-- Fixed FAB -->
     <button class="create-fab" @click="$emit('create')" :title="t('task.form.createTitle')">
-      <Plus :size="20" />
+      <Plus :size="24" />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Plus, ChevronRight } from 'lucide-vue-next'
+import { Plus, ChevronRight, Loader2, CalendarX, Clock, Repeat, CalendarClock } from 'lucide-vue-next'
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTaskTab } from '@/composables/useTaskTab'
@@ -82,29 +94,52 @@ onMounted(refresh)
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  background: var(--bg-primary, #ffffff);
 }
 
 .task-list-body {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 12px;
+}
+
+.task-items-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .task-loading,
 .task-empty {
-  padding: 32px 12px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
   color: var(--text-muted, #999);
-  font-size: 13px;
+  font-size: 14px;
 }
 
-/* Floating Action Button — fixed bottom-right */
+.loading-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+.empty-icon {
+  opacity: 0.5;
+}
+
+/* Floating Action Button */
 .create-fab {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
-  width: 44px;
-  height: 44px;
+  bottom: 24px;
+  right: 24px;
+  width: 52px;
+  height: 52px;
   border: none;
   border-radius: 50%;
   background: var(--accent-color, #0066cc);
@@ -113,84 +148,78 @@ onMounted(refresh)
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  transition: transform 0.15s, opacity 0.15s;
-  z-index: 1;
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s;
+  z-index: 10;
 }
 
 .create-fab:active {
-  transform: scale(0.92);
+  transform: scale(0.9);
+  box-shadow: 0 2px 6px rgba(0, 102, 204, 0.3);
 }
 
 @media (hover: hover) {
   .create-fab:hover {
-    opacity: 0.88;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 102, 204, 0.4);
   }
 }
 
 .task-item {
-  position: relative;
-}
-
-.task-item.completed {
-  opacity: 0.5;
-}
-
-.task-item-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  padding: 14px;
+  background: var(--bg-secondary, #f8f9fa);
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 0.15s;
-  gap: 8px;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 @media (hover: hover) {
-  .task-item-main:hover {
-    background: var(--bg-tertiary, rgba(0, 0, 0, 0.03));
+  .task-item:hover {
+    border-color: var(--accent-color, #0066cc);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transform: translateY(-1px);
   }
 }
 
-.task-item-main:active {
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
+.task-item:active {
+  background: var(--bg-tertiary, #eef1f4);
+  transform: translateY(0);
 }
 
-.task-item:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 16px;
-  right: 16px;
-  height: 1px;
-  background: var(--border-color, #e5e5e5);
-  opacity: 0.5;
+.task-item.completed {
+  opacity: 0.65;
+  background: var(--bg-tertiary, #f1f3f5);
 }
 
-.task-item-info {
+.task-item-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 8px;
   min-width: 0;
-  overflow: hidden;
 }
 
 .task-item-header {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   min-width: 0;
 }
 
 .task-item-icon {
-  font-size: 14px;
+  font-size: 16px;
   flex-shrink: 0;
 }
 
 .task-item-name {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-primary, #1a1a1a);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -200,16 +229,20 @@ onMounted(refresh)
 }
 
 .task-item-unread {
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 8px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
   font-weight: 600;
   background: #ef4444;
   color: #fff;
   flex-shrink: 0;
-  min-width: 14px;
+  min-width: 16px;
   text-align: center;
-  line-height: 1.3;
+  line-height: 1.2;
+}
+
+.task-item.has-unread {
+  border-left: 3px solid #ef4444;
 }
 
 .task-item.has-unread .task-item-icon {
@@ -217,90 +250,106 @@ onMounted(refresh)
 }
 
 @keyframes task-unread-flash {
-  0%, 100% {
-    opacity: 1;
-    text-shadow: 0 0 0 transparent;
-  }
-  50% {
-    opacity: 0.7;
-    text-shadow: 0 0 8px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent);
-  }
+  0%, 100% { opacity: 1; text-shadow: 0 0 0 transparent; }
+  50% { opacity: 0.7; text-shadow: 0 0 8px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent); }
 }
 
 .task-item-status {
-  font-size: 9px;
-  padding: 2px 5px;
-  border-radius: 3px;
-  font-weight: 500;
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-weight: 600;
   flex-shrink: 0;
-  align-self: center;
-  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .task-item-status.active {
   background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
+  color: #16a34a;
 }
 
 .task-item-status.paused {
   background: rgba(234, 179, 8, 0.12);
-  color: #eab308;
+  color: #ca8a04;
 }
 
 .task-item-status.completed {
-  background: var(--bg-tertiary, #e9ecef);
-  color: var(--text-muted, #999);
+  background: rgba(156, 163, 175, 0.15);
+  color: #6b7280;
 }
 
 .task-item-running-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--success-color, #22c55e);
+  background: #22c55e;
   flex-shrink: 0;
-  align-self: center;
   animation: task-running-pulse 1.5s ease-in-out infinite;
 }
 
 @keyframes task-running-pulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-  50% { opacity: 0.7; box-shadow: 0 0 6px 2px rgba(34, 197, 94, 0.2); }
+  50% { opacity: 0.8; box-shadow: 0 0 8px 3px rgba(34, 197, 94, 0.2); }
 }
 
 .task-item-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-muted, #999);
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
   min-width: 0;
-  overflow: hidden;
   flex-wrap: wrap;
 }
 
-.task-item-cron {
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.meta-icon {
+  color: var(--text-muted, #999);
+}
+
+.cron span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 60%;
+  max-width: 140px;
+}
+
+.task-progress {
+  color: var(--accent-color, #0066cc);
+  font-weight: 500;
+  margin-left: 2px;
 }
 
 .task-item-next {
-  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
   color: var(--text-muted, #999);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-item-progress {
-  font-weight: 500;
-  color: var(--accent-color, #0066cc);
-  flex-shrink: 0;
+  background: var(--bg-primary, #fff);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #e5e5e5);
+  width: fit-content;
 }
 
 .task-item-chevron {
-  color: var(--text-muted, #999);
+  color: var(--text-muted, #cbd5e1);
   flex-shrink: 0;
+  margin-left: 8px;
+  transition: transform 0.2s;
+}
+
+@media (hover: hover) {
+  .task-item:hover .task-item-chevron {
+    transform: translateX(2px);
+    color: var(--accent-color, #0066cc);
+  }
 }
 </style>

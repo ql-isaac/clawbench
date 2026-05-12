@@ -224,6 +224,7 @@ onUnmounted(() => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--bg-primary, #ffffff);
 }
 
 .exec-detail-header {
@@ -231,27 +232,28 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
   flex-shrink: 0;
 }
 
 .exec-detail-content {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 10px;
+  padding: 16px 12px;
 }
 
 .exec-detail-empty {
   text-align: center;
   padding: 40px 12px;
   color: var(--text-muted, #999);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .exec-cancelled-notice {
-  padding: 2rem 1rem;
+  padding: 3rem 1rem;
   text-align: center;
-  color: var(--color-text-3, #999);
+  color: var(--text-muted, #999);
   font-style: italic;
+  font-size: 14px;
 }
 </style>
