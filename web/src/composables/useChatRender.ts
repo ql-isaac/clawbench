@@ -60,18 +60,29 @@ export function useChatRender(options) {
   // Sync blockTasks with latest task data from store (global polling updates store.state.tasks).
   // Use a tasks Map for O(1) lookup, and taskChanged() for semantic comparison.
   watch(() => store.state.tasks, (tasks) => {
-    if (!tasks || tasks.length === 0) return
     const keys = Object.keys(blockTasks)
     if (keys.length === 0) return
+    // Empty tasks list means all tasks were deleted — mark all blockTasks as deleted
+    if (!tasks || tasks.length === 0) {
+      for (const key of keys) {
+        if (!blockTasks[key].deleted) blockTasks[key].deleted = true
+        blockTasks[key].loading = false
+      }
+      return
+    }
     const taskMap = new Map(tasks.map(t => [t.id, t]))
     for (const key of keys) {
       const entry = blockTasks[key]
-      if (entry.deleted || !entry.task) continue
+      if (entry.deleted) continue
       const updated = taskMap.get(entry.taskId)
       if (!updated) {
         entry.deleted = true
-      } else if (taskChanged(entry.task, updated)) {
+        entry.loading = false
+      } else if (entry.task && taskChanged(entry.task, updated)) {
         entry.task = updated
+      } else if (!entry.task) {
+        entry.task = updated
+        entry.loading = false
       }
     }
   })
