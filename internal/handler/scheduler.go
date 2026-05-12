@@ -86,6 +86,12 @@ func ServeTasks(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/tasks/{id} - delete task
 // GET /api/tasks/{id}/executions - get execution history
 func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
+	// Require project ownership for all task operations
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
 	// Extract task ID from path: /api/tasks/{id} or /api/tasks/{id}/executions
 	path := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
 	parts := strings.SplitN(path, "/", 2)
@@ -102,7 +108,7 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 
 	// Handle sub-paths
 	if subPath == "executions" && r.Method == http.MethodGet {
-		serveTaskExecutions(w, r, taskID)
+		serveTaskExecutions(w, r, taskID, projectPath)
 		return
 	}
 
@@ -110,7 +116,11 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		task, err := service.GetTaskByID(taskID)
 		if err != nil {
-		writeLocalizedError(w, r, model.NotFound(nil, "TaskNotFound"))
+			writeLocalizedError(w, r, model.NotFound(nil, "TaskNotFound"))
+			return
+		}
+		if task.ProjectPath != projectPath {
+			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 			return
 		}
 		// Enrich with running executions from in-memory map
@@ -130,6 +140,18 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 			MaxRuns     int    `json:"max_runs"`
 		}
 		if !decodeJSON(w, r, &req) {
+			return
+		}
+
+		// For actions that need ownership verification, fetch task first
+		// Actions that only need taskID (pause/resume/trigger/cancel/read) also need ownership check
+		task, err := service.GetTaskByID(taskID)
+		if err != nil {
+			writeLocalizedError(w, r, model.NotFound(nil, "TaskNotFound"))
+			return
+		}
+		if task.ProjectPath != projectPath {
+			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 			return
 		}
 
@@ -181,12 +203,7 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Full task update
-		task, err := service.GetTaskByID(taskID)
-		if err != nil {
-		writeLocalizedError(w, r, model.NotFound(nil, "TaskNotFound"))
-			return
-		}
+		// Full task update — task already fetched and verified above
 
 		// Update fields if provided
 		if req.Name != "" {
@@ -222,6 +239,16 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "task": task})
 
 	case http.MethodDelete:
+		// Verify ownership before deletion
+		task, err := service.GetTaskByID(taskID)
+		if err != nil {
+			writeLocalizedError(w, r, model.NotFound(nil, "TaskNotFound"))
+			return
+		}
+		if task.ProjectPath != projectPath {
+			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+			return
+		}
 		// Cancel any running executions before removing the task
 		service.GlobalScheduler.CancelAllExecutions(taskID)
 		service.GlobalScheduler.RemoveTask(taskID)
@@ -234,11 +261,15 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 
 // serveTaskExecutions returns the execution history for a task.
 // It queries task_executions directly (content is stored inline, no chat_history dependency).
-func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID string) {
+func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID string, projectPath string) {
 	task, err := service.GetTaskByID(taskID)
 	if err != nil {
 	writeLocalizedError(w, r, model.NotFound(nil, "TaskNotFound"))
 	return
+	}
+	if task.ProjectPath != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+		return
 	}
 
 	type Execution struct {
