@@ -32,47 +32,49 @@
 
       <!-- More actions dropdown -->
       <div class="dropdown-wrapper" ref="dropdownRef">
-        <button class="file-header-btn" @click.stop="menuOpen = !menuOpen" :title="t('file.header.more')">
+        <button class="file-header-btn" @click.stop="toggleMenu" :title="t('file.header.more')">
           <MoreVertical :size="12" />
         </button>
-        <div v-if="menuOpen" class="dropdown-menu">
-          <button v-if="file.isBinary" class="dropdown-item" @click="handleOpenAsText">
-            <Code2 :size="14" />
-            {{ t('file.header.openAsText') }}
-          </button>
-          <button v-if="isMarkdown" class="dropdown-item" @click="handleToggleView">
-            <Code2 :size="14" />
-            {{ viewMode === 'rendered' ? t('file.header.sourceView') : t('file.header.renderedView') }}
-          </button>
-          <button v-if="!isMarkdownRendered" class="dropdown-item" @click="handleToggleWordWrap">
-            <TextWrap :size="14" />
-            {{ t('file.header.wordWrap') }}
-            <span v-if="wordWrap" class="wrap-check">✓</span>
-          </button>
-          <a v-if="!isAppMode" class="dropdown-item" :href="'/api/local-file/' + encodeURIComponent(file.path) + '?download=1'" :download="file.name" @click="menuOpen = false">
-            <Download :size="14" />
-            {{ t('common.download') }}
-          </a>
-          <button v-else class="dropdown-item" @click="handleDownload">
-            <Download :size="14" />
-            {{ t('common.download') }}
-          </button>
-          <button class="dropdown-item" @click="handleDelete">
-            <Trash2 :size="14" />
-            {{ t('common.delete') }}
-          </button>
-          <button class="dropdown-item" @click="handleGitHistory">
-            <GitBranch :size="14" />
-            {{ t('file.header.fileHistory') }}
-          </button>
-        </div>
+        <Teleport to="body">
+          <div v-if="menuOpen" ref="menuRef" class="file-header-dropdown-menu" :style="menuStyle">
+            <button v-if="file.isBinary" class="dropdown-item" @click="handleOpenAsText">
+              <Code2 :size="14" />
+              {{ t('file.header.openAsText') }}
+            </button>
+            <button v-if="isMarkdown" class="dropdown-item" @click="handleToggleView">
+              <Code2 :size="14" />
+              {{ viewMode === 'rendered' ? t('file.header.sourceView') : t('file.header.renderedView') }}
+            </button>
+            <button v-if="!isMarkdownRendered" class="dropdown-item" @click="handleToggleWordWrap">
+              <TextWrap :size="14" />
+              {{ t('file.header.wordWrap') }}
+              <span v-if="wordWrap" class="wrap-check">✓</span>
+            </button>
+            <a v-if="!isAppMode" class="dropdown-item" :href="'/api/local-file/' + encodeURIComponent(file.path) + '?download=1'" :download="file.name" @click="menuOpen = false">
+              <Download :size="14" />
+              {{ t('common.download') }}
+            </a>
+            <button v-else class="dropdown-item" @click="handleDownload">
+              <Download :size="14" />
+              {{ t('common.download') }}
+            </button>
+            <button class="dropdown-item" @click="handleDelete">
+              <Trash2 :size="14" />
+              {{ t('common.delete') }}
+            </button>
+            <button class="dropdown-item" @click="handleGitHistory">
+              <GitBranch :size="14" />
+              {{ t('file.header.fileHistory') }}
+            </button>
+          </div>
+        </Teleport>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { List, Search, MoreVertical, Code2, Download, Trash2, GitBranch, TextWrap, RotateCw, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { getFileType } from '@/utils/fileType.ts'
@@ -93,6 +95,26 @@ const { t } = useI18n()
 
 const menuOpen = ref(false)
 const dropdownRef = ref(null)
+const menuRef = ref(null)
+const menuStyle = ref({})
+
+function toggleMenu() {
+    menuOpen.value = !menuOpen.value
+    if (menuOpen.value) {
+        nextTick(() => updateMenuPosition())
+    }
+}
+
+function updateMenuPosition() {
+    if (!dropdownRef.value) return
+    const rect = dropdownRef.value.getBoundingClientRect()
+    menuStyle.value = {
+        position: 'fixed',
+        top: `${rect.bottom + 4}px`,
+        right: `${window.innerWidth - rect.right}px`,
+        left: 'auto',
+    }
+}
 
 const fileType = computed(() => props.file ? getFileType(props.file.name) : null)
 const isMarkdown = computed(() => fileType.value?.isMarkdown || false)
@@ -171,7 +193,9 @@ function handleGitHistory() {
 
 // Close dropdown on outside click
 function handleClickOutside(e) {
-    if (dropdownRef.value && !dropdownRef.value.contains(e.target)) {
+    if (menuOpen.value &&
+        dropdownRef.value && !dropdownRef.value.contains(e.target) &&
+        (!menuRef.value || !menuRef.value.contains(e.target))) {
         menuOpen.value = false
     }
 }
@@ -330,22 +354,29 @@ onBeforeUnmount(() => {
     position: relative;
 }
 
-.dropdown-menu {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 4px;
+.wrap-check {
+    margin-left: auto;
+    color: var(--accent-color);
+    font-size: 14px;
+    font-weight: 700;
+}
+</style>
+
+<!-- Unscoped styles for Teleported dropdown menu (rendered in body, outside scoped context) -->
+<style>
+.file-header-dropdown-menu {
+    position: fixed;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 100;
+    z-index: 9999;
     min-width: 140px;
     padding: 4px 0;
     overflow: hidden;
 }
 
-.dropdown-item {
+.file-header-dropdown-menu .dropdown-item {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -359,15 +390,14 @@ onBeforeUnmount(() => {
     text-decoration: none;
     white-space: nowrap;
 }
-.dropdown-item:hover {
+.file-header-dropdown-menu .dropdown-item:hover {
     background: var(--accent-color);
     color: #fff;
 }
-.dropdown-item svg {
+.file-header-dropdown-menu .dropdown-item svg {
     flex-shrink: 0;
 }
-
-.wrap-check {
+.file-header-dropdown-menu .wrap-check {
     margin-left: auto;
     color: var(--accent-color);
     font-size: 14px;
