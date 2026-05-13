@@ -16,7 +16,7 @@ import (
 // --- Test 1: BackendRegistry ---
 
 func TestBackendRegistry_ContainsAllBackends(t *testing.T) {
-	expectedIDs := []string{"claude", "codebuddy", "opencode", "gemini", "codex", "qoder", "vecli", "deepseek"}
+	expectedIDs := []string{"claude", "codebuddy", "opencode", "gemini", "codex", "qoder", "vecli", "deepseek", "pi"}
 	assert.Len(t, model.BackendRegistry, len(expectedIDs))
 
 	seen := make(map[string]bool)
@@ -53,6 +53,7 @@ func TestBackendRegistry_SpecificValues(t *testing.T) {
 	assert.Equal(t, "qodercli", specs["qoder"].DefaultCmd)
 	assert.Equal(t, "vecli", specs["vecli"].DefaultCmd)
 	assert.Equal(t, "deepseek", specs["deepseek"].DefaultCmd)
+	assert.Equal(t, "pi", specs["pi"].DefaultCmd)
 }
 
 // --- Test 2: generateAgentYAML ---
@@ -366,6 +367,10 @@ func TestBackendRegistry_ModelDiscoveryConfig(t *testing.T) {
 	assert.NotEmpty(t, specs["deepseek"].ListModelsCmd, "deepseek should have ListModelsCmd")
 	assert.NotNil(t, specs["deepseek"].ParseModels, "deepseek should have ParseModels")
 
+	// pi should have model discovery
+	assert.NotEmpty(t, specs["pi"].ListModelsCmd, "pi should have ListModelsCmd")
+	assert.NotNil(t, specs["pi"].ParseModels, "pi should have ParseModels")
+
 	// claude, gemini, codex, qoder, vecli should NOT have model discovery
 	for _, id := range []string{"claude", "gemini", "codex", "qoder", "vecli"} {
 		assert.Empty(t, specs[id].ListModelsCmd, "%s should not have ListModelsCmd", id)
@@ -489,4 +494,30 @@ func TestDiscoverModels_WithEchoCLI(t *testing.T) {
 	assert.True(t, models[0].Default)
 	assert.Equal(t, "mock-b", models[1].ID)
 	assert.False(t, models[1].Default)
+}
+
+func TestParsePiModels_RealOutput(t *testing.T) {
+	output := `provider        model                       context  max-out  thinking  images
+anthropic       claude-sonnet-4-6           1M       64K      yes       yes
+anthropic       claude-opus-4-6             1M       128K     yes       yes
+openai          gpt-4o                      128K     4.1K     no        yes
+minimax         MiniMax-M2.7                204.8K   131.1K   yes       no`
+	models := model.ParsePiModels(output)
+	require.Len(t, models, 4)
+	assert.Equal(t, "anthropic/claude-sonnet-4-6", models[0].ID)
+	assert.Equal(t, "claude-sonnet-4-6", models[0].Name)
+	assert.True(t, models[0].Default, "first model should be default")
+	assert.Equal(t, "minimax/MiniMax-M2.7", models[3].ID)
+	assert.Equal(t, "MiniMax-M2.7", models[3].Name)
+}
+
+func TestParsePiModels_EmptyOutput(t *testing.T) {
+	models := model.ParsePiModels("")
+	assert.Nil(t, models)
+}
+
+func TestParsePiModels_HeaderOnly(t *testing.T) {
+	output := `provider        model                       context  max-out  thinking  images`
+	models := model.ParsePiModels(output)
+	assert.Nil(t, models)
 }

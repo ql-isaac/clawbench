@@ -54,6 +54,16 @@ func TestNewBackend_Vecli(t *testing.T) {
 	assert.True(t, ok, "vecli should be a VeCLIBackend")
 }
 
+func TestNewBackend_Pi(t *testing.T) {
+	backend, err := NewBackend("pi")
+	assert.NoError(t, err)
+	assert.NotNil(t, backend)
+	assert.Equal(t, "pi", backend.Name())
+	// Pi is wrapped in AutoResumeBackend (has ExitPlanMode)
+	_, ok := backend.(*AutoResumeBackend)
+	assert.True(t, ok, "pi should be wrapped in AutoResumeBackend")
+}
+
 func TestNewBackend_Unsupported(t *testing.T) {
 	_, err := NewBackend("unsupported")
 	assert.Error(t, err)

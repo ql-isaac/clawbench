@@ -43,6 +43,8 @@ var BackendRegistry = []BackendSpec{
 	{ID: "vecli", Backend: "vecli", DefaultCmd: "vecli", Name: "VeCLI", Icon: "🌿", Specialty: "字节跳动 AI 助手"},
 	{ID: "deepseek", Backend: "deepseek", DefaultCmd: "deepseek", Name: "DeepSeek", Icon: "🔍", Specialty: "DeepSeek 推理与编码",
 		ListModelsCmd: []string{"models"}, ParseModels: ParseDeepSeekModels},
+	{ID: "pi", Backend: "pi", DefaultCmd: "pi", Name: "Pi", Icon: "🥧", Specialty: "极简编程智能体",
+		ListModelsCmd: []string{"--list-models"}, ParseModels: ParsePiModels},
 }
 
 // CheckCLIExists runs `cmd --version` with a 5-second timeout.
@@ -263,6 +265,43 @@ func ParseOpenCodeModels(output string) []AgentModel {
 		models = append(models, AgentModel{
 			ID:      line, // full "provider/model" as ID (opencode uses this format)
 			Name:    m[2], // model name part only for display
+			Default: len(models) == 0,
+		})
+	}
+	return models
+}
+
+// piModelLineRe matches lines from `pi --list-models` tabular output.
+// Format: "provider        model                       context  max-out  thinking  images"
+// We match any line with at least 2 whitespace-separated fields where the first
+// doesn't look like a header.
+var piModelLineRe = regexp.MustCompile(`^(\S+)\s+(\S+)`)
+
+// ParsePiModels parses the output of `pi --list-models` into a list of AgentModel.
+// Output format:
+//
+//	provider        model                       context  max-out  thinking  images
+//	anthropic       claude-sonnet-4-6           1M       64K      yes       yes
+//	openai          gpt-4o                      128K     4.1K     no        yes
+//
+// Models are prefixed with provider for disambiguation (e.g., "anthropic/claude-sonnet-4-6").
+func ParsePiModels(output string) []AgentModel {
+	var models []AgentModel
+	for _, line := range strings.Split(output, "\n") {
+		m := piModelLineRe.FindStringSubmatch(line)
+		if len(m) < 3 {
+			continue
+		}
+		provider := m[1]
+		modelID := m[2]
+		// Skip header line
+		if provider == "provider" || modelID == "model" {
+			continue
+		}
+		fullID := provider + "/" + modelID
+		models = append(models, AgentModel{
+			ID:      fullID,
+			Name:    modelID,
 			Default: len(models) == 0,
 		})
 	}
