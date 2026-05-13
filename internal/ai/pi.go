@@ -21,7 +21,9 @@ var piBackend = &CLIBackend{
 //   --no-context-files          Skip AGENTS.md / CLAUDE.md discovery
 //   --append-system-prompt <text> Append to Pi's built-in system prompt
 //   --model <model>             Override model
-//   --add-dir <dir>             Add working directory
+//
+// Working directory is set via cmd.Dir (CLIBackend sets cmd.Dir = req.WorkDir),
+// not via a CLI flag — Pi does not have a --add-dir option.
 func buildPiStreamArgs(req ChatRequest) []string {
 	args := []string{"-p", "--mode", "json"}
 
@@ -45,11 +47,6 @@ func buildPiStreamArgs(req ChatRequest) []string {
 	// Model override
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
-	}
-
-	// Working directory
-	if req.WorkDir != "" {
-		args = append(args, "--add-dir", req.WorkDir)
 	}
 
 	// Prompt is the last positional argument

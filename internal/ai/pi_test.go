@@ -37,10 +37,8 @@ func TestBuildPiStreamArgs_NewSession(t *testing.T) {
 	idx = indexOf(args, "--model")
 	assert.Equal(t, "pi-4", args[idx+1])
 
-	// Working directory
-	assert.Contains(t, args, "--add-dir")
-	idx = indexOf(args, "--add-dir")
-	assert.Equal(t, "/home/user/project", args[idx+1])
+	// Working directory is set via cmd.Dir, not a CLI flag
+	assert.NotContains(t, args, "--add-dir")
 
 	// Prompt is last
 	assert.Equal(t, "hello world", args[len(args)-1])
