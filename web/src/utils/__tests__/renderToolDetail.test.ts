@@ -156,20 +156,22 @@ describe('formatToolInput', () => {
       expect(contains(html, 'Search codebase')).toBe(true)
     })
 
-    it('renders truncated prompt when over 200 chars', () => {
+    it('renders full prompt without truncation', () => {
       const longPrompt = 'A'.repeat(250)
       const html = formatToolInput({ prompt: longPrompt }, 'Agent')
       expect(contains(html, 'agent-call-prompt')).toBe(true)
-      // Should be truncated with ellipsis character
-      expect(contains(html, '\u2026')).toBe(true)
-      // Should contain first 200 chars
-      expect(contains(html, 'A'.repeat(200))).toBe(true)
+      // Should contain all characters (markdown rendered, no truncation)
+      expect(contains(html, 'A'.repeat(250))).toBe(true)
+      // Should not contain truncation ellipsis
+      expect(contains(html, '\u2026')).toBe(false)
     })
 
-    it('renders full prompt when under 200 chars', () => {
-      const html = formatToolInput({ prompt: 'Short prompt' }, 'Agent')
-      expect(contains(html, 'Short prompt')).toBe(true)
-      expect(contains(html, '\u2026')).toBe(false)
+    it('renders prompt with markdown', () => {
+      const html = formatToolInput({ prompt: '**bold** and `code`' }, 'Agent')
+      expect(contains(html, 'agent-call-prompt')).toBe(true)
+      // Should render markdown (strong, code tags)
+      expect(contains(html, '<strong>')).toBe(true)
+      expect(contains(html, '<code>')).toBe(true)
     })
 
     it('omits type badge when neither subagent_type nor mode', () => {
@@ -210,10 +212,13 @@ describe('formatToolInput', () => {
       expect(contains(html, 'some args')).toBe(true)
     })
 
-    it('truncates long args', () => {
+    it('renders full args without truncation', () => {
       const longArgs = 'X'.repeat(200)
       const html = formatToolInput({ skill: 'test', args: longArgs }, 'Skill')
-      expect(contains(html, '\u2026')).toBe(true)
+      // Should contain all characters (no truncation)
+      expect(contains(html, 'X'.repeat(200))).toBe(true)
+      // Should not contain truncation ellipsis
+      expect(contains(html, '\u2026')).toBe(false)
     })
 
     it('omits args section when no args', () => {

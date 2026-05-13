@@ -271,8 +271,7 @@ function askQuestionSummary(input) {
   const header = q.header || ''
   const question = q.question || ''
   if (header) return header
-  if (question) return question.length > 60 ? question.slice(0, 57) + '...' : question
-  return ''
+  return question
 }
 
 /** Click inside expanded tool-detail: dispatch to tool action handlers first, then fall through to generic behavior. */
@@ -574,12 +573,8 @@ onUnmounted(() => {
   white-space: normal;
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: 150px;
-  cursor: default;
-}
-
-.tool-detail[data-tool-name="AskUserQuestion"] {
   max-height: 500px;
+  cursor: default;
 }
 
 .tool-spinner {
@@ -1409,15 +1404,64 @@ onUnmounted(() => {
 .content-blocks .tool-detail .agent-call-prompt {
   color: var(--text-secondary);
   font-size: 11px;
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
-  padding: 4px 8px;
+  padding: 6px 8px;
   background: var(--bg-tertiary);
   border-radius: 4px;
   font-family: inherit;
-  line-height: 1.5;
-  max-height: 80px;
-  overflow-y: auto;
+  line-height: 1.6;
+}
+.content-blocks .tool-detail .agent-call-prompt p:first-child {
+  margin-top: 0;
+}
+.content-blocks .tool-detail .agent-call-prompt p:last-child {
+  margin-bottom: 0;
+}
+.content-blocks .tool-detail .agent-call-prompt h1,
+.content-blocks .tool-detail .agent-call-prompt h2,
+.content-blocks .tool-detail .agent-call-prompt h3,
+.content-blocks .tool-detail .agent-call-prompt h4 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 8px 0 4px;
+  color: var(--text-primary);
+}
+.content-blocks .tool-detail .agent-call-prompt ul,
+.content-blocks .tool-detail .agent-call-prompt ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+.content-blocks .tool-detail .agent-call-prompt li {
+  margin: 2px 0;
+}
+.content-blocks .tool-detail .agent-call-prompt code {
+  font-family: 'SF Mono', 'Fira Code', Menlo, Monaco, monospace;
+  font-size: 10px;
+  background: color-mix(in srgb, var(--text-secondary) 8%, transparent);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.content-blocks .tool-detail .agent-call-prompt pre {
+  margin: 4px 0;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.content-blocks .tool-detail .agent-call-prompt pre code {
+  background: none;
+  padding: 0;
+  font-size: 11px;
+}
+.content-blocks .tool-detail .agent-call-prompt strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.content-blocks .tool-detail .agent-call-prompt hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 6px 0;
 }
 
 /* ── Skill call view ── */
@@ -1461,7 +1505,5 @@ onUnmounted(() => {
   border-radius: 4px;
   font-family: 'SF Mono', 'Fira Code', Menlo, Monaco, monospace;
   line-height: 1.5;
-  max-height: 80px;
-  overflow-y: auto;
 }
 </style>

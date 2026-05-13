@@ -66,6 +66,7 @@ export function parseAssistantContent(content: string) {
 /**
  * Generate a human-readable summary for a tool call block.
  * Uses a priority chain: description > file_path > command > pattern > query > url > skill > prompt > path > src_path+dst_path > firstVal
+ * Shows full content — no artificial truncation.
  */
 export function toolCallSummary(block: { input?: any; name?: string }): string {
   if (!block.input) return ''
@@ -75,21 +76,21 @@ export function toolCallSummary(block: { input?: any; name?: string }): string {
     const header = q.header || ''
     const question = q.question || ''
     if (header) return header
-    if (question) return question.length > 60 ? question.slice(0, 57) + '...' : question
+    return question
   }
   if (block.input.description) return block.input.description
   const obj = block.input
   if (obj.file_path) return baseName(obj.file_path)
-  if (obj.command) return obj.command.length > 60 ? obj.command.slice(0, 57) + '...' : obj.command
-  if (obj.pattern) return obj.pattern.length > 60 ? obj.pattern.slice(0, 57) + '...' : obj.pattern
-  if (obj.query) return obj.query.length > 60 ? obj.query.slice(0, 57) + '...' : obj.query
-  if (obj.url) return obj.url.length > 60 ? obj.url.slice(0, 57) + '...' : obj.url
+  if (obj.command) return obj.command
+  if (obj.pattern) return obj.pattern
+  if (obj.query) return obj.query
+  if (obj.url) return obj.url
   if (obj.skill) return obj.skill
-  if (obj.prompt && name === 'agent') return obj.prompt.length > 60 ? obj.prompt.slice(0, 57) + '...' : obj.prompt
+  if (obj.prompt && name === 'agent') return obj.prompt
   if (obj.path) return baseName(obj.path)
   if (obj.src_path && obj.dst_path) return `${baseName(obj.src_path)} → ${baseName(obj.dst_path)}`
   const firstVal = Object.values(obj)[0]
-  if (typeof firstVal === 'string' && firstVal.length < 80) return firstVal
+  if (typeof firstVal === 'string') return firstVal
   return ''
 }
 

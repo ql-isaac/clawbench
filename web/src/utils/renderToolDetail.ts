@@ -8,6 +8,7 @@ import { detectLang, highlightLine } from './diff.ts'
 import { resolveFilePath, fileOpenButtonHtml } from '@/composables/useFilePathAnnotation.ts'
 import { gt } from '@/composables/useLocale'
 import { store } from '@/stores/app.ts'
+import { renderMarkdown } from '@/composables/useMarkdownRenderer.ts'
 
 // ────────────────────────────────────────────────────────────
 // Tool renderer functions
@@ -367,7 +368,7 @@ function renderWebFetch(input: Record<string, any>): string {
 
 /**
  * Render Agent tool input as a sub-agent call view.
- * Shows agent type badge + description + collapsed prompt.
+ * Shows agent type badge + description + full markdown-rendered prompt.
  */
 function renderAgentCall(input: Record<string, any>): string {
   const description = input.description || ''
@@ -386,11 +387,15 @@ function renderAgentCall(input: Record<string, any>): string {
   }
   html += '</div>'
 
-  // Prompt (truncated preview)
+  // Prompt (full content, markdown rendered)
   if (prompt) {
-    const maxLen = 200
-    const truncated = prompt.length > maxLen ? prompt.slice(0, maxLen) + '…' : prompt
-    html += `<div class="agent-call-prompt">${escapeHtml(truncated)}</div>`
+    const rendered = renderMarkdown(prompt, {
+      sanitize: true,
+      renderKatex: false,
+      renderMermaid: false,
+      wrapTables: false,
+    })
+    html += `<div class="agent-call-prompt">${rendered}</div>`
   }
 
   html += '</div>'
@@ -399,7 +404,7 @@ function renderAgentCall(input: Record<string, any>): string {
 
 /**
  * Render Skill tool input as a skill call view.
- * Shows skill name + optional arguments.
+ * Shows skill name + optional arguments (full content).
  */
 function renderSkillCall(input: Record<string, any>): string {
   const skill = input.skill || input.command || ''
@@ -413,11 +418,10 @@ function renderSkillCall(input: Record<string, any>): string {
   html += `<span class="skill-call-name">${escapeHtml(skill)}</span>`
   html += '</div>'
 
-  // Arguments (if present)
+  // Arguments (if present, full content)
   if (args) {
     const argStr = typeof args === 'string' ? args : JSON.stringify(args, null, 2)
-    const truncated = argStr.length > 150 ? argStr.slice(0, 150) + '…' : argStr
-    html += `<div class="skill-call-args">${escapeHtml(truncated)}</div>`
+    html += `<div class="skill-call-args">${escapeHtml(argStr)}</div>`
   }
 
   html += '</div>'
