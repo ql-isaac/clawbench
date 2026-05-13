@@ -805,6 +805,212 @@ func TestCancelChat_WrongProject(t *testing.T) {
 	assertStatus(t, w, http.StatusForbidden)
 }
 
+// ---------- deleteExecution / deleteAllExecutions ----------
+
+func TestServeTaskByID_DeleteExecution(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{
+		"coder": {ID: "coder", Name: "Coder", Backend: "claude"},
+	}
+	defer func() { model.Agents = nil }()
+
+	s := service.NewScheduler()
+	defer s.Stop()
+	service.GlobalScheduler = s
+	defer func() { service.GlobalScheduler = nil }()
+
+	// Create task
+	task := &model.ScheduledTask{
+		ProjectPath: env.ProjectDir,
+		Name:        "DelExec",
+		CronExpr:    "0 * * * *",
+		AgentID:     "coder",
+		Prompt:      "Test",
+		RepeatMode:  "unlimited",
+	}
+	s.AddTask(task)
+
+	// Create a scheduled session and execution
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Exec 1", "coder", "", "default", "scheduled")
+	assert.NoError(t, err)
+	err = service.AddTaskExecution(task.ID, sessionID, "auto")
+	assert.NoError(t, err)
+
+	// Get execution ID
+	var execID int64
+	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
+	assert.NoError(t, err)
+
+	// Delete the execution via API
+	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
+		"action":      "deleteExecution",
+		"executionId": fmt.Sprintf("%d", execID),
+	})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(ServeTaskByID, req)
+	assertOK(t, w)
+
+	// Verify execution is deleted
+	var count int
+	service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE id = ?", execID).Scan(&count)
+	assert.Equal(t, 0, count)
+}
+
+func TestServeTaskByID_DeleteExecution_MissingExecutionID(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{
+		"coder": {ID: "coder", Name: "Coder", Backend: "claude"},
+	}
+	defer func() { model.Agents = nil }()
+
+	s := service.NewScheduler()
+	defer s.Stop()
+	service.GlobalScheduler = s
+	defer func() { service.GlobalScheduler = nil }()
+
+	task := &model.ScheduledTask{
+		ProjectPath: env.ProjectDir,
+		Name:        "DelExec",
+		CronExpr:    "0 * * * *",
+		AgentID:     "coder",
+		Prompt:      "Test",
+		RepeatMode:  "unlimited",
+	}
+	s.AddTask(task)
+
+	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
+		"action": "deleteExecution",
+	})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(ServeTaskByID, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+func TestServeTaskByID_DeleteExecution_InvalidExecutionID(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{
+		"coder": {ID: "coder", Name: "Coder", Backend: "claude"},
+	}
+	defer func() { model.Agents = nil }()
+
+	s := service.NewScheduler()
+	defer s.Stop()
+	service.GlobalScheduler = s
+	defer func() { service.GlobalScheduler = nil }()
+
+	task := &model.ScheduledTask{
+		ProjectPath: env.ProjectDir,
+		Name:        "DelExec",
+		CronExpr:    "0 * * * *",
+		AgentID:     "coder",
+		Prompt:      "Test",
+		RepeatMode:  "unlimited",
+	}
+	s.AddTask(task)
+
+	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
+		"action":      "deleteExecution",
+		"executionId": "not-a-number",
+	})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(ServeTaskByID, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+func TestServeTaskByID_DeleteExecution_WrongProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{
+		"coder": {ID: "coder", Name: "Coder", Backend: "claude"},
+	}
+	defer func() { model.Agents = nil }()
+
+	s := service.NewScheduler()
+	defer s.Stop()
+	service.GlobalScheduler = s
+	defer func() { service.GlobalScheduler = nil }()
+
+	task := &model.ScheduledTask{
+		ProjectPath: env.ProjectDir,
+		Name:        "DelExec",
+		CronExpr:    "0 * * * *",
+		AgentID:     "coder",
+		Prompt:      "Test",
+		RepeatMode:  "unlimited",
+	}
+	s.AddTask(task)
+
+	sessionID, _ := service.CreateSession(env.ProjectDir, "claude", "Exec", "coder", "", "default", "scheduled")
+	service.AddTaskExecution(task.ID, sessionID, "auto")
+	var execID int64
+	service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
+
+	// Request from a different project should be forbidden
+	otherProject := t.TempDir()
+	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
+		"action":      "deleteExecution",
+		"executionId": fmt.Sprintf("%d", execID),
+	})
+	req = withProjectCookie(req, otherProject)
+	w := callHandler(ServeTaskByID, req)
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+func TestServeTaskByID_DeleteAllExecutions(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{
+		"coder": {ID: "coder", Name: "Coder", Backend: "claude"},
+	}
+	defer func() { model.Agents = nil }()
+
+	s := service.NewScheduler()
+	defer s.Stop()
+	service.GlobalScheduler = s
+	defer func() { service.GlobalScheduler = nil }()
+
+	task := &model.ScheduledTask{
+		ProjectPath: env.ProjectDir,
+		Name:        "DelAllExec",
+		CronExpr:    "0 * * * *",
+		AgentID:     "coder",
+		Prompt:      "Test",
+		RepeatMode:  "unlimited",
+	}
+	s.AddTask(task)
+
+	// Create 2 executions
+	for i := 0; i < 2; i++ {
+		sessionID, _ := service.CreateSession(env.ProjectDir, "claude", fmt.Sprintf("Exec %d", i), "coder", "", "default", "scheduled")
+		service.AddTaskExecution(task.ID, sessionID, "auto")
+	}
+
+	// Verify 2 executions exist
+	var count int
+	service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", task.ID).Scan(&count)
+	assert.Equal(t, 2, count)
+
+	// Delete all via API
+	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
+		"action": "deleteAllExecutions",
+	})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(ServeTaskByID, req)
+	assertOK(t, w)
+
+	// Verify all executions deleted
+	service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", task.ID).Scan(&count)
+	assert.Equal(t, 0, count)
+}
+
 // ---------- helper ----------
 
 func createTestSession(t *testing.T, projectPath string) string {

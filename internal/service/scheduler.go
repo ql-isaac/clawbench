@@ -734,6 +734,100 @@ func MarkExecutionRead(executionID string) error {
 	return err
 }
 
+// DeleteTaskExecution deletes a single task execution and soft-deletes the
+// associated chat session. Running executions cannot be deleted.
+func DeleteTaskExecution(executionID int64) error {
+	// Fetch execution details
+	var sessionID string
+	var taskID int64
+	var status string
+	err := DB.QueryRow(
+		"SELECT session_id, task_id, status FROM task_executions WHERE id = ?",
+		executionID,
+	).Scan(&sessionID, &taskID, &status)
+	if err != nil {
+		return fmt.Errorf("execution not found: %w", err)
+	}
+
+	if status == "running" {
+		return fmt.Errorf("cannot delete a running execution")
+	}
+
+	// Soft-delete the associated chat session
+	var projectPath, backend string
+	err = DB.QueryRow(
+		"SELECT project_path, backend FROM chat_sessions WHERE id = ?",
+		sessionID,
+	).Scan(&projectPath, &backend)
+	if err == nil {
+		if err := DeleteSession(projectPath, backend, sessionID); err != nil {
+			slog.Error("failed to soft-delete session during execution deletion",
+				slog.String("session_id", sessionID),
+				slog.String("err", err.Error()),
+			)
+		}
+	}
+
+	// Hard-delete the execution row
+	if _, err := DB.Exec("DELETE FROM task_executions WHERE id = ?", executionID); err != nil {
+		return fmt.Errorf("failed to delete execution: %w", err)
+	}
+
+	// Decrement run_count on the parent task (clamp to 0)
+	DB.Exec("UPDATE scheduled_tasks SET run_count = MAX(run_count - 1, 0), updated_at = CURRENT_TIMESTAMP WHERE id = ?", taskID)
+
+	return nil
+}
+
+// DeleteAllTaskExecutions deletes all non-running executions for a task
+// and soft-deletes the associated chat sessions.
+func DeleteAllTaskExecutions(taskID int64) error {
+	// Collect all non-running executions with their session info
+	rows, err := DB.Query(`
+		SELECT te.id, te.session_id, cs.project_path, cs.backend
+		FROM task_executions te
+		JOIN chat_sessions cs ON cs.id = te.session_id
+		WHERE te.task_id = ? AND te.status != 'running'`, taskID)
+	if err != nil {
+		return fmt.Errorf("failed to query executions: %w", err)
+	}
+
+	type execInfo struct {
+		id          int64
+		sessionID   string
+		projectPath string
+		backend     string
+	}
+	var execs []execInfo
+	for rows.Next() {
+		var ei execInfo
+		if rows.Scan(&ei.id, &ei.sessionID, &ei.projectPath, &ei.backend) == nil {
+			execs = append(execs, ei)
+		}
+	}
+	rows.Close()
+
+	// Soft-delete chat sessions
+	for _, ei := range execs {
+		if err := DeleteSession(ei.projectPath, ei.backend, ei.sessionID); err != nil {
+			slog.Error("failed to soft-delete session during bulk execution deletion",
+				slog.String("session_id", ei.sessionID),
+				slog.String("err", err.Error()),
+			)
+		}
+	}
+
+	// Hard-delete all non-running execution rows
+	DB.Exec("DELETE FROM task_executions WHERE task_id = ? AND status != 'running'", taskID)
+
+	// Reset run_count to match remaining (running) executions
+	var runningCount int
+	DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", taskID).Scan(&runningCount)
+	DB.Exec("UPDATE scheduled_tasks SET run_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runningCount, taskID)
+
+	return nil
+}
+
 // HasUnreadTasks checks if any task for the given project has unread executions.
 func HasUnreadTasks(projectPath string) (bool, error) {
 	var count int

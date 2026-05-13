@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -895,4 +896,238 @@ func TestPurgeDeletedData_CleansTaskExecutions(t *testing.T) {
 	err = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE session_id = ?", sessionID).Scan(&execCount)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, execCount, "task_executions should be purged along with the session")
+}
+
+// ---------- DeleteTaskExecution ----------
+
+func TestDeleteTaskExecution(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	// Create a task
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, run_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "DelExec Task", "0 * * * *", "agent1", "p", "", "active", "unlimited", 3, now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Create a scheduled chat session
+	sessionID, err := service.CreateSession("/proj", "claude", "Del Exec", "agent1", "", "default", "scheduled")
+	assert.NoError(t, err)
+
+	// Add messages
+	_, err = service.AddChatMessage("/proj", "claude", sessionID, "user", "prompt", nil, false, "Del Exec")
+	assert.NoError(t, err)
+	_, err = service.AddChatMessage("/proj", "claude", sessionID, "assistant", "response", nil, false, "Del Exec")
+	assert.NoError(t, err)
+
+	// Create an execution linked to this session
+	err = service.AddTaskExecution(taskID, sessionID, "auto")
+	assert.NoError(t, err)
+
+	// Get the execution ID
+	var execID int64
+	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
+	assert.NoError(t, err)
+
+	// Delete the execution
+	err = service.DeleteTaskExecution(execID)
+	assert.NoError(t, err)
+
+	// Verify execution is hard-deleted
+	var execCount int
+	err = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE id = ?", execID).Scan(&execCount)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, execCount, "execution should be hard-deleted")
+
+	// Verify session is soft-deleted
+	var sessionDeleted int
+	err = service.DB.QueryRow("SELECT deleted FROM chat_sessions WHERE id = ?", sessionID).Scan(&sessionDeleted)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, sessionDeleted, "session should be soft-deleted")
+
+	// Verify run_count was decremented
+	task, err := service.GetTaskByID(taskID)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, task.RunCount, "run_count should be decremented from 3 to 2")
+}
+
+func TestDeleteTaskExecution_NotFound(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	err := service.DeleteTaskExecution(99999)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "execution not found")
+}
+
+func TestDeleteTaskExecution_RunningExecution(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	// Create a task and a running execution
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, run_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Running Task", "0 * * * *", "agent1", "p", "", "active", "unlimited", 1, now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	sessionID, err := service.CreateSession("/proj", "claude", "Running Exec", "agent1", "", "default", "scheduled")
+	assert.NoError(t, err)
+
+	err = service.AddTaskExecution(taskID, sessionID, "auto")
+	assert.NoError(t, err)
+
+	// Mark execution as running
+	err = service.UpdateExecutionStatus(sessionID, "running")
+	assert.NoError(t, err)
+
+	var execID int64
+	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
+	assert.NoError(t, err)
+
+	// Attempt to delete a running execution should fail
+	err = service.DeleteTaskExecution(execID)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot delete a running execution")
+
+	// Verify execution still exists
+	var execCount int
+	err = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE id = ?", execID).Scan(&execCount)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, execCount, "running execution should not be deleted")
+}
+
+func TestDeleteTaskExecution_RunCountClampToZero(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	// Create a task with run_count = 0
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, run_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Zero Count", "0 * * * *", "agent1", "p", "", "active", "unlimited", 0, now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	sessionID, err := service.CreateSession("/proj", "claude", "Zero Exec", "agent1", "", "default", "scheduled")
+	assert.NoError(t, err)
+
+	err = service.AddTaskExecution(taskID, sessionID, "auto")
+	assert.NoError(t, err)
+
+	var execID int64
+	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
+	assert.NoError(t, err)
+
+	// Delete the execution — run_count should clamp to 0 (not go negative)
+	err = service.DeleteTaskExecution(execID)
+	assert.NoError(t, err)
+
+	task, err := service.GetTaskByID(taskID)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, task.RunCount, "run_count should clamp to 0, not go negative")
+}
+
+// ---------- DeleteAllTaskExecutions ----------
+
+func TestDeleteAllTaskExecutions(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	// Create a task with run_count = 3
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, run_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "DelAll Task", "0 * * * *", "agent1", "p", "", "active", "unlimited", 3, now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Create 3 sessions and executions
+	for i := 0; i < 3; i++ {
+		sessionID, err := service.CreateSession("/proj", "claude", fmt.Sprintf("Exec %d", i), "agent1", "", "default", "scheduled")
+		assert.NoError(t, err)
+		service.AddChatMessage("/proj", "claude", sessionID, "user", "prompt", nil, false, fmt.Sprintf("Exec %d", i))
+		err = service.AddTaskExecution(taskID, sessionID, "auto")
+		assert.NoError(t, err)
+	}
+
+	// Verify 3 executions exist
+	var execCount int
+	err = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", taskID).Scan(&execCount)
+	assert.NoError(t, err)
+	assert.Equal(t, 3, execCount)
+
+	// Delete all executions
+	err = service.DeleteAllTaskExecutions(taskID)
+	assert.NoError(t, err)
+
+	// Verify all executions are deleted
+	err = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", taskID).Scan(&execCount)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, execCount, "all executions should be deleted")
+
+	// Verify run_count reset to 0
+	task, err := service.GetTaskByID(taskID)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, task.RunCount, "run_count should be reset to 0")
+}
+
+func TestDeleteAllTaskExecutions_PreservesRunning(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, run_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Mixed Task", "0 * * * *", "agent1", "p", "", "active", "unlimited", 2, now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// One completed, one running
+	completedSession, _ := service.CreateSession("/proj", "claude", "Completed", "agent1", "", "default", "scheduled")
+	service.AddTaskExecution(taskID, completedSession, "auto")
+
+	runningSession, _ := service.CreateSession("/proj", "claude", "Running", "agent1", "", "default", "scheduled")
+	service.AddTaskExecution(taskID, runningSession, "auto")
+	service.UpdateExecutionStatus(runningSession, "running")
+
+	// Delete all — should only delete the completed one
+	err = service.DeleteAllTaskExecutions(taskID)
+	assert.NoError(t, err)
+
+	// Running execution should still exist
+	var runningCount int
+	err = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ? AND status = 'running'", taskID).Scan(&runningCount)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, runningCount, "running execution should be preserved")
+
+	// run_count should be 1 (matching the remaining running execution)
+	task, err := service.GetTaskByID(taskID)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, task.RunCount, "run_count should be set to the count of remaining executions")
+}
+
+func TestDeleteAllTaskExecutions_NoExecutions(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, run_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Empty Task", "0 * * * *", "agent1", "p", "", "active", "unlimited", 0, now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Delete all with no executions — should not error
+	err = service.DeleteAllTaskExecutions(taskID)
+	assert.NoError(t, err)
 }

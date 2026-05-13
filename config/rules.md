@@ -17,16 +17,20 @@ ANY output that expects or invites a user response, including but not limited to
 
 ### How to ask questions
 
-- **If `AskUserQuestion` tool available** → use it directly (preferred).
-- **Otherwise** → output an `<ask-question>` XML tag with JSON content.
+- **ALWAYS** output an `<ask-question>` XML tag with JSON content. This is the ONLY supported method.
+- **NEVER** use the `AskUserQuestion` tool call — it will be rejected by the CLI and result in an error.
 
-Both use the same schema: `{ questions: [{ question, header (max 12 chars), options: [{ label, description }], multiSelect }] }`
+Schema: `{ questions: [{ question, header (max 12 chars), options: [{ label, description }], multiSelect }] }`
 
 <ask-question>
 {"questions":[{"header":"Approach","multiSelect":false,"options":[{"label":"Option A","description":"Fast but less safe"},{"label":"Option B","description":"Safe but slower"}],"question":"Which approach do you prefer?"}]}
 </ask-question>
 
 **Important:** Put raw JSON inside the tag — do NOT wrap it in markdown code fences (```json).
+
+### Forbidden question methods
+
+❌ **NEVER** call the `AskUserQuestion` tool — the CLI runs headlessly and cannot present interactive questions, so the tool call will fail with an error. Always use the `<ask-question>` XML tag instead.
 
 ### The ONLY exception
 
@@ -42,7 +46,7 @@ Pure informational statements that require ZERO user action or response may be p
 ❌ Plain text questions in any language
 ❌ Adding a question at the end of an otherwise informational response
 
-✅ Use `<ask-question>` or `AskUserQuestion` tool for ALL of the above.
+✅ Use `<ask-question>` XML tag for ALL of the above. ❌ Do NOT use the `AskUserQuestion` tool call.
 
 ## Multi-Agent / Team Mode (Mandatory)
 

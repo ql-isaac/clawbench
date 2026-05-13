@@ -220,6 +220,39 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if req.Action == "deleteExecution" {
+			if req.ExecutionID == "" {
+				writeLocalizedErrorf(w, r, http.StatusBadRequest, "TaskExecutionIdRequired")
+				return
+			}
+			executionID, err := strconv.ParseInt(req.ExecutionID, 10, 64)
+			if err != nil {
+				writeLocalizedErrorf(w, r, http.StatusBadRequest, "TaskExecutionIdInvalid")
+				return
+			}
+			if err := service.DeleteTaskExecution(executionID); err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					writeLocalizedError(w, r, model.NotFound(err, "TaskExecutionNotFound"))
+				} else if strings.Contains(err.Error(), "cannot delete a running") {
+					writeLocalizedErrorf(w, r, http.StatusConflict, "TaskExecutionRunning")
+				} else {
+					model.WriteError(w, model.Internal(err))
+				}
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return
+		}
+
+		if req.Action == "deleteAllExecutions" {
+			if err := service.DeleteAllTaskExecutions(taskID); err != nil {
+				model.WriteError(w, model.Internal(err))
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return
+		}
+
 		// Full task update — task already fetched and verified above
 
 		// Update fields if provided

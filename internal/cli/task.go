@@ -16,6 +16,7 @@ var taskSubcommands = []CmdHelp{
 	{Name: "get", Desc: "Get task details by ID"},
 	{Name: "update", Desc: "Update an existing task"},
 	{Name: "delete", Desc: "Delete a task"},
+	{Name: "delete-exec", Desc: "Delete a task execution record"},
 	{Name: "pause", Desc: "Pause a task's cron schedule"},
 	{Name: "resume", Desc: "Resume a paused task"},
 	{Name: "trigger", Desc: "Run a task immediately"},
@@ -105,6 +106,18 @@ var deleteHelp = HelpInfo{
 	},
 	Examples: []string{
 		`clawbench task delete 1`,
+	},
+}
+
+var deleteExecHelp = HelpInfo{
+	Usage:       "clawbench task delete-exec TASK_ID EXEC_ID --project PATH",
+	Description: "Delete a single task execution record. Running executions cannot be deleted.",
+	Positional:  "TASK_ID  (required) ID of the task\nEXEC_ID  (required) ID of the execution to delete",
+	Flags: []FlagHelp{
+		{Name: "project", Type: "string", Desc: "Project path", Required: true},
+	},
+	Examples: []string{
+		`clawbench task delete-exec 1 5 --project /path/to/project`,
 	},
 }
 
@@ -271,6 +284,8 @@ func RunTaskCommand(args []string) int {
 		return runUpdate(args[1:])
 	case "delete":
 		return runDelete(args[1:])
+	case "delete-exec":
+		return runDeleteExec(args[1:])
 	case "pause":
 		return runPause(args[1:])
 	case "resume":
@@ -489,6 +504,38 @@ func runDelete(args []string) int {
 		return outputError(fmt.Sprintf("failed to delete task: %v", err))
 	}
 	if err := checkHTTPResponse(result, status, "delete task"); err != nil {
+		return outputError(err.Error())
+	}
+
+	fmt.Println(mustMarshal(result))
+	return 0
+}
+
+func runDeleteExec(args []string) int {
+	args = reorderFlagsFirst(args)
+	fs := flagSet("delete-exec")
+	projectPath := fs.String("project", "", "Project path")
+	parseOrHelp(fs, args, &deleteExecHelp)
+
+	remaining := fs.Args()
+	if len(remaining) < 2 {
+		return outputError("task ID and execution ID required")
+	}
+	if *projectPath == "" {
+		return outputError("missing required flag: --project")
+	}
+	taskID := remaining[0]
+	execID := remaining[1]
+
+	body := map[string]any{
+		"action":      "deleteExecution",
+		"executionId": execID,
+	}
+	result, status, err := httpDoWithProject(http.MethodPut, "/api/tasks/"+taskID, body, *projectPath)
+	if err != nil {
+		return outputError(fmt.Sprintf("failed to delete execution: %v", err))
+	}
+	if err := checkHTTPResponse(result, status, "delete execution"); err != nil {
 		return outputError(err.Error())
 	}
 
