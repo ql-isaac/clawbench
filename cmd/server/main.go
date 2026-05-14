@@ -533,6 +533,9 @@ func main() {
 		slog.String("watch_dir", model.WatchDir),
 		slog.Bool("auth_enabled", model.SessionToken != ""),
 	)
+	if cfg.DevPort > 0 {
+		slog.Info("dev HTTP listener enabled", slog.Int("port", cfg.DevPort))
+	}
 
 	// Initialize RAG indexer (needs final port number)
 	if cfg.RAG.Enabled && rag.GlobalStore != nil {
@@ -585,6 +588,15 @@ func main() {
 
 	srv := &http.Server{Addr: addr, Handler: mux}
 
+	// Optional localhost-only HTTP dev listener (for Vite dev proxy)
+	var devSrv *http.Server
+	if cfg.DevPort > 0 {
+		devSrv = &http.Server{
+			Addr:    fmt.Sprintf("127.0.0.1:%d", cfg.DevPort),
+			Handler: mux,
+		}
+	}
+
 	// Graceful shutdown on SIGINT/SIGTERM
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -596,6 +608,11 @@ func main() {
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			slog.Error("server shutdown error", slog.String("err", err.Error()))
+		}
+		if devSrv != nil {
+			if err := devSrv.Shutdown(shutdownCtx); err != nil {
+				slog.Error("dev listener shutdown error", slog.String("err", err.Error()))
+			}
 		}
 	}()
 
@@ -621,6 +638,17 @@ func main() {
 			os.Exit(1)
 		}
 		slog.Info("starting with TLS", slog.String("cert", certFile))
+
+		// Start dev HTTP listener alongside TLS
+		if devSrv != nil {
+			go func() {
+				slog.Info("dev HTTP listener", slog.Int("port", cfg.DevPort))
+				if err := devSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					slog.Error("dev listener failed", slog.String("err", err.Error()))
+				}
+			}()
+		}
+
 		if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
 			slog.Error("server failed", slog.String("err", err.Error()))
 			os.Exit(1)

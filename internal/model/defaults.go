@@ -48,6 +48,14 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 		cfg.Port = 20000
 	}
 
+	// --- DevPort ---
+	// -1 = explicitly disabled; 0 = auto (Port+1 when TLS enabled, disabled otherwise)
+	if cfg.DevPort == 0 {
+		if cfg.TLS.Enabled {
+			cfg.DevPort = cfg.Port + 1
+		}
+	}
+
 	// --- LogLevel ---
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = "info"
