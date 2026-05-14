@@ -18,6 +18,7 @@
 import { useI18n } from 'vue-i18n'
 import { FileImage, FileText, Paperclip } from 'lucide-vue-next'
 import { baseName } from '@/utils/path.ts'
+import { normalizeFileEntry, isUploadPath, isImageFile } from '@/utils/fileAttachmentUtils.ts'
 
 const { t } = useI18n()
 
@@ -25,22 +26,6 @@ defineProps({
   files: { type: Array, required: true },
 })
 defineEmits(['file-tag-click'])
-
-function normalizeFileEntry(f) {
-  if (typeof f === 'string') return { path: f }
-  return { path: f.path || '' }
-}
-
-function isUploadPath(path) {
-  return path.startsWith('.clawbench/uploads/') || path.startsWith('.clawbench\\uploads\\')
-}
-
-function isImageFile(path) {
-  if (!path) return false
-  const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.tiff', '.tif', '.avif']
-  const lower = path.toLowerCase()
-  return imageExts.some(ext => lower.endsWith(ext))
-}
 
 function getFileName(path) {
   return baseName(path)

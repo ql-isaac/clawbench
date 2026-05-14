@@ -34,6 +34,7 @@ import ModalDialog from '@/components/common/ModalDialog.vue'
 import { PencilIcon, PlusIcon } from 'lucide-vue-next'
 import { useQuickSend, type QuickSendItem } from '@/composables/useQuickSend'
 import { useToast } from '@/composables/useToast'
+import { validateQuickSendForm } from '@/utils/quickSendValidation.ts'
 
 const props = defineProps<{
   open: boolean
@@ -68,8 +69,9 @@ watch(() => props.open, (isOpen) => {
 async function saveItem() {
   const label = form.value.label.trim()
   const command = form.value.command.trim()
-  if (!label || !command) {
-    formError.value = t('chat.quickSend.itemRequired')
+  const error = validateQuickSendForm({ label, command })
+  if (error) {
+    formError.value = t(error)
     return
   }
   formError.value = ''

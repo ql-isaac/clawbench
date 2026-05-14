@@ -12,7 +12,7 @@ ClawBench is a mobile-first AI workstation wrapping AI CLI tools (CodeBuddy, Cla
 ./build.sh --linux        # Cross-compile: Linux amd64
 ./build.sh --darwin       # Cross-compile: macOS arm64
 
-./dev-server.sh           # Dev mode (Go :20002 + Vite HMR :20001)
+./dev-server.sh           # Dev mode (Vite HMR proxy to production backend's dev HTTP port)
 ./dev-server.sh --fg      #   foreground
 ./dev-server.sh --stop    #   stop
 ./dev-server.sh --restart #   restart
@@ -38,7 +38,7 @@ npm test                             # Vitest (all frontend tests)
 - `internal/service/` — Business logic: chat persistence, scheduler (cron via `robfig/cron/v3`), SQLite, ProxyRegistry, session runtime.
 - `internal/ai/` — AI backend abstraction. `AIBackend` interface with `ExecuteStream()`. `CLIBackend` is the shared base; each backend provides CLI args and a `LineParser`. `AutoResumeBackend` wraps claude/codebuddy/qoder/deepseek/pi — detects ExitPlanMode and auto-resumes with "继续". `NewBackend()` factory in `factory.go`.
 - `internal/model/` — Data models, config structs, structured errors (`NotFound`, `Forbidden`, `Internal`), auto-discovery of AI CLIs.
-- `internal/cli/` — CLI subcommands for AI agent self-service: `task` (CRUD + trigger), `rag` (search), `migrate`.
+- `internal/cli/` — CLI subcommands for AI agent self-service: `task` (CRUD + trigger + `list-exec`), `rag` (search), `migrate`.
 - `internal/middleware/` — Auth, request logging, panic recovery, request ID.
 - `internal/speech/` — TTS providers: MiniMax (cloud), Edge TTS (cloud, free), Piper/Kokoro/MOSS-Nano (local).
 - `internal/summarize/` — Text summarization for TTS/task summaries. Supports AI backend CLIs, OpenAI/Anthropic HTTP APIs, and simple text cleanup.
@@ -86,7 +86,7 @@ npm test                             # Vitest (all frontend tests)
 
 | Section | Key options |
 |---------|------------|
-| Server | `port` (20000), `host`, `log_level` ("info"), `watch_dir`, `password` (auto-UUID), `default_agent` |
+| Server | `port` (20000), `host`, `log_level` ("info"), `watch_dir`, `password` (auto-UUID), `default_agent`, `dev_port` (0=auto, Port+1 when TLS) |
 | Upload | `upload.max_size_mb`, `upload.max_files` |
 | Chat UI | `chat.initial_messages`, `chat.page_size`, `chat.collapsed_height`, `chat.system_prompt_interval` (10) |
 | Session | `session.max_count` |

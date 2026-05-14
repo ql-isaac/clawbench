@@ -82,6 +82,7 @@ import ChatMessageItem from './ChatMessageItem.vue'
 import PendingMessageItem from './PendingMessageItem.vue'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
+import { computeRemainingCount, computeLastRoundIndices, isCollapsed as isCollapsedUtil } from '@/utils/messageListUtils.ts'
 
 const { t } = useI18n()
 
@@ -108,8 +109,7 @@ const { openFilePath } = useFilePathAnnotation()
 
 // How many older messages are not yet loaded
 const remainingCount = computed(() => {
-  if (!props.hasMore) return 0
-  return Math.max(0, props.totalMessages - props.messages.length)
+  return computeRemainingCount(props.hasMore, props.totalMessages, props.messages.length)
 })
 
 // "All loaded" brief hint: shown for 2s after last load completes with no more
@@ -141,50 +141,11 @@ watch(() => props.messages, () => {
 
 // Compute the last round: last assistant message + its preceding user message
 const lastRoundIndices = computed(() => {
-  const msgs = props.messages
-  if (!msgs || msgs.length === 0) return new Set()
-
-  // Find last assistant message index
-  let lastAssistantIdx = -1
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].role === 'assistant') {
-      lastAssistantIdx = i
-      break
-    }
-  }
-
-  const indices = new Set()
-  if (lastAssistantIdx >= 0) {
-    indices.add(lastAssistantIdx)
-    // Find the preceding user message
-    for (let i = lastAssistantIdx - 1; i >= 0; i--) {
-      if (msgs[i].role === 'user') {
-        indices.add(i)
-        break
-      }
-    }
-  } else {
-    // No assistant message — expand last user message
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].role === 'user') {
-        indices.add(i)
-        break
-      }
-    }
-  }
-
-  return indices
+  return computeLastRoundIndices(props.messages)
 })
 
 function isCollapsed(index, msg) {
-  // User explicitly collapsed this message — suggest collapse
-  if (collapsedSet.value.has(index)) return true
-  // Last round is always fully expanded (no collapse suggestion) unless user collapsed it
-  if (lastRoundIndices.value.has(index)) return false
-  // Manually expanded — don't suggest collapse
-  if (expandedSet.value.has(index)) return false
-  // Everything else: suggest collapse (ChatMessageItem decides whether content actually overflows)
-  return true
+  return isCollapsedUtil(index, msg, collapsedSet.value, lastRoundIndices.value, expandedSet.value)
 }
 
 function handleExpand(index) {

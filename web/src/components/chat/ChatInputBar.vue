@@ -164,6 +164,7 @@ import { ref, computed, nextTick, watch, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessageSquare, List, Plus, Trash2, Volume2, Upload, Paperclip, FileImage, FileText, Folder, XCircle, Inbox, Send, Square, Cpu, ChevronDown, Check } from 'lucide-vue-next'
 import { baseName } from '@/utils/path.ts'
+import { computeRecentReferencedFiles, computeHasFileGroups, computeAttachMenuItemCount } from '@/utils/chatInputUtils.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
 import QuickSendDialog from '@/components/chat/QuickSendDialog.vue'
 import { createStopButtonMachine } from '@/utils/stopButtonMachine.ts'
@@ -263,39 +264,15 @@ const hasInputContent = computed(() => inputText.value.trim() || props.pendingFi
 
 // Extract recently referenced files from message history
 const recentReferencedFiles = computed(() => {
-  if (!props.messages || props.messages.length === 0) return []
-  const countMap = new Map()
-  for (const msg of props.messages) {
-    if (msg.role !== 'user' || !msg.files) continue
-    for (const f of msg.files) {
-      // Backend returns string[], local push uses [{path: "..."}]
-      const p = typeof f === 'string' ? f : f?.path
-      if (!p) continue
-      countMap.set(p, (countMap.get(p) || 0) + 1)
-    }
-  }
-  // Exclude current file and already attached files
-  const exclude = new Set([...props.attachedFiles])
-  if (props.currentFile?.path) exclude.add(props.currentFile.path)
-  return [...countMap.entries()]
-    .filter(([path]) => !exclude.has(path))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([path, count]) => ({ path, count }))
+  return computeRecentReferencedFiles(props.messages, props.attachedFiles, props.currentFile?.path)
 })
 
 const hasFileGroups = computed(() => {
-  const hasCurrent = props.currentFile?.path && !props.attachedFiles.includes(props.currentFile.path)
-  const hasDir = props.currentDir && !props.attachedFiles.includes(props.currentDir)
-  return hasCurrent || hasDir || recentReferencedFiles.value.length > 0
+  return computeHasFileGroups(props.currentFile?.path, props.currentDir, props.attachedFiles, recentReferencedFiles.value)
 })
 
 const attachMenuItemCount = computed(() => {
-  let count = recentReferencedFiles.value.length
-  if (props.currentFile?.path && !props.attachedFiles.includes(props.currentFile.path)) count++
-  if (props.currentDir && !props.attachedFiles.includes(props.currentDir)) count++
-  count++ // Upload file button
-  return count
+  return computeAttachMenuItemCount(props.currentFile?.path, props.currentDir, props.attachedFiles, recentReferencedFiles.value)
 })
 
 function handleCreateClick(e) {

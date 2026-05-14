@@ -95,51 +95,40 @@ import { useI18n } from 'vue-i18n'
 import { handleToolAction, shouldAutoExpandTool } from '@/utils/renderToolDetail.ts'
 import { getToolIcon } from '@/utils/icons'
 import { Brain, ChevronRight, CheckCircle2, AlertCircle, AlertTriangle, XCircle } from 'lucide-vue-next'
+import {
+  isSevereWarning,
+  getWarningText as getWarningTextUtil,
+  statusClass as statusClassUtil,
+  statusLabel as statusLabelUtil,
+  statusLabelSimple as statusLabelSimpleUtil,
+  formatTime as formatTimeUtil,
+  askQuestionSummary as askQuestionSummaryUtil,
+  blockKey,
+  blockTaskKey as blockTaskKeyUtil,
+  buildTaskKeyIndex,
+  hasScheduledTasks as hasScheduledTasksUtil,
+  scheduledTaskKeys as scheduledTaskKeysUtil,
+} from '@/utils/contentBlocks.ts'
 
 const { t, locale } = useI18n()
 
-// Reasons that indicate a severe issue (red error-level styling)
-const SEVERE_REASONS = new Set(['disconnect', 'timeout', 'restart', 'panic'])
-
-function isSevereWarning(block) {
-  return SEVERE_REASONS.has(block.reason)
-}
-
-/** Get localized warning/error text. Uses i18n key from block.reason if available, falls back to block.text for backward compat. */
-function getWarningText(block) {
-  if (block.reason) {
-    const key = `chat.contentBlocks.warningReasons.${block.reason}`
-    const translated = t(key)
-    // t() returns the key itself when not found — fall back to block.text
-    if (translated !== key) {
-      // For parse_error: append detail after ": " from block.text
-      // For backend_exit: append stderr after "\n" from block.text
-      if ((block.reason === 'parse_error' || block.reason === 'backend_exit') && block.text) {
-        const newlineIdx = block.text.indexOf('\n')
-        if (newlineIdx >= 0) {
-          return translated + block.text.substring(newlineIdx)
-        }
-        const colonIdx = block.text.indexOf(': ')
-        if (colonIdx >= 0) {
-          return translated + ': ' + block.text.substring(colonIdx + 2)
-        }
-      }
-      return translated
-    }
-  }
-  // Fallback: no reason code or no matching i18n key (handles old DB records)
-  return block.text || ''
-}
+// Re-export utility functions with i18n context bound
+function getWarningText(block) { return getWarningTextUtil(block, t) }
+function statusClass(task) { return statusClassUtil(task) }
+function statusLabel(task) { return statusLabelUtil(task, t) }
+function statusLabelSimple(task) { return statusLabelSimpleUtil(task, t) }
+function formatTime(iso) { return formatTimeUtil(iso, locale.value, t) }
+function askQuestionSummary(input) { return askQuestionSummaryUtil(input) }
 
 function shouldAutoExpand(block) {
   return shouldAutoExpandTool(block.name || '')
 }
 
 /** Handle tool call bar click: open overlay for regular tools, toggle inline for AskUserQuestion. */
-function handleToolClick(block, blockKey) {
+function handleToolClick(block, blockKeyStr) {
   // AskUserQuestion stays inline — toggle expand state
   if (shouldAutoExpand(block)) {
-    emit('toggle-tool', blockKey)
+    emit('toggle-tool', blockKeyStr)
     return
   }
   // All other tools: open the overlay with block data
@@ -178,100 +167,29 @@ const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-deta
 
 // Key helper: use msgId if available, otherwise msgIndex
 function key(bi) {
-  return props.msgId ? `db-${props.msgId}-${bi}` : `local-${props.msgIndex}-${bi}`
+  return blockKey(props.msgId, bi)
 }
 
 // Key for blockTasks/blockAskQuestions lookup — prefix format used in useChatRender.ts
 function blockTaskKey(bi) {
-  return `${props.msgId}-${bi}`
+  return blockTaskKeyUtil(props.msgId, bi)
 }
 
 // Pre-computed index: block index → sorted array of scheduled task keys.
-// Built once when blockTasks keys change, avoiding O(n) scan per block per render.
-const taskKeyIndex = computed(() => {
-  const msgIdVal = props.msgId
-  if (!msgIdVal) return {}
-  const index = {}
-  const prefix = `${msgIdVal}-`
-  for (const k of Object.keys(props.blockTasks)) {
-    if (!k.startsWith(prefix)) continue
-    // Key format: "msgId-blockIdx-tagIdx" — extract blockIdx
-    const rest = k.slice(prefix.length)
-    const dashIdx = rest.indexOf('-')
-    if (dashIdx === -1) continue
-    const bi = rest.slice(0, dashIdx)
-    ;(index[bi] || (index[bi] = [])).push(k)
-  }
-  // Sort each group by key (tag index is already part of the key string)
-  for (const bi of Object.keys(index)) index[bi].sort()
-  return index
-})
+const taskKeyIndex = computed(() => buildTaskKeyIndex(props.msgId, props.blockTasks))
 
 // Check if a block has any scheduled tasks
 function hasScheduledTasks(bi) {
-  return !!(taskKeyIndex.value[bi]?.length)
+  return hasScheduledTasksUtil(taskKeyIndex.value, bi)
 }
 
 // Return all scheduled task keys for a block, sorted by tag index
 function scheduledTaskKeys(bi) {
-  return taskKeyIndex.value[bi] || []
-}
-
-function statusClass(task) {
-  if (task.status === 'active') return 'status-active'
-  if (task.status === 'paused') return 'status-paused'
-  if (task.status === 'completed') return 'status-completed'
-  return ''
-}
-
-function statusLabel(task) {
-  if (task.status === 'active') {
-    const execLabel = t('chat.contentBlocks.statusExecutions', { count: task.runCount })
-    if (task.runningCount > 0) return `${t('chat.contentBlocks.statusRunning')} (${execLabel})`
-    return `${t('chat.contentBlocks.statusActive')} (${execLabel})`
-  }
-  if (task.status === 'paused') return t('chat.contentBlocks.statusPaused')
-  if (task.status === 'completed') return t('chat.contentBlocks.statusCompleted')
-  return task.status
-}
-
-function statusLabelSimple(task) {
-  if (task.status === 'active') return t('chat.contentBlocks.statusActive')
-  if (task.status === 'paused') return t('chat.contentBlocks.statusPaused')
-  if (task.status === 'completed') return t('chat.contentBlocks.statusCompleted')
-  return task.status
-}
-
-function formatTime(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const now = new Date()
-  const diff = d.getTime() - now.getTime()
-  const absDiff = Math.abs(diff)
-  if (absDiff < 60000) return t('chat.contentBlocks.justNow')
-  if (absDiff < 3600000) {
-    const count = Math.round(absDiff / 60000)
-    return diff > 0 ? t('chat.contentBlocks.minutesFromNow', { count }) : t('chat.contentBlocks.minutesAgo', { count })
-  }
-  if (absDiff < 86400000) {
-    const count = Math.round(absDiff / 3600000)
-    return diff > 0 ? t('chat.contentBlocks.hoursFromNow', { count }) : t('chat.contentBlocks.hoursAgo', { count })
-  }
-  return d.toLocaleDateString(locale.value === 'zh' ? 'zh-CN' : 'en-US')
+  return scheduledTaskKeysUtil(taskKeyIndex.value, bi)
 }
 
 function handleThinkingClick(block) {
   emit('show-thinking-detail', { text: block.text })
-}
-
-/** Generate a short summary for an ask-question block (from <ask-question> tag). */
-function askQuestionSummary(input) {
-  if (!input || !Array.isArray(input.questions) || input.questions.length === 0) return ''
-  const q = input.questions[0]
-  const header = q.header || ''
-  const question = q.question || ''
-  if (header) return header
-  return question
 }
 
 /** Click inside expanded tool-detail: dispatch to tool action handlers first, then fall through to generic behavior. */
