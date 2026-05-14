@@ -12,7 +12,6 @@
 
 NAME="clawbench"
 BIN="./$NAME"
-PID_FILE="/tmp/${NAME}.pid"
 CONFIG="config/config.yaml"
 AUTO_PW_FILE=".clawbench/auto-password"
 
@@ -21,6 +20,27 @@ RELEASE_PORT=20000
 # Load shared shell utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/scripts/common.sh"
+
+# Resolve effective port (needed before parsing args for --stop/--restart)
+# Pre-scan --port from args so we can compute PID/LOG paths early
+_RESOLVED_PORT="$RELEASE_PORT"
+for ((i=1; i<=$#; i++)); do
+    if [[ "${!i}" == "--port" && $((i+1)) -le $# ]]; then
+        _NEXT=$((i+1))
+        _RESOLVED_PORT="${!_NEXT}"
+    fi
+done
+
+# PID and LOG files are port-specific to avoid cross-instance conflicts.
+# e.g. /tmp/clawbench-20000.pid, /tmp/clawbench-25000.pid
+# Default port (20000) uses the legacy path /tmp/clawbench.pid for backward compat.
+if [[ "$_RESOLVED_PORT" == "$RELEASE_PORT" ]]; then
+    PID_FILE="/tmp/${NAME}.pid"
+    LOG_FILE="/tmp/${NAME}-release.log"
+else
+    PID_FILE="/tmp/${NAME}-${_RESOLVED_PORT}.pid"
+    LOG_FILE="/tmp/${NAME}-${_RESOLVED_PORT}.log"
+fi
 
 # Stop release backend (calls shared _stop_servers then cleans up DuckDB lock)
 _stop_release() {
@@ -47,6 +67,8 @@ start_release() {
     echo "  Config:   $CONFIG"
     echo "  Port:     ${PORT:-$RELEASE_PORT}"
     echo "  Watch:    ${WATCH_DIR:-default}"
+    echo "  PIDFile:  $PID_FILE"
+    echo "  Log:      $LOG_FILE"
     show_auto_password "$AUTO_PW_FILE"
     echo ""
 
@@ -59,14 +81,14 @@ start_release() {
             exec "$BIN"
         fi
     else
-        nohup $BIN >> /tmp/clawbench-release.log 2>&1 &
+        nohup $BIN >> "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
         disown $! 2>/dev/null
 
         sleep 0.5
         if kill -0 $(cat "$PID_FILE") 2>/dev/null; then
             echo "Started (PID $(cat "$PID_FILE")) on port ${PORT:-$RELEASE_PORT}"
-            echo "Log: /tmp/clawbench-release.log"
+            echo "Log: $LOG_FILE"
         else
             echo "Failed to start." >&2
             rm -f "$PID_FILE"
@@ -104,11 +126,12 @@ done
 
 case "$ACTION" in
     stop)
-        echo "Stopping release..."
+        echo "Stopping release (port ${PORT:-$RELEASE_PORT})..."
         _stop_release
         echo "Done."
         ;;
     restart)
+        echo "Restarting release (port ${PORT:-$RELEASE_PORT})..."
         _stop_release
         sleep 1
         start_release
