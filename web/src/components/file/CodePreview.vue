@@ -22,6 +22,10 @@ const props = defineProps({
     wordWrap: { type: Boolean, default: false },
     /** Show line numbers */
     showLineNumbers: { type: Boolean, default: true },
+    /** Character ranges to flash-highlight */
+    flashRanges: { type: Array, default: () => [] },
+    /** Flash type: 'delete' (red) or 'add' (blue) */
+    flashType: { type: String, default: 'add' },
 })
 
 const codeHtml = ref('')
@@ -53,13 +57,76 @@ function handleClick(event) {
     handleDblClick(event)
 }
 
+/**
+ * Wrap flash ranges in highlighted spans within a line's raw text.
+ * Strategy: split the raw line into flash/non-flash segments,
+ * escape flash segments directly (no syntax highlighting — the flash
+ * animation background makes them visually distinct enough),
+ * and syntax-highlight non-flash segments individually.
+ */
+function applyFlashToLine(rawLine, lineRanges, flashCls) {
+    // Sort ranges by start offset
+    const sorted = [...lineRanges].sort((a, b) => a.start - b.start)
+
+    // Build segments: [{text, flash: boolean}]
+    const segments = []
+    let pos = 0
+    for (const r of sorted) {
+        const start = Math.min(r.start, rawLine.length)
+        const end = Math.min(r.end, rawLine.length)
+        if (start > pos) {
+            segments.push({ text: rawLine.slice(pos, start), flash: false })
+        }
+        if (end > start) {
+            segments.push({ text: rawLine.slice(start, end), flash: true })
+        }
+        pos = end
+    }
+    if (pos < rawLine.length) {
+        segments.push({ text: rawLine.slice(pos), flash: false })
+    }
+
+    // Build HTML: flash segments get escaped + wrapped in span,
+    // non-flash segments get syntax-highlighted
+    let result = ''
+    for (const seg of segments) {
+        if (seg.flash) {
+            result += `<span class="${flashCls}">${escapeHtml(seg.text)}</span>`
+        } else {
+            try {
+                result += hljs.highlight(seg.text, { language: props.language, ignoreIllegals: true }).value
+            } catch {
+                result += escapeHtml(seg.text)
+            }
+        }
+    }
+    return result
+}
+
 function renderCode(content, lang, showNums) {
+    const flashMap = new Map() // lineNum (1-based) → FlashRange[]
+    if (props.flashRanges && props.flashRanges.length > 0) {
+        for (const r of props.flashRanges) {
+            if (!flashMap.has(r.line)) flashMap.set(r.line, [])
+            flashMap.get(r.line).push(r)
+        }
+    }
+    const flashCls = props.flashType === 'delete' ? 'char-flash-delete' : 'char-flash-add'
+
     return content.split('\n').map((rawLine, i) => {
+        const lineNum = i + 1
+        const lineRanges = flashMap.get(lineNum)
         let h
-        try { h = hljs.highlight(rawLine, { language: lang, ignoreIllegals: true }).value } catch { h = escapeHtml(rawLine) }
-        h = h.replace(/^<span class="line">/, '').replace(/<\/span>\s*$/, '')
-        const lineNum = showNums ? `<span class="line-num">${i + 1}</span>` : ''
-        return `<div class="code-line" data-line="${i + 1}">${lineNum}<span class="code-text">${h}</span></div>`
+
+        if (lineRanges) {
+            h = applyFlashToLine(rawLine, lineRanges, flashCls)
+        } else {
+            try { h = hljs.highlight(rawLine, { language: lang, ignoreIllegals: true }).value } catch { h = escapeHtml(rawLine) }
+            h = h.replace(/^<span class="line">/, '').replace(/<\/span>\s*$/, '')
+        }
+
+        const lineNumHtml = showNums ? `<span class="line-num">${lineNum}</span>` : ''
+        return `<div class="code-line" data-line="${lineNum}">${lineNumHtml}<span class="code-text">${h}</span></div>`
     }).join('')
 }
 
@@ -68,7 +135,11 @@ function doRender(content) {
     codeHtml.value = renderCode(content, props.language, props.showLineNumbers)
 }
 
-watch([() => props.content, () => props.showLineNumbers], () => doRender(props.content), { immediate: true })
+watch(
+    [() => props.content, () => props.showLineNumbers, () => props.flashRanges, () => props.flashType],
+    () => doRender(props.content),
+    { immediate: true }
+)
 </script>
 
 <style scoped>
@@ -194,5 +265,37 @@ pre :deep(code) {
 .copy-flash {
     animation: copy-flash 0.4s ease-out forwards;
     border-radius: 4px;
+}
+
+/* ─── Change flash animations (char-level) ─── */
+
+/* Red flash for deleted characters */
+@keyframes char-flash-delete-anim {
+    0%, 100% { background: transparent; }
+    8%, 28%  { background: rgba(255, 80, 80, 0.45); }
+    18%, 38% { background: transparent; }
+    48%, 68% { background: rgba(255, 80, 80, 0.3); }
+    58%, 78% { background: transparent; }
+    88%      { background: rgba(255, 80, 80, 0.15); }
+}
+.char-flash-delete {
+    animation: char-flash-delete-anim 1.2s ease-out forwards;
+    border-radius: 2px;
+    text-decoration: line-through;
+    text-decoration-color: rgba(255, 80, 80, 0.6);
+}
+
+/* Blue flash for added characters */
+@keyframes char-flash-add-anim {
+    0%, 100% { background: transparent; }
+    8%, 28%  { background: rgba(100, 200, 255, 0.45); }
+    18%, 38% { background: transparent; }
+    48%, 68% { background: rgba(100, 200, 255, 0.3); }
+    58%, 78% { background: transparent; }
+    88%      { background: rgba(100, 200, 255, 0.15); }
+}
+.char-flash-add {
+    animation: char-flash-add-anim 1.5s ease-out forwards;
+    border-radius: 2px;
 }
 </style>

@@ -117,6 +117,8 @@
           :file-path="file.path"
           :word-wrap="wordWrap"
           :show-line-numbers="showLineNumbers"
+          :flash-ranges="flashRanges"
+          :flash-type="flashType"
         />
       </div>
     </div>
@@ -133,6 +135,7 @@ import AudioPreview from '@/components/media/AudioPreview.vue'
 import VideoPreview from '@/components/media/VideoPreview.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
 import CodePreview from './CodePreview.vue'
+import { flashRanges, flashType } from '@/composables/useFileRefresh.ts'
 import FileHeader from './FileHeader.vue'
 import { getFileType, formatFileSize } from '@/utils/fileType.ts'
 import { store } from '@/stores/app.ts'

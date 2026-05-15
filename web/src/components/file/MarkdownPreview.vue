@@ -11,6 +11,8 @@
       :file-path="file.path"
       :word-wrap="wordWrap"
       :show-line-numbers="showLineNumbers"
+      :flash-ranges="flashRanges"
+      :flash-type="flashType"
     />
   </div>
 </template>
@@ -24,6 +26,7 @@ import { useQuoteQuestion } from '@/composables/useQuoteQuestion.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { store } from '@/stores/app.ts'
 import { dirName, splitPath } from '@/utils/path.ts'
+import { flashRanges, flashType } from '@/composables/useFileRefresh.ts'
 
 const props = defineProps({
     file: Object,
