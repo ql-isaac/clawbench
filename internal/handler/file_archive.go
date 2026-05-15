@@ -9,7 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"clawbench/internal/model"
 )
+
+// maxArchivePaths limits the number of paths in a single archive request.
+const maxArchivePaths = 1000
 
 // ServeFileArchive handles POST /api/file/archive
 // Accepts { paths: ["rel/path1", "rel/path2"] } and streams a zip archive.
@@ -29,6 +34,10 @@ func ServeFileArchive(w http.ResponseWriter, r *http.Request) {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "MissingPath")
 		return
 	}
+	if len(req.Paths) > maxArchivePaths {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "ArchiveFailed")
+		return
+	}
 
 	// Resolve all paths to absolute, validate access
 	type absEntry struct {
@@ -44,6 +53,18 @@ func ServeFileArchive(w http.ResponseWriter, r *http.Request) {
 		entries = append(entries, absEntry{absPath: absPath, relPath: p})
 	}
 
+	// Pre-validate: at least one path must be accessible
+	accessible := 0
+	for _, entry := range entries {
+		if _, err := os.Stat(entry.absPath); err == nil {
+			accessible++
+		}
+	}
+	if accessible == 0 {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "ArchiveFailed")
+		return
+	}
+
 	// Compute a friendly zip filename from the first entry
 	zipName := "archive.zip"
 	if len(entries) == 1 {
@@ -53,11 +74,16 @@ func ServeFileArchive(w http.ResponseWriter, r *http.Request) {
 			zipName = base + ".zip"
 		}
 	}
+	// Sanitize filename for Content-Disposition header (prevent injection)
+	safeName := sanitizeArchiveName(zipName)
 
 	// Set response headers before writing any data
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, zipName))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, safeName))
 	w.Header().Set("Cache-Control", "no-store")
+
+	// Get watchAbs for symlink validation inside the walk
+	watchAbs, _ := filepath.Abs(model.WatchDir)
 
 	// Stream zip directly to response writer
 	zw := zip.NewWriter(w)
@@ -76,6 +102,19 @@ func ServeFileArchive(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					return err
 				}
+
+				// Skip symlinks that escape the watchDir (prevent traversal & infinite loops)
+				if fi.Mode()&os.ModeSymlink != 0 {
+					target, linkErr := filepath.EvalSymlinks(path)
+					if linkErr != nil || !isPathUnderBase(target, watchAbs) {
+						slog.Warn("archive: skip symlink escaping watchDir", "path", path)
+						if fi.IsDir() {
+							return filepath.SkipDir
+						}
+						return nil
+					}
+				}
+
 				rel, err := filepath.Rel(filepath.Dir(entry.absPath), path)
 				if err != nil {
 					return err
@@ -109,6 +148,17 @@ func ServeFileArchive(w http.ResponseWriter, r *http.Request) {
 	if written == 0 {
 		slog.Warn("archive: no files written")
 	}
+}
+
+// sanitizeArchiveName removes or replaces characters that could break
+// the Content-Disposition header (quotes, backslashes, control chars).
+func sanitizeArchiveName(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '"' || r == '\\' || r < 0x20 {
+			return '_'
+		}
+		return r
+	}, name)
 }
 
 // addFileToZip adds a single file to the zip writer.
