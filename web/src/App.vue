@@ -176,11 +176,11 @@
             <button class="dock-btn" :class="{ active: activeTab === 'chat', 'has-unread': store.state.chatUnread && activeTab !== 'chat', 'has-running': store.state.chatRunning && activeTab !== 'chat' && !store.state.chatUnread }" @click.stop="switchTab('chat')" :title="t('nav.chat')">
               <MessageSquare />
             </button>
-            <button class="dock-btn" :class="{ active: activeTab === 'browse' }" @click.stop="switchTab('browse')" :title="t('nav.fileManager')">
-              <FolderOpen />
-            </button>
             <button class="dock-btn" :class="{ active: activeTab === 'viewer' }" @click.stop="switchTab('viewer')" :title="t('nav.fileViewer')">
               <FileText />
+            </button>
+            <button class="dock-btn" :class="{ active: activeTab === 'browse' }" @click.stop="switchTab('browse')" :title="t('nav.fileManager')">
+              <FolderOpen />
             </button>
             <button class="dock-btn" :class="{ active: activeTab === 'tasks', 'has-unread': store.state.taskUnread && activeTab !== 'tasks', 'just-completed': store.state.taskJustCompleted && activeTab !== 'tasks' && !store.state.taskUnread, 'has-running': store.state.taskRunning && activeTab !== 'tasks' && !store.state.taskUnread && !store.state.taskJustCompleted }" @click.stop="switchTab('tasks')" :title="t('nav.tasks')">
               <CalendarClock />
