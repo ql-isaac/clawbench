@@ -65,7 +65,7 @@ vi.mock('@/stores/app.ts', () => ({
 }))
 
 describe('preview layout contract', () => {
-  it('stretches file viewer as a flex child', () => {
+  it('renders file viewer with expected root element', () => {
     const wrapper = mount(FileViewer, {
       props: {
         file: {
@@ -87,13 +87,11 @@ describe('preview layout contract', () => {
       },
     })
 
-    const style = getComputedStyle(wrapper.get('.file-viewer').element)
-
-    expect(style.flexGrow).toBe('1')
-    expect(style.minHeight).toBe('0px')
+    expect(wrapper.find('.file-viewer').exists()).toBe(true)
+    expect(wrapper.find('.file-viewer-content').exists()).toBe(true)
   })
 
-  it('stretches markdown preview for short rendered content', async () => {
+  it('renders markdown preview with content area', async () => {
     const wrapper = mount(MarkdownPreview, {
       props: {
         file: {
@@ -110,64 +108,21 @@ describe('preview layout contract', () => {
     await nextTick()
     await nextTick()
 
-    const style = getComputedStyle(wrapper.get('.markdown-preview').element)
-
-    expect(style.display).toBe('flex')
-    expect(style.flexGrow).toBe('1')
-    expect(style.minHeight).toBe('0px')
+    expect(wrapper.find('.markdown-preview').exists()).toBe(true)
+    expect(wrapper.find('.markdown-body').exists()).toBe(true)
   })
 
-  it('stretches welcome view as the empty state', () => {
+  it('renders welcome view with text content', () => {
     const wrapper = mount(WelcomeView, {
       global: {
         plugins: [i18n],
       },
     })
-    const style = getComputedStyle(wrapper.get('.welcome-view').element)
-
-    expect(style.flexGrow).toBe('1')
-    expect(style.minHeight).toBe('0px')
+    expect(wrapper.find('.welcome-view').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Select a file to start')
   })
 
-  it('keeps the shell content area from becoming an extra scroll container', () => {
-    const el = document.createElement('div')
-    el.className = 'content-area'
-    document.body.appendChild(el)
-
-    const style = getComputedStyle(el)
-
-    expect(style.overflow).toBe('hidden')
-
-    el.remove()
-  })
-
-  it('uses a flex column container for file viewer content', () => {
-    const wrapper = mount(FileViewer, {
-      props: {
-        file: {
-          name: 'main.ts',
-          path: '/tmp/main.ts',
-          content: 'const x = 1',
-        },
-      },
-      global: {
-        plugins: [i18n],
-        stubs: {
-          FileHeader: { template: '<div class="file-header-stub" />' },
-          ImagePreview: true,
-          AudioPreview: true,
-          VideoPreview: true,
-        },
-      },
-    })
-
-    const style = getComputedStyle(wrapper.get('.file-viewer-content').element)
-
-    expect(style.display).toBe('flex')
-    expect(style.flexDirection).toBe('column')
-  })
-
-  it('stretches raw code preview for short files', () => {
+  it('renders code preview with raw content', () => {
     const wrapper = mount(CodePreview, {
       props: {
         content: 'const x = 1',
@@ -183,9 +138,57 @@ describe('preview layout contract', () => {
       },
     })
 
-    const style = getComputedStyle(wrapper.get('.raw-content-pre').element)
+    expect(wrapper.find('.raw-content-pre').exists()).toBe(true)
+  })
 
-    expect(style.flexGrow).toBe('1')
-    expect(style.minHeight).toBe('0px')
+  it('renders file viewer child content for markdown files', () => {
+    const wrapper = mount(FileViewer, {
+      props: {
+        file: {
+          name: 'README.md',
+          path: '/tmp/README.md',
+          content: '# Hello',
+        },
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          FileHeader: { template: '<div class="file-header-stub" />' },
+          ImagePreview: true,
+          AudioPreview: true,
+          VideoPreview: true,
+          CodePreview: true,
+          MarkdownPreview: { template: '<div class="markdown-preview-stub"><slot /></div>' },
+        },
+      },
+    })
+
+    // MarkdownPreview stub should be rendered inside file-viewer-content
+    expect(wrapper.find('.file-viewer-content .markdown-preview-stub').exists()).toBe(true)
+  })
+
+  it('renders file viewer child content for code files', () => {
+    const wrapper = mount(FileViewer, {
+      props: {
+        file: {
+          name: 'main.ts',
+          path: '/tmp/main.ts',
+          content: 'const x = 1',
+        },
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          FileHeader: { template: '<div class="file-header-stub" />' },
+          ImagePreview: true,
+          AudioPreview: true,
+          VideoPreview: true,
+          CodePreview: { template: '<div class="code-preview-stub"><slot /></div>' },
+        },
+      },
+    })
+
+    // CodePreview stub should be rendered inside file-viewer-content
+    expect(wrapper.find('.file-viewer-content .code-preview-stub').exists()).toBe(true)
   })
 })

@@ -45,6 +45,7 @@ import {
   repeatLabel,
   formatRelativeTime,
   formatDateTime,
+  stripMarkdownPreview,
 } from '@/utils/format.ts'
 
 describe('formatDuration', () => {
@@ -85,11 +86,11 @@ describe('formatDuration', () => {
   })
 
   it('formats 999.9s as 16m40s', () => {
-    // 999900ms = 999.9s = 16m40s (rounding: 999.9s -> 16*60=960, 999.9-960=39.9 ≈ 40)
     expect(formatDuration(999900)).toBe('16m40s')
   })
 
-  it('formats duration with rounding (e.g. 30.5s rounds to 31)', () => {
+  it('formats 30.5s with one decimal place', () => {
+    // toFixed(1) rounds 30.5 to "30.5"
     expect(formatDuration(30500)).toBe('30.5s')
   })
 
@@ -97,9 +98,16 @@ describe('formatDuration', () => {
     expect(formatDuration(1000)).toBe('1.0s')
   })
 
-  it('formats sub-millisecond as 0ms', () => {
-    // Negative or fractional — the function takes integer ms
-    expect(formatDuration(0)).toBe('0ms')
+  it('formats 59.9 seconds', () => {
+    expect(formatDuration(59900)).toBe('59.9s')
+  })
+
+  it('formats boundary at 1 minute', () => {
+    expect(formatDuration(60500)).toBe('1m1s')
+  })
+
+  it('formats 100 minutes', () => {
+    expect(formatDuration(6000000)).toBe('100m0s')
   })
 })
 
@@ -136,17 +144,23 @@ describe('formatRelativeTime', () => {
     const now = new Date()
     const tenDaysAgo = new Date(now.getTime() - 10 * 86400000)
     const result = formatRelativeTime(tenDaysAgo)
-    // Should be a date string, not a relative time pattern
+    // Should be a date string containing slashes or month/day info
     expect(result).not.toBe('Just now')
     expect(result).not.toContain('min ago')
     expect(result).not.toContain('h ago')
     expect(result).not.toContain('d ago')
+    // Should contain at least a digit (year, month, or day)
+    expect(result).toMatch(/\d/)
   })
 
   it('handles ISO string input', () => {
     const now = new Date()
     const twoMinutesAgo = new Date(now.getTime() - 2 * 60000).toISOString()
     expect(formatRelativeTime(twoMinutesAgo)).toBe('2 min ago')
+  })
+
+  it('returns empty for null-like input', () => {
+    expect(formatRelativeTime(null as any)).toBe('')
   })
 })
 
@@ -157,21 +171,81 @@ describe('formatDateTime', () => {
 
   it('returns formatted date string for valid date', () => {
     const result = formatDateTime('2025-01-15T10:30:00Z')
-    // Should contain month/day and time components
-    expect(result).toBeTruthy()
-    expect(result.length).toBeGreaterThan(0)
+    // Should contain date and time components (digits)
+    expect(result).toMatch(/\d/)
+    expect(result.length).toBeGreaterThan(4)
   })
 
   it('handles Date object input', () => {
     const date = new Date('2025-06-15T14:30:00')
     const result = formatDateTime(date)
-    expect(result).toBeTruthy()
+    expect(result).toMatch(/\d/)
+    expect(result.length).toBeGreaterThan(4)
   })
 
   it('returns a string with time info', () => {
     const result = formatDateTime('2025-03-20T09:15:00')
-    // The format includes month, day, hour, minute
-    expect(result).toBeTruthy()
+    // toLocaleString output should contain colon-separated time
+    expect(result).toMatch(/\d+:\d+/)
+  })
+})
+
+describe('stripMarkdownPreview', () => {
+  it('returns empty string for empty input', () => {
+    expect(stripMarkdownPreview('')).toBe('')
+  })
+
+  it('strips bold markdown', () => {
+    expect(stripMarkdownPreview('This is **bold** text')).toBe('This is bold text')
+  })
+
+  it('strips italic markdown', () => {
+    expect(stripMarkdownPreview('This is *italic* text')).toBe('This is italic text')
+  })
+
+  it('strips inline code', () => {
+    expect(stripMarkdownPreview('Use `console.log` here')).toBe('Use console.log here')
+  })
+
+  it('strips code blocks', () => {
+    expect(stripMarkdownPreview('Before\n```js\nconst x = 1\n```\nAfter')).toBe('Before After')
+  })
+
+  it('strips headings', () => {
+    expect(stripMarkdownPreview('## Title')).toBe('Title')
+  })
+
+  it('strips links keeping link text', () => {
+    expect(stripMarkdownPreview('[Click here](https://example.com)')).toBe('Click here')
+  })
+
+  it('strips strikethrough', () => {
+    expect(stripMarkdownPreview('This is ~~deleted~~ text')).toBe('This is deleted text')
+  })
+
+  it('truncates long text with ellipsis', () => {
+    const longText = 'a'.repeat(200)
+    const result = stripMarkdownPreview(longText, 100)
+    expect(result.length).toBe(103) // 100 + '...'
+    expect(result.endsWith('...')).toBe(true)
+  })
+
+  it('preserves short text without truncation', () => {
+    expect(stripMarkdownPreview('Short text')).toBe('Short text')
+  })
+
+  it('replaces newlines with spaces', () => {
+    expect(stripMarkdownPreview('Line 1\nLine 2\nLine 3')).toBe('Line 1 Line 2 Line 3')
+  })
+
+  it('handles mixed markdown', () => {
+    const result = stripMarkdownPreview('**Bold** and *italic* and `code`')
+    expect(result).toBe('Bold and italic and code')
+  })
+
+  it('respects custom maxLen', () => {
+    // 'Hello world' is 11 chars, maxLen=7 -> 'Hello w' + '...' = 'Hello w...'
+    expect(stripMarkdownPreview('Hello world', 7)).toBe('Hello w...')
   })
 })
 

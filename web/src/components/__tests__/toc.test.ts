@@ -125,17 +125,16 @@ describe('extractToc', () => {
   it('sorts code symbols by line number', () => {
     const content = 'func later() {}\nfunc first() {}'
     const toc = extractToc(content, 'go')
-    if (toc.length >= 2) {
-      expect(toc[0].line).toBeLessThanOrEqual(toc[1].line)
-    }
+    expect(toc.length).toBeGreaterThanOrEqual(2)
+    expect(toc[0].line).toBeLessThanOrEqual(toc[1].line)
   })
 
   it('deduplicates code symbols', () => {
     const content = 'func foo() {}\nfunc foo() {}'
     const toc = extractToc(content, 'go')
-    const names = toc.map(t => t.text)
-    const uniqueNames = [...new Set(names)]
-    expect(names.length).toBe(uniqueNames.length)
+    // Two duplicate func declarations should result in only one toc entry
+    expect(toc.length).toBe(1)
+    expect(toc[0].text).toBe('foo')
   })
 
   it('handles Rust code', () => {
@@ -199,5 +198,66 @@ describe('extractToc', () => {
     const content = 'FROM golang:1.21\nRUN go build\nCMD ["./app"]'
     const toc = extractToc(content, 'dockerfile')
     expect(toc.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('extracts Go method receiver function name', () => {
+    // Go pattern: /^func\s+(?:\(\S+\)\s+)?(\S+)/gm
+    // Receiver without spaces like (*Type) is matched; (s *Server) with spaces is not.
+    const content = 'func (*Server) Start() error {'
+    const toc = extractToc(content, 'go')
+    const texts = toc.map(t => t.text)
+    expect(texts).toContain('Start')
+  })
+
+  it('extracts Java class and method symbols', () => {
+    const content = 'public class Application {\n  public static void main(String[] args) {'
+    const toc = extractToc(content, 'java')
+    expect(toc.length).toBeGreaterThanOrEqual(1)
+    const texts = toc.map(t => t.text)
+    expect(texts).toContain('Application')
+  })
+
+  it('extracts C# class and method symbols', () => {
+    // C# pattern captures keyword (class/struct/etc.) in group 1, name in group 2.
+    // extractTocForCode uses match[1], so for classes it extracts the keyword.
+    // For methods, group 1 captures the method name directly.
+    const content = 'public class Program {\n  static void Main() {'
+    const toc = extractToc(content, 'csharp')
+    expect(toc.length).toBeGreaterThanOrEqual(1)
+    // At minimum, the method 'Main' should be extracted
+    const texts = toc.map(t => t.text)
+    expect(texts).toContain('Main')
+  })
+
+  it('extracts Bash function symbols', () => {
+    const content = 'build() {\nfunction deploy() {'
+    const toc = extractToc(content, 'bash')
+    expect(toc.length).toBeGreaterThanOrEqual(1)
+    const texts = toc.map(t => t.text)
+    expect(texts).toContain('build')
+  })
+
+  it('extracts SQL CREATE TABLE symbols', () => {
+    const content = 'CREATE TABLE users (\n  id INT PRIMARY KEY\n);\nCREATE VIEW active_users AS SELECT * FROM users;'
+    const toc = extractToc(content, 'sql')
+    expect(toc.length).toBeGreaterThanOrEqual(1)
+    const texts = toc.map(t => t.text)
+    expect(texts.some(t => t.startsWith('users') || t.includes('users'))).toBe(true)
+  })
+
+  it('extracts C struct and function symbols', () => {
+    const content = 'struct Config {\n  int port;\n};\nvoid start_server() {'
+    const toc = extractToc(content, 'c')
+    expect(toc.length).toBeGreaterThanOrEqual(1)
+    const texts = toc.map(t => t.text)
+    expect(texts).toContain('Config')
+  })
+
+  it('extracts Ruby class and method symbols', () => {
+    const content = 'class Server\n  def initialize\nend\ndef self.start'
+    const toc = extractToc(content, 'ruby')
+    expect(toc.length).toBeGreaterThanOrEqual(1)
+    const texts = toc.map(t => t.text)
+    expect(texts).toContain('Server')
   })
 })

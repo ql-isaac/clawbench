@@ -129,7 +129,7 @@
           <FileMusic v-else-if="isAudio(entry)" class="file-icon" :size="28" color="#22c55e" />
           <FileText v-else class="file-icon" :size="28" :color="getFileType(entry.name).color" />
           <span class="file-name">{{ entry.name }}</span>
-          <span class="file-meta">{{ formatSize(entry.size) }} · {{ formatDate(entry.modified) }}</span>
+          <span class="file-meta">{{ formatFileSize(entry.size) }} · {{ formatDate(entry.modified) }}</span>
         </div>
       </template>
       <div v-if="hasMoreEntries" class="truncate-hint">
@@ -276,6 +276,13 @@ import { useI18n } from 'vue-i18n'
 import { Folder, ArrowDownAz, ArrowUpZa, ChevronDown, ChevronUp, Clock, FileText, HardDrive, Eye, EyeOff, ArrowRightLeft, Loader, FileImage, FileMusic, ChevronRight, Copy, Scissors, ClipboardPaste, FilePlus, FolderPlus, Pencil, Download, Trash2, FolderOpen, RotateCw, Terminal as TerminalIcon, CheckSquare, Check, X, LayoutList, LayoutGrid, FileVideo, Package } from 'lucide-vue-next'
 import { getFileType } from '@/utils/fileType.ts'
 import { dirName } from '@/utils/path.ts'
+import {
+  VIEW_MODE_KEY, loadViewMode, saveViewMode, buildThumbUrl,
+  isImage as isImageEntry, isAudio as isAudioEntry, isVideo as isVideoEntry,
+  isThumbable as isThumbableEntry, formatSize as formatFileSize, THUMBABLE_EXTS,
+  createMultiSelect as _createMultiSelect, createClipboard as _createClipboard,
+  resolveClickAction,
+} from '@/utils/fileManager.ts'
 import { store } from '@/stores/app.ts'
 import { useAppMode } from '@/composables/useAppMode.ts'
 import { useDialog } from '@/composables/useDialog.ts'
@@ -304,30 +311,22 @@ const searchQuery = ref('')
 const sortMenuOpen = ref(false)
 
 // ── View mode (list / grid) ──
-const VIEW_MODE_KEY = 'clawbench-file-view'
-const viewMode = ref(localStorage.getItem(VIEW_MODE_KEY) === 'grid' ? 'grid' : 'list')
-watch(viewMode, v => localStorage.setItem(VIEW_MODE_KEY, v))
+const viewMode = ref(loadViewMode())
+watch(viewMode, v => saveViewMode(v))
 
 // ── Thumbnail loading errors ──
 const thumbErrors = reactive(new Set())
 function thumbUrl(entry) {
-    const path = itemPath(entry.name)
-    return `/api/file/thumb?path=${encodeURIComponent(path)}&w=200`
+    return buildThumbUrl(props.currentDir || '', entry.name)
 }
 function onThumbError(entry) {
     thumbErrors.add(entry.name)
 }
 // Extensions that the backend thumbnail API can decode (Go stdlib: png, jpg, gif).
 // SVG, WebP, AVIF, PDF, BMP, TIFF are excluded — they'll cause a 404 round-trip if attempted.
-const THUMBABLE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif'])
 
 function isThumbable(entry) {
-    if (entry.type !== 'image' && entry.type !== 'file') return false
-    const name = entry.name.toLowerCase()
-    for (const ext of THUMBABLE_EXTS) {
-        if (name.endsWith(ext)) return true
-    }
-    return false
+    return isThumbableEntry(entry)
 }
 
 function isThumbLoaded(entry) {
@@ -335,20 +334,20 @@ function isThumbLoaded(entry) {
 }
 function entryIcon(entry) {
     if (entry.type === 'dir') return Folder
-    if (isImage(entry)) return FileImage
-    if (isAudio(entry)) return FileMusic
-    if (isVideo(entry)) return FileVideo
+    if (isImageEntry(entry)) return FileImage
+    if (isAudioEntry(entry)) return FileMusic
+    if (isVideoEntry(entry)) return FileVideo
     return FileText
 }
 function entryIconColor(entry) {
     if (entry.type === 'dir') return undefined
-    if (isImage(entry)) return '#a855f7'
-    if (isAudio(entry)) return '#22c55e'
-    if (isVideo(entry)) return '#ef4444'
+    if (isImageEntry(entry)) return '#a855f7'
+    if (isAudioEntry(entry)) return '#22c55e'
+    if (isVideoEntry(entry)) return '#ef4444'
     return getFileType(entry.name).color
 }
 function isVideo(entry) {
-    return getFileType(entry.name).isVideo
+    return isVideoEntry(entry)
 }
 
 function onSortSelect(field) {
@@ -387,28 +386,7 @@ function itemPath(name) {
 }
 
 // ── Multi-select ──
-const multiSelect = reactive({
-    active: false,
-    selected: new Set(),
-})
-
-function enterMultiSelect() {
-    multiSelect.active = true
-    multiSelect.selected.clear()
-}
-
-function exitMultiSelect() {
-    multiSelect.active = false
-    multiSelect.selected.clear()
-}
-
-function toggleSelect(path) {
-    if (multiSelect.selected.has(path)) {
-        multiSelect.selected.delete(path)
-    } else {
-        multiSelect.selected.add(path)
-    }
-}
+const { state: multiSelect, enterMultiSelect, exitMultiSelect, toggleSelect } = _createMultiSelect()
 
 const isAllSelected = computed(() => {
     if (!multiSelect.active || visibleEntries.value.length === 0) return false
@@ -496,7 +474,7 @@ function onItemTouchEnd() {
 }
 
 // Clipboard now supports multiple entries
-const clipboard = reactive({ entries: [], isCut: false })
+const { clipboard, clear: clearClipboard } = _createClipboard()
 
 function getDestDir(entry) {
     if (!entry) return props.currentDir
@@ -702,11 +680,11 @@ function handleItemClick(e) {
 }
 
 function isImage(entry) {
-    return entry.type === 'image' || getFileType(entry.name).isImage
+    return isImageEntry(entry)
 }
 
 function isAudio(entry) {
-    return getFileType(entry.name).isAudio
+    return isAudioEntry(entry)
 }
 
 function formatDate(modified) {
@@ -717,13 +695,6 @@ function formatDate(modified) {
     return isToday
         ? d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' })
         : d.toLocaleDateString(loc, { month: '2-digit', day: '2-digit' })
-}
-
-function formatSize(size) {
-    if (size == null) return ''
-    if (size < 1024) return size + ' B'
-    if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' K'
-    return (size / (1024 * 1024)).toFixed(1) + ' M'
 }
 
 function showCtx(e, entry) {

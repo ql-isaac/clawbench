@@ -1,91 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { reactive, nextTick } from 'vue'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
-
-// ────────────────────────────────────────────────────────────
-// File manager multi-select logic tests.
-//
-// We test the core multi-select behaviors as replicated pure
-// functions (Pattern A) plus a component mount test for the
-// toolbar button (Pattern C).
-// ────────────────────────────────────────────────────────────
+import {
+  createMultiSelect, createClipboard, resolveClickAction,
+} from '@/utils/fileManager'
 
 // ============================================================
-// Part 1: Multi-select state logic (pure function replication)
+// Part 1: Multi-select state logic (imported from source)
 // ============================================================
-
-// Replicate the multi-select state and functions from FileManagerContent.vue
-function createMultiSelect() {
-  const state = reactive({
-    active: false,
-    selected: new Set<string>(),
-  })
-
-  function enterMultiSelect() {
-    state.active = true
-    state.selected.clear()
-  }
-
-  function exitMultiSelect() {
-    state.active = false
-    state.selected.clear()
-  }
-
-  function toggleSelect(path: string) {
-    if (state.selected.has(path)) {
-      state.selected.delete(path)
-    } else {
-      state.selected.add(path)
-    }
-  }
-
-  return { state, enterMultiSelect, exitMultiSelect, toggleSelect }
-}
-
-// Replicate clipboard logic (multi-entry version)
-function createClipboard() {
-  const clipboard = reactive({ entries: [] as any[], isCut: false })
-
-  function copy(entries: any[]) {
-    clipboard.entries = entries
-    clipboard.isCut = false
-  }
-
-  function cut(entries: any[]) {
-    clipboard.entries = entries
-    clipboard.isCut = true
-  }
-
-  function clear() {
-    clipboard.entries = []
-    clipboard.isCut = false
-  }
-
-  return { clipboard, copy, cut, clear }
-}
-
-// Replicate handleFileClick interception logic
-function createClickHandler(multiSelect: ReturnType<typeof createMultiSelect>) {
-  const navigated: string[] = []
-  const selectedFiles: string[] = []
-
-  function handleFileClick(action: string, path: string) {
-    if (multiSelect.state.active) {
-      multiSelect.toggleSelect(path)
-      return
-    }
-    if (action === 'dir') {
-      navigated.push(path)
-    } else {
-      selectedFiles.push(path)
-    }
-  }
-
-  return { handleFileClick, navigated, selectedFiles }
-}
-
-// ────────────────────────────────────────────────────────────
 
 describe('multi-select state', () => {
   it('starts inactive with empty selection', () => {
@@ -131,51 +54,53 @@ describe('multi-select state', () => {
     expect(state.selected.has('b.txt')).toBe(true)
     expect(state.selected.has('dir/c.txt')).toBe(true)
   })
-})
 
-describe('click interception', () => {
-  it('normal mode: dir click navigates', () => {
-    const ms = createMultiSelect()
-    const { handleFileClick, navigated } = createClickHandler(ms)
-    handleFileClick('dir', 'src')
-    expect(navigated).toEqual(['src'])
+  it('toggleSelect is idempotent (toggle twice returns to original)', () => {
+    const { state, enterMultiSelect, toggleSelect } = createMultiSelect()
+    enterMultiSelect()
+    toggleSelect('a.txt')
+    toggleSelect('a.txt')
+    expect(state.selected.size).toBe(0)
   })
 
-  it('normal mode: file click selects file', () => {
-    const ms = createMultiSelect()
-    const { handleFileClick, selectedFiles } = createClickHandler(ms)
-    handleFileClick('file', 'readme.md')
-    expect(selectedFiles).toEqual(['readme.md'])
-  })
-
-  it('multi-select mode: dir click toggles selection instead of navigating', () => {
-    const ms = createMultiSelect()
-    const { handleFileClick, navigated } = createClickHandler(ms)
-    ms.enterMultiSelect()
-    handleFileClick('dir', 'src')
-    expect(navigated).toEqual([])
-    expect(ms.state.selected.has('src')).toBe(true)
-  })
-
-  it('multi-select mode: file click toggles selection instead of selecting file', () => {
-    const ms = createMultiSelect()
-    const { handleFileClick, selectedFiles } = createClickHandler(ms)
-    ms.enterMultiSelect()
-    handleFileClick('file', 'readme.md')
-    expect(selectedFiles).toEqual([])
-    expect(ms.state.selected.has('readme.md')).toBe(true)
-  })
-
-  it('multi-select mode: clicking same item twice deselects', () => {
-    const ms = createMultiSelect()
-    const { handleFileClick } = createClickHandler(ms)
-    ms.enterMultiSelect()
-    handleFileClick('file', 'a.txt')
-    expect(ms.state.selected.has('a.txt')).toBe(true)
-    handleFileClick('file', 'a.txt')
-    expect(ms.state.selected.has('a.txt')).toBe(false)
+  it('selection persists across toggleSelect calls', () => {
+    const { state, enterMultiSelect, toggleSelect } = createMultiSelect()
+    enterMultiSelect()
+    toggleSelect('a.txt')
+    toggleSelect('b.txt')
+    toggleSelect('a.txt') // deselect a
+    expect(state.selected.has('a.txt')).toBe(false)
+    expect(state.selected.has('b.txt')).toBe(true)
+    expect(state.selected.size).toBe(1)
   })
 })
+
+// ── Click action resolution ──
+
+describe('resolveClickAction', () => {
+  it('returns toggle when multi-select is active and item is a dir', () => {
+    expect(resolveClickAction(true, 'dir', 'src')).toEqual({ action: 'toggle', path: 'src' })
+  })
+
+  it('returns toggle when multi-select is active and item is a file', () => {
+    expect(resolveClickAction(true, 'file', 'readme.md')).toEqual({ action: 'toggle', path: 'readme.md' })
+  })
+
+  it('returns navigate for dir click in normal mode', () => {
+    expect(resolveClickAction(false, 'dir', 'src')).toEqual({ action: 'navigate', path: 'src' })
+  })
+
+  it('returns select for file click in normal mode', () => {
+    expect(resolveClickAction(false, 'file', 'readme.md')).toEqual({ action: 'select', path: 'readme.md' })
+  })
+
+  it('prioritizes multi-select toggle over navigation', () => {
+    const result = resolveClickAction(true, 'dir', 'src')
+    expect(result.action).toBe('toggle')
+  })
+})
+
+// ── Clipboard state ──
 
 describe('clipboard (multi-entry)', () => {
   it('stores single entry from context menu copy', () => {
@@ -224,23 +149,31 @@ describe('clipboard (multi-entry)', () => {
     expect(clipboard.entries[0].name).toBe('new.txt')
     expect(clipboard.isCut).toBe(true)
   })
+
+  it('copy after cut clears isCut flag', () => {
+    const { clipboard, cut, copy } = createClipboard()
+    cut([{ name: 'a.txt', path: 'a.txt', type: 'file' }])
+    expect(clipboard.isCut).toBe(true)
+    copy([{ name: 'b.txt', path: 'b.txt', type: 'file' }])
+    expect(clipboard.isCut).toBe(false)
+  })
 })
 
 describe('batch delete flow', () => {
-  it('collects selected paths and emits batchDelete', async () => {
-    const ms = createMultiSelect()
-    ms.enterMultiSelect()
-    ms.toggleSelect('a.txt')
-    ms.toggleSelect('b.txt')
-    ms.toggleSelect('src')
+  it('collects selected paths and clears after exit', async () => {
+    const { state, enterMultiSelect, toggleSelect, exitMultiSelect } = createMultiSelect()
+    enterMultiSelect()
+    toggleSelect('a.txt')
+    toggleSelect('b.txt')
+    toggleSelect('src')
 
-    const paths = [...ms.state.selected]
+    const paths = [...state.selected]
     expect(paths).toEqual(['a.txt', 'b.txt', 'src'])
 
     // After confirmed delete, exit multi-select
-    ms.exitMultiSelect()
-    expect(ms.state.active).toBe(false)
-    expect(ms.state.selected.size).toBe(0)
+    exitMultiSelect()
+    expect(state.active).toBe(false)
+    expect(state.selected.size).toBe(0)
   })
 })
 

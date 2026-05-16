@@ -16,11 +16,11 @@ beforeEach(() => {
 })
 
 describe('registerSessionActions', () => {
-  it('registers action callbacks', () => {
-    const mockSwitch = vi.fn()
-    const mockCreate = vi.fn()
-    const mockDelete = vi.fn()
-    const mockSend = vi.fn()
+  it('registers action callbacks that are callable through the composable', async () => {
+    const mockSwitch = vi.fn().mockResolvedValue(undefined)
+    const mockCreate = vi.fn().mockResolvedValue(undefined)
+    const mockDelete = vi.fn().mockResolvedValue(undefined)
+    const mockSend = vi.fn().mockResolvedValue(undefined)
     const mockOpen = vi.fn()
 
     registerSessionActions({
@@ -34,12 +34,20 @@ describe('registerSessionActions', () => {
     // Verify delegation works by calling through the composable
     const { switchSession, createSession, deleteSession, sendMessage, openChatPanel } = useSessionIdentity()
 
-    // Just verify the functions exist and don't throw
-    expect(typeof switchSession).toBe('function')
-    expect(typeof createSession).toBe('function')
-    expect(typeof deleteSession).toBe('function')
-    expect(typeof sendMessage).toBe('function')
-    expect(typeof openChatPanel).toBe('function')
+    await switchSession('s1')
+    expect(mockSwitch).toHaveBeenCalledWith('s1')
+
+    await createSession('agent-1')
+    expect(mockCreate).toHaveBeenCalledWith('agent-1')
+
+    await deleteSession('s2', 'claude')
+    expect(mockDelete).toHaveBeenCalledWith('s2', 'claude')
+
+    await sendMessage('hello', ['/file.ts'])
+    expect(mockSend).toHaveBeenCalledWith('hello', ['/file.ts'])
+
+    openChatPanel()
+    expect(mockOpen).toHaveBeenCalled()
   })
 
   it('replaces previous callbacks on re-registration', async () => {
@@ -162,9 +170,11 @@ describe('action delegation', () => {
 
 describe('identity refs', () => {
   it('returns reactive refs from the singleton with correct initial values', () => {
-    const { currentSessionId, currentBackend, runningSessions, currentAgentId, currentModelId, currentModelName } = useSessionIdentity()
+    const { currentSessionId, currentSessionTitle, currentThinkingEffort, currentBackend, runningSessions, currentAgentId, currentModelId, currentModelName } = useSessionIdentity()
     // Initial values should be empty strings/sets
     expect(currentSessionId.value).toBe('')
+    expect(currentSessionTitle.value).toBe('')
+    expect(currentThinkingEffort.value).toBe('')
     expect(currentBackend.value).toBe('')
     expect(currentAgentId.value).toBe('')
     expect(currentModelId.value).toBe('')
@@ -173,29 +183,18 @@ describe('identity refs', () => {
     expect(runningSessions.value.size).toBe(0)
   })
 
-  it('runningSessions can track active sessions', () => {
+  it('runningSessions reflects session state changes via the ref', () => {
     const { runningSessions } = useSessionIdentity()
-    runningSessions.value = new Set(['session-1', 'session-2'])
+    // Simulate a session starting
+    runningSessions.value.add('session-1')
     expect(runningSessions.value.has('session-1')).toBe(true)
-    expect(runningSessions.value.has('session-2')).toBe(true)
-    expect(runningSessions.value.has('session-3')).toBe(false)
-    // Clean up
-    runningSessions.value = new Set()
-  })
 
-  it('runningSessions can detect completed sessions', () => {
-    const { runningSessions } = useSessionIdentity()
-    const previousRunning = new Set(['session-1', 'session-2'])
-    runningSessions.value = previousRunning
+    // Simulate the session completing — remove it
+    runningSessions.value.delete('session-1')
+    expect(runningSessions.value.has('session-1')).toBe(false)
 
-    const currentRunning = new Set(['session-1'])
-    const completed: string[] = []
-    for (const sid of previousRunning) {
-      if (!currentRunning.has(sid)) completed.push(sid)
-    }
-    expect(completed).toEqual(['session-2'])
     // Clean up
-    runningSessions.value = new Set()
+    runningSessions.value.clear()
   })
 
   it('currentSessionId is writable and shared across instances', () => {

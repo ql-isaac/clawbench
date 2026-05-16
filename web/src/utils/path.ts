@@ -7,7 +7,13 @@ export function splitPath(path: string): string[] {
 
 // Get the last segment of a path (filename or directory name)
 export function baseName(path: string): string {
-    return splitPath(path).pop() || path
+    const segments = splitPath(path)
+    // Walk backwards to find the last non-empty segment
+    // This handles trailing slashes correctly: /home/user/ → "user"
+    for (let i = segments.length - 1; i >= 0; i--) {
+        if (segments[i] !== '') return segments[i]
+    }
+    return path
 }
 
 // Get the parent directory of a path
@@ -25,11 +31,12 @@ export function dirName(path: string): string {
 
 /**
  * Convert an absolute path to a relative path based on a base path.
- * Returns the original path if base is empty.
+ * Returns the original path if base is empty or absPath does not start with basePath.
  * Returns '/' if the result would be empty (i.e., the path equals the base).
  */
 export function toRelativePath(absPath: string, basePath: string): string {
     if (!basePath) return absPath
+    if (!absPath.startsWith(basePath)) return absPath
     const rel = absPath.slice(basePath.length).replace(/^\//, '')
     return rel || '/'
 }

@@ -53,11 +53,11 @@ describe('baseName', () => {
   })
 
   it('handles path with trailing slash', () => {
-    const result = baseName('/home/user/')
-    expect(result).toBe('/home/user/')
+    expect(baseName('/home/user/')).toBe('user')
   })
 
   it('handles root path', () => {
+    // baseName('/') returns '/' since all segments are empty
     expect(baseName('/')).toBe('/')
   })
 
@@ -71,6 +71,23 @@ describe('baseName', () => {
 
   it('handles multiple extensions', () => {
     expect(baseName('/path/to/archive.tar.gz')).toBe('archive.tar.gz')
+  })
+
+  it('handles multiple trailing slashes', () => {
+    expect(baseName('/home/user//')).toBe('user')
+  })
+
+  it('handles Windows path with trailing backslash', () => {
+    expect(baseName('C:\\Users\\admin\\')).toBe('admin')
+  })
+
+  it('handles empty string', () => {
+    expect(baseName('')).toBe('')
+  })
+
+  it('handles single slash', () => {
+    // baseName('/') returns '/' since all segments are empty
+    expect(baseName('/')).toBe('/')
   })
 })
 
@@ -92,6 +109,8 @@ describe('dirName', () => {
   })
 
   it('handles unix root path', () => {
+    // dirName('/file.txt') returns '' which represents root dir in this project
+    // Unix convention would be '/' but empty string is used as root elsewhere
     expect(dirName('/file.txt')).toBe('')
   })
 
@@ -143,7 +162,8 @@ describe('toRelativePath', () => {
   })
 
   it('handles empty path', () => {
-    expect(toRelativePath('', '/home')).toBe('/')
+    // '' does not start with '/home', so returns original path ''
+    expect(toRelativePath('', '/home')).toBe('')
   })
 
   it('handles both empty', () => {
@@ -154,9 +174,8 @@ describe('toRelativePath', () => {
   })
 
   it('handles path that does not start with base', () => {
-    // Function just slices: '/other/path'.slice('/home/user'.length) = 'h'
-    // Then replace(/^\//, '') => 'h'
-    expect(toRelativePath('/other/path', '/home/user')).toBe('h')
+    // Returns the original path when absPath does not start with basePath
+    expect(toRelativePath('/other/path', '/home/user')).toBe('/other/path')
   })
 
   it('handles root-level files', () => {
@@ -174,5 +193,21 @@ describe('toRelativePath', () => {
   it('handles path that is just base with trailing slash', () => {
     // absPath = '/home/user/', base = '/home/user' => slice result = '/', then replace(/^\\//, '') => '', then || '/' => '/'
     expect(toRelativePath('/home/user/', '/home/user')).toBe('/')
+  })
+
+  it('handles path that is a prefix of base', () => {
+    // '/home' does not start with '/home/user', so returns original
+    expect(toRelativePath('/home', '/home/user')).toBe('/home')
+  })
+
+  it('handles similar but different base', () => {
+    // '/home/user2/file' starts with '/home/user'? No — '/home/user2/file'.startsWith('/home/user') is true!
+    // This is a known limitation: startsWith matches prefixes including '/home/user2'
+    expect(toRelativePath('/home/user2/file', '/home/user')).toBe('2/file')
+  })
+
+  it('handles case sensitivity', () => {
+    // '/Home/User/file' does not start with '/home/user'
+    expect(toRelativePath('/Home/User/file', '/home/user')).toBe('/Home/User/file')
   })
 })

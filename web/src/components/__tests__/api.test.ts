@@ -170,7 +170,7 @@ describe('cancelChat', () => {
 // ── External AbortSignal support ──
 
 describe('apiGet with signal', () => {
-  it('passes external signal to fetch call', async () => {
+  it('passes external signal influence to fetch call', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ data: 'test' }),
@@ -179,17 +179,55 @@ describe('apiGet with signal', () => {
     const externalController = new AbortController()
     await apiGet('/api/test', { signal: externalController.signal })
 
-    // The signal passed to fetch should be an AbortSignal (our merged one)
-    expect(mockFetch).toHaveBeenCalledWith('/api/test', expect.objectContaining({
-      signal: expect.any(AbortSignal),
-    }))
+    // The signal passed to fetch should be an AbortSignal but NOT the same instance
+    // as the external one — createSignal creates a merged controller
+    const fetchOpts = mockFetch.mock.calls[0][1] as { signal: AbortSignal }
+    expect(fetchOpts.signal).toBeInstanceOf(AbortSignal)
+    expect(fetchOpts.signal).not.toBe(externalController.signal)
+    // The merged signal should not be aborted since external signal is still active
+    expect(fetchOpts.signal.aborted).toBe(false)
   })
 
   it('rejects immediately when external signal is already aborted', async () => {
     const controller = new AbortController()
     controller.abort()
 
-    await expect(apiGet('/api/test', { signal: controller.signal })).rejects.toThrow()
+    // When the external signal is already aborted, createSignal immediately aborts the
+    // internal controller too. The real fetch would throw DOMException, but our mock
+    // doesn't check the signal — so the fetch resolves, and apiGet reads resp.ok which
+    // is undefined because the cleanup fires before fetch resolves.
+    // The key behavior to verify: the merged signal is aborted from the start.
+    const result = apiGet('/api/test', { signal: controller.signal })
+    // Regardless of whether mock fetch cooperates, the code should not return success
+    await expect(result).rejects.toThrow()
+  })
+
+  it('rejects when fetch times out', async () => {
+    vi.useFakeTimers()
+
+    // Simulate a hanging fetch — never resolves on its own.
+    // We capture the signal passed to fetch so we can verify it gets aborted on timeout.
+    let capturedSignal: AbortSignal | undefined
+    mockFetch.mockImplementation((_url: string, opts: { signal?: AbortSignal }) => {
+      capturedSignal = opts?.signal
+      return new Promise(() => {}) // never resolves
+    })
+
+    const promise = apiGet('/api/test')
+
+    // Before timeout: signal is not aborted
+    expect(capturedSignal?.aborted).toBe(false)
+
+    // Advance past the 10s timeout
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    // After timeout: the internal signal should be aborted
+    expect(capturedSignal?.aborted).toBe(true)
+
+    // The promise should reject (suppress the unhandled rejection from our never-resolving mock)
+    promise.catch(() => {})
+
+    vi.useRealTimers()
   })
 })
 
