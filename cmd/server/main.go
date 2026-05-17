@@ -465,23 +465,38 @@ func main() {
 	if _, err := os.Stat(agentsDir); os.IsNotExist(err) {
 		agentsDir = filepath.Join("config", "agents")
 	}
+
+	// Model cache directory
+	modelCacheDir := filepath.Join(model.BinDir, ".clawbench", "model-cache")
+
+	// 1. Load existing agent YAMLs
 	if err := model.LoadAgents(agentsDir); err != nil {
 		slog.Warn("failed to load agents", slog.String("err", err.Error()))
 	}
 
-	// Auto-discover installed AI CLIs when no agents are configured (one-time generation)
-	if len(model.AgentList) == 0 {
-		slog.Info("no agents found, starting auto-discovery")
-		if err := model.DiscoverAgents(agentsDir); err != nil {
-			slog.Warn("auto-discovery failed", slog.String("err", err.Error()))
-		} else {
-			if err := model.LoadAgents(agentsDir); err != nil {
-				slog.Warn("failed to reload agents after discovery", slog.String("err", err.Error()))
-			}
+	// 2. Detect installed CLIs and generate configs for new backends
+	present := model.SyncDiscoverAgents(agentsDir)
+
+	// 3. Reload agents if new YAMLs were generated or existing ones loaded
+	if len(model.AgentList) == 0 || len(present) > 0 {
+		if err := model.LoadAgents(agentsDir); err != nil {
+			slog.Warn("failed to reload agents after discovery", slog.String("err", err.Error()))
 		}
 	}
 
+	// 4. Synchronous model discovery on first run (no cache exists)
+	if _, err := os.Stat(modelCacheDir); os.IsNotExist(err) {
+		slog.Info("no model cache found, running synchronous discovery")
+		model.SyncDiscoverModels(modelCacheDir)
+	}
+
+	// 5. Merge runtime data: fill models from cache, levels from Registry, soft-remove missing CLIs
+	model.MergeDiscoveredData(modelCacheDir, present)
+
 	slog.Info("agents loaded", slog.Int("count", len(model.AgentList)))
+
+	// 6. Async: refresh model cache in background (non-blocking)
+	model.AsyncRefreshModelCache(modelCacheDir)
 
 	// Set default agent ID from config, or fall back to first agent
 	if cfg.DefaultAgent != "" {
