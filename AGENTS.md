@@ -31,13 +31,13 @@ npm test                             # Vitest (all frontend tests)
 
 ### Backend (Go)
 
-**Entry point:** `cmd/server/main.go` — config → port → LoadAgents → auto-discovery → scheduler init.
+**Entry point:** `cmd/server/main.go` — config → port → LoadAgents → SyncDiscoverAgents (every-boot CLI detection, generate minimal YAMLs) → SyncDiscoverModels (first-run synchronous model cache) → MergeDiscoveredData (fill models/levels from cache + registry, soft-remove missing) → AsyncRefreshModelCache (background refresh) → scheduler init.
 
 **Layers:**
 - `internal/handler/` — HTTP handlers, SSE streaming (`chat_stream.go`), CRUD endpoints. All `/api/` routes use `middleware.Auth` (localhost bypass for CLI). Key handlers: `file.go` (read), `file_ops.go` (CRUD), `file_thumb.go` (thumbnail generation), `file_archive.go` (zip download), `file_watch.go` (SSE change notifications).
 - `internal/service/` — Business logic: chat persistence, scheduler (cron via `robfig/cron/v3`), SQLite, ProxyRegistry, session runtime.
 - `internal/ai/` — AI backend abstraction. `AIBackend` interface with `ExecuteStream()`. `CLIBackend` is the shared base; each backend provides CLI args and a `LineParser`. `AutoResumeBackend` wraps claude/codebuddy/qoder/deepseek/pi — detects ExitPlanMode and auto-resumes with "继续". `NewBackend()` factory in `factory.go`.
-- `internal/model/` — Data models, config structs, structured errors (`NotFound`, `Forbidden`, `Internal`), auto-discovery of AI CLIs.
+- `internal/model/` — Data models, config structs, structured errors (`NotFound`, `Forbidden`, `Internal`), auto-discovery of AI CLIs. `BackendRegistry` declares backend specs (CLI command, model discovery, thinking levels). Model cache layer (`.clawbench/model-cache/`) persists discovered models; `DiscoverModels` / `DiscoverClaudeModels` / `ParseCodebuddyModels` handle per-backend discovery; `MergeDiscoveredData` fills runtime agents; `ModelsAutoDetected` distinguishes auto-detected vs. user-defined model lists.
 - `internal/cli/` — CLI subcommands for AI agent self-service: `task` (CRUD + trigger + `list-exec`), `rag` (search), `migrate`.
 - `internal/middleware/` — Auth, request logging, panic recovery, request ID.
 - `internal/speech/` — TTS providers: MiniMax (cloud), Edge TTS (cloud, free), Piper/Kokoro/MOSS-Nano (local).
@@ -46,7 +46,7 @@ npm test                             # Vitest (all frontend tests)
 - `internal/rag/` — RAG history memory: DuckDB vector store, Ollama BGE-M3 embeddings, chunking, indexing, search, cleanup.
 - `internal/terminal/` — Interactive web terminal: PTY sessions, ring buffer replay, concurrent session management.
 
-**Agent system:** `config/agents/*.yaml` defines agents (id, backend, model, system_prompt, thinking_effort, thinking_effort_levels). Auto-discovery generates configs when none exist (one-time). `config/rules.md` is injected into every agent's system prompt — placeholders `{{AVAILABLE_AGENTS}}`, `{{PORT}}`, `{{PROJECT_PATH}}` are replaced dynamically.
+**Agent system:** `config/agents/*.yaml` defines agents (id, backend, system_prompt, optional model, thinking_effort). Shipped YAMLs are minimal — `models` and `thinking_effort_levels` are auto-discovered at runtime and injected via `MergeDiscoveredData`. `BackendRegistry` in `discovery.go` declares each backend's discovery strategy: `ListModelsCmd+ParseModels` (e.g. CodeBuddy `--help`, OpenCode `models`) or `DiscoverModelsFunc` (e.g. Claude binary `strings` scan). First run populates model cache synchronously (`SyncDiscoverModels`); subsequent boots merge from cache; background `AsyncRefreshModelCache` keeps it fresh. `ModelsAutoDetected` flag on `Agent` tracks whether models came from discovery (updatable) vs. user-defined YAML (preserved). Auto-discovery generates minimal YAMLs for newly detected CLIs (`SyncDiscoverAgents`). `config/rules.md` is injected into every agent's system prompt — placeholders `{{AVAILABLE_AGENTS}}`, `{{PORT}}`, `{{PROJECT_PATH}}` are replaced dynamically.
 
 **Data flow (chat):** POST `/api/ai/chat` → resolve agent → `NewBackend()` → `ExecuteStream()` spawns CLI → `LineParser` → SSE events → SQLite persistence.
 
@@ -74,12 +74,14 @@ npm test                             # Vitest (all frontend tests)
 - **SSE reconnection:** 3 attempts → fallback to HTTP polling (2s). 15s heartbeat, 30s timeout. `online` event triggers immediate reconnect.
 - **Block coalescing:** Text/thinking events merge into last block of same type; `tool_use` acts as boundary.
 - **AutoResumeBackend:** ExitPlanMode → cancel → resume with "继续". Emits `resume_split` for DB finalization.
-- **Thinking effort:** Per-agent configurable via `thinking_effort`/`thinking_effort_levels` in YAML. Passed as CLI flags (`--effort`, `--thinking`, etc.). Frontend chip selector, persisted per session (DB) and per agent (localStorage). Priority: frontend selection > YAML default > auto.
+- **Thinking effort:** Per-agent configurable via `thinking_effort` in YAML. `thinking_effort_levels` auto-populated from `BackendRegistry` at runtime (not stored in YAML). Passed as CLI flags (`--effort`, `--thinking`, etc.). Frontend chip selector, persisted per session (DB) and per agent (localStorage). Priority: frontend selection > YAML default > auto.
 - **Cancel reason tracking:** `"user"` (explicit) vs `"disconnect"` (SSE gone). `ForceCancelSession` kills zombie CLI processes.
 - **Green portable deployment:** All runtime data under `.clawbench/` next to binary. Delete that dir = clean uninstall. Copy binary dir for multi-instance isolation.
 - **Zero-config startup:** `config/config.yaml` optional. `model.ApplyDefaults()` fills sensible defaults. Auto-generated password persisted to `.clawbench/auto-password`.
 - **Touch device CSS:** Use `@media (hover: hover)` to scope `:hover` styles.
 - **Structured errors:** `model.NotFound()`, `model.Forbidden()`, `model.Internal()` constructors.
+- **Model auto-discovery:** Every boot: `SyncDiscoverAgents` detects CLIs and generates minimal YAMLs for new ones. Model lists discovered per-backend: `ListModelsCmd+ParseModels` (CodeBuddy, OpenCode, DeepSeek, Pi) or `DiscoverModelsFunc` (Claude via `strings` binary scan). Gemini, Codex, VeCLI, Qoder do not support CLI model listing — models must be user-defined in YAML. First run: `SyncDiscoverModels` (synchronous). Background: `AsyncRefreshModelCache` (updates agents with `ModelsAutoDetected=true`). User-defined models in YAML are preserved — only auto-detected model lists are refreshed.
+- **Android HTML login:** Static `login.html` in `android/app/src/main/assets/` replaces native `AlertDialog`. WebView hidden during connection attempts to prevent error page flash. `AndroidNative` JS bridge provides `connectToServer()`, `getSavedServerConfig()`, `getAppVersion()`. Auto-connects on returning visits; login page shown only on first launch or connection failure.
 
 ## Configuration
 
