@@ -43,21 +43,26 @@ function onLoaded() {
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
     padding: 0;
+    overflow: hidden;
 }
 
 .video-preview-body {
     flex: 1;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 16px;
     background: #000;
+    overflow: hidden;
 }
 
 .video-player {
     max-width: 100%;
     max-height: 100%;
+    object-fit: contain;
     border-radius: var(--radius-sm);
     outline: none;
 }
