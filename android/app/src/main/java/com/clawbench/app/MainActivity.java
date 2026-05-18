@@ -81,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
 
     static MainActivity instance;
 
-    private WebView webView;
+    WebView webView;
     private ProgressBar progressBar;
     private SharedPreferences prefs;
 
@@ -155,7 +155,7 @@ public class MainActivity extends AppCompatActivity {
     // Whether JPush push notifications are available (fetched from server config).
     // When true, WebSocket can be disconnected on background (push will notify the user).
     // When false, WebSocket stays alive in background for real-time events.
-    private volatile boolean pushAvailable = false;
+    volatile boolean pushAvailable = false;
 
     // Fullscreen video state: managed by WebChromeClient.onShowCustomView/onHideCustomView
     private View customView;
