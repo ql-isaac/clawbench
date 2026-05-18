@@ -170,7 +170,7 @@ jobs:
   build-macos-amd64:
     name: Build macOS amd64
     needs: build-frontend
-    runs-on: macos-13
+    runs-on: macos-15-large
     permissions:
       contents: write
     steps:
