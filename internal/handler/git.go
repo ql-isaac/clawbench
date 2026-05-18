@@ -150,6 +150,38 @@ func ServeGitProjectHistory(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ServeGitBranch returns the current branch name for the project.
+func ServeGitBranch(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
+	if !isGitRepo(projectPath) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"isGit":  false,
+			"branch": "",
+		})
+		return
+	}
+
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = projectPath
+	output, err := cmd.Output()
+	branch := ""
+	if err == nil {
+		branch = strings.TrimSpace(string(output))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"isGit":  true,
+		"branch": branch,
+	})
+}
+
 // ServeGitInit initializes a new git repository in the project directory.
 func ServeGitInit(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {

@@ -79,6 +79,10 @@ interface AppState {
     // Theme
     theme: string
 
+    // Git
+    gitBranch: string
+    isGitRepo: boolean
+
 }
 
 const state = reactive<AppState>({
@@ -120,6 +124,10 @@ const state = reactive<AppState>({
     // Theme
     theme: 'light',
 
+    // Git
+    gitBranch: '',
+    isGitRepo: false,
+
 })
 
 // =============================================
@@ -155,6 +163,21 @@ async function loadProject(): Promise<void> {
 async function setProject(path: string): Promise<void> {
     await apiPost('/api/project', { path })
     window.location.reload()
+}
+
+// =============================================
+// Git
+// =============================================
+
+async function loadGitBranch(): Promise<void> {
+    try {
+        const data = await apiGet<{ isGit: boolean; branch: string }>('/api/git/branch')
+        state.isGitRepo = data.isGit
+        state.gitBranch = data.branch || ''
+    } catch (_) {
+        state.isGitRepo = false
+        state.gitBranch = ''
+    }
 }
 
 // =============================================
@@ -412,6 +435,7 @@ export const store = {
     state,
     loadProject,
     setProject,
+    loadGitBranch,
     loadFiles,
     selectFile,
     deleteFile,
