@@ -13,6 +13,7 @@ import (
 
 // EventsHandler handles the /api/ai/events/ws WebSocket endpoint.
 // Auth is handled by middleware.Auth before this function is called.
+// Query parameter "client_id" identifies the client device (fallback: "default").
 func EventsHandler(w http.ResponseWriter, r *http.Request) {
 	mgr := GetManager()
 	if mgr == nil {
@@ -35,14 +36,20 @@ func EventsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract client_id from query parameter; fallback to "default" for backward compat
+	clientID := r.URL.Query().Get("client_id")
+	if clientID == "" {
+		clientID = "default"
+	}
+
 	var writeMu sync.Mutex
-	sub := mgr.Subscribe(conn, &writeMu)
-	defer mgr.Unsubscribe()
+	sub := mgr.Subscribe(conn, &writeMu, clientID)
+	defer mgr.Unsubscribe(clientID)
 
 	// Replay buffered events on reconnect
 	buffered := sub.GetBufferedEvents()
 	if len(buffered) > 0 {
-		slog.Debug("ws: replaying buffered events", "count", len(buffered))
+		slog.Debug("ws: replaying buffered events", "count", len(buffered), "client_id", clientID)
 		for _, msg := range buffered {
 			data, _ := json.Marshal(msg)
 			writeMu.Lock()
@@ -77,23 +84,28 @@ func EventsHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
-			slog.Debug("ws: client disconnected", "error", err)
+			slog.Debug("ws: client disconnected", "error", err, "client_id", clientID)
 			break
 		}
 
 		var msg ClientMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
-			slog.Warn("ws: invalid client message", "error", err)
+			slog.Warn("ws: invalid client message", "error", err, "client_id", clientID)
 			continue
 		}
 
 		switch msg.Type {
 		case "ack":
-			slog.Debug("ws: ack received", "id", msg.ID)
+			slog.Debug("ws: ack received", "id", msg.ID, "client_id", clientID)
 		case "pong":
 			// Connection alive
+		case "register":
+			// Client registering its JPush push registration ID
+			if msg.PushRegID != "" {
+				mgr.RegisterPushID(msg.PushRegID, clientID)
+			}
 		default:
-			slog.Warn("ws: unknown client message type", "type", msg.Type)
+			slog.Warn("ws: unknown client message type", "type", msg.Type, "client_id", clientID)
 		}
 	}
 

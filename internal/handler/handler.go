@@ -278,10 +278,8 @@ func RegisterRoutes(mux *http.ServeMux) {
 	// AppKey — no secrets or credentials.
 	register("/api/push/config", ServePushConfig)
 
-	// Push registration — authenticated:
-	// Android app calls this after login to register its JPush Registration ID.
-	// This is a login-level lifecycle event, not per-WS-connection.
-	register("/api/push/register", middleware.Auth(ServePushRegister))
+	// Push registration is now done via WS "register" message (see events.go).
+	// No need for a separate HTTP endpoint.
 
 	// SSH tunnel info — intentionally unauthenticated:
 	// 1. Android PortForwardService.fetchSSHPort() calls this from native Java

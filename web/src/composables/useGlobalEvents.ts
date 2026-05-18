@@ -21,6 +21,7 @@ interface ServerEvent {
 type ClientMessage =
     | { type: 'ack'; id: string }
     | { type: 'pong' }
+    | { type: 'register'; push_reg_id: string }
 
 type EventHandler = (event: string, data: ServerEvent['data']) => void
 
@@ -35,6 +36,15 @@ let ws: WebSocket | null = null
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 const MISSED_PONG_THRESHOLD = 2
 let missedPongs = 0
+
+// Persistent client ID — identifies this browser/device across sessions.
+// Stored in localStorage so the server can track multiple tabs/devices independently.
+const CLIENT_ID_KEY = 'clawbench_client_id'
+let clientId = localStorage.getItem(CLIENT_ID_KEY)
+if (!clientId) {
+    clientId = crypto.randomUUID()
+    localStorage.setItem(CLIENT_ID_KEY, clientId)
+}
 
 const { isAppMode } = useAppMode()
 
@@ -92,9 +102,9 @@ async function checkPushAvailable() {
 }
 
 /**
- * Register JPush Registration ID with the server via HTTP.
- * This is a login-level lifecycle event — the server persists the reg ID
- * so it can send push notifications even when the WebSocket is disconnected.
+ * Register JPush Registration ID with the server via WS "register" message.
+ * This is the preferred path — pushRegID is tied to the WS session.
+ * If WS is not connected, falls back to connecting first (register will be sent on open).
  */
 function registerPushId() {
     if (!isAppMode.value) return
@@ -103,24 +113,16 @@ function registerPushId() {
         console.log('[useGlobalEvents] registerPushId: no registration ID available yet (JPush SDK may still be initializing)')
         return
     }
-    console.log('[useGlobalEvents] registerPushId: registering with server, regId:', regId)
-    fetch('/api/push/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ registration_id: regId }),
-    }).then(() => {
-        pushRegistered.value = true
-        console.log('[useGlobalEvents] registerPushId: registered successfully')
-    }).catch((err) => {
-        console.warn('[useGlobalEvents] registerPushId: failed', err)
-    })
+    send({ type: 'register', push_reg_id: regId })
+    pushRegistered.value = true
+    console.log('[useGlobalEvents] registerPushId: sent via WS, regId:', regId)
 }
 
 function connect() {
     disconnect()
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${location.host}/api/ai/events/ws`
+    const url = `${protocol}//${location.host}/api/ai/events/ws?client_id=${clientId}`
 
     ws = new WebSocket(url)
 
@@ -132,9 +134,8 @@ function connect() {
         // Check push availability (non-blocking)
         checkPushAvailable()
 
-        // Re-register push ID on every WS connect (JPush SDK may have obtained
-        // the registration ID since last connect, or the server may have lost it
-        // due to CleanupStale). This is idempotent — the server just overwrites.
+        // Register push ID via WS message (JPush SDK may have obtained
+        // the registration ID since last connect). This is idempotent.
         registerPushId()
 
         // Start heartbeat monitoring
@@ -281,10 +282,8 @@ export function useGlobalEvents() {
         console.log('[useGlobalEvents] JPush registration ID received from native:', regId)
         // Update push availability state
         pushAvailable.value = true
-        pushRegistered.value = true
-        // Register with server — this is the critical step that was missing.
-        // Before this event fires, getPushRegistrationId() returns empty,
-        // so the initial registerPushId() in init() is a no-op.
+        // Register via WS — this is the primary registration path now.
+        // If WS is connected, send immediately. If not, it'll be sent on next connect.
         registerPushId()
     }
 
@@ -296,9 +295,8 @@ export function useGlobalEvents() {
         window.addEventListener('clawbench-push-registered', handlePushRegistered)
         // Initial connect
         connect()
-        // Register push ID via HTTP (login-level, not per-WS-connection)
-        // May return empty if JPush hasn't finished registering yet —
-        // that's OK, the clawbench-push-registered event will re-trigger registration.
+        // Register push ID via WS (may return empty if JPush hasn't initialized yet —
+        // the clawbench-push-registered event will re-trigger registration).
         registerPushId()
     }
 

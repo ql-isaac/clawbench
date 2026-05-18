@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"clawbench/internal/push"
-	"clawbench/internal/ws"
 )
 
 // pushClientRef holds a reference to the JPush client, set from main.go.
@@ -40,36 +39,4 @@ func ServePushConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, result)
-}
-
-// ServePushRegister accepts a JPush Registration ID from the Android app.
-// POST /api/push/register
-//
-// Authenticated: called after login (WebView has session cookie).
-// The Registration ID is a login-level lifecycle event, not per-WS-connection.
-// It persists in the WS Manager so that BroadcastEvent can send JPush
-// notifications when the client's WebSocket is disconnected.
-func ServePushRegister(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodPost) {
-		return
-	}
-
-	var body struct {
-		RegistrationID string `json:"registration_id"`
-	}
-	if !decodeJSON(w, r, &body) {
-		return
-	}
-
-	if body.RegistrationID == "" {
-		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
-		return
-	}
-
-	mgr := ws.GetManager()
-	if mgr != nil {
-		mgr.RegisterPushID(body.RegistrationID)
-	}
-
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
