@@ -632,7 +632,7 @@ export default {
       title: 'Manage',
       switchBranch: 'Switch Branch',
       switchWorktree: 'Switch Worktree',
-      switchWorktreeConfirm: 'Switch to worktree at {path} ({branch})?',
+      switchWorktreeConfirm: 'Switch to worktree "{name}"?',
       branches: 'Branches',
       default: 'Default',
       current: 'Current',

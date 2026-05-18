@@ -87,7 +87,8 @@ const sortedBranches = computed(() => {
 
 <style scoped>
 .git-branch-list {
-  flex: 1;
+  flex: 0 1 auto;
+  min-height: 0;
   overflow: hidden;
   border-bottom: 1px solid var(--border-color, #dee2e6);
 }

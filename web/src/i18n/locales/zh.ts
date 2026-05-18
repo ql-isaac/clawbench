@@ -632,7 +632,7 @@ export default {
       title: '管理',
       switchBranch: '切换分支',
       switchWorktree: '切换 Worktree',
-      switchWorktreeConfirm: '切换到 {path} ({branch}) ？',
+      switchWorktreeConfirm: '切换到工作树「{name}」？',
       branches: '分支',
       default: '默认',
       current: '当前',

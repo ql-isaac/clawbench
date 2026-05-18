@@ -71,7 +71,11 @@ function toggleCollapse() {
 
 <style scoped>
 .git-worktree-list {
+  flex: 1 0 auto;
+  min-height: 0;
   border-bottom: 1px solid var(--border-color, #dee2e6);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .section-header {

@@ -5,15 +5,14 @@
     @click="!worktree.isCurrent && !worktree.missing && $emit('switch', worktree)"
   >
     <div class="wt-card-main">
-      <div class="wt-card-path">{{ worktree.displayPath }}</div>
-      <div class="wt-card-branch">
-        <GitBranch :size="12" />
+      <div class="wt-card-name">
+        <GitBranch :size="14" />
         <span>{{ worktree.branch || '—' }}</span>
       </div>
+      <div class="wt-card-path">{{ worktree.path }}</div>
     </div>
     <div class="wt-card-status">
-      <span v-if="worktree.isCurrent" class="wt-badge wt-badge-current">{{ t('git.manage.current') }}</span>
-      <span v-else-if="worktree.dirty" class="wt-badge wt-badge-dirty">{{ t('git.manage.dirty', { count: worktree.untrackedCount }) }}</span>
+      <span v-if="worktree.dirty" class="wt-badge wt-badge-dirty">{{ t('git.manage.dirty', { count: worktree.untrackedCount }) }}</span>
       <span v-else class="wt-badge wt-badge-clean">{{ t('git.manage.clean') }}</span>
       <span v-if="worktree.locked" class="wt-badge wt-badge-locked">{{ t('git.manage.locked') }}</span>
       <span v-if="worktree.missing" class="wt-badge wt-badge-missing">{{ t('git.manage.pathMissing') }}</span>
@@ -51,9 +50,27 @@ defineEmits(['switch'])
 }
 
 .git-worktree-card.current {
-  background: var(--bg-accent-subtle, rgba(74, 144, 217, 0.08));
-  border-color: var(--accent-color, #4a90d9);
+  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-color) 30%, transparent);
   cursor: default;
+}
+
+.git-worktree-card.current .wt-card-name {
+  color: var(--accent-color, #4a90d9);
+}
+
+.git-worktree-card.current .wt-card-path {
+  color: var(--text-muted, #999);
+}
+
+.git-worktree-card.current .wt-badge-clean {
+  background: color-mix(in srgb, var(--accent-color) 18%, transparent);
+  color: var(--accent-color, #4a90d9);
+}
+
+.git-worktree-card.current .wt-badge-dirty {
+  background: color-mix(in srgb, var(--accent-color) 18%, transparent);
+  color: var(--accent-color, #4a90d9);
 }
 
 .git-worktree-card.missing {
@@ -70,21 +87,20 @@ defineEmits(['switch'])
   gap: 2px;
 }
 
-.wt-card-path {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary, #1a1a1a);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wt-card-branch {
+.wt-card-name {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
+  gap: 5px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-color, #4a90d9);
+}
+
+.wt-card-path {
+  font-size: 11px;
+  color: var(--text-muted, #999);
+  word-break: break-all;
+  line-height: 1.4;
 }
 
 .wt-card-status {
@@ -100,11 +116,6 @@ defineEmits(['switch'])
   padding: 1px 6px;
   border-radius: 4px;
   white-space: nowrap;
-}
-
-.wt-badge-current {
-  background: var(--accent-color, #4a90d9);
-  color: #fff;
 }
 
 .wt-badge-dirty {

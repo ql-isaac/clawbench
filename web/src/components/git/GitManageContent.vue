@@ -99,7 +99,7 @@ async function onSwitchWorktree(wt: any) {
     if (!ok) return
   }
   const confirmed = await dialog.confirm(
-    t('git.manage.switchWorktreeConfirm', { path: wt.displayPath, branch: wt.branch }),
+    t('git.manage.switchWorktreeConfirm', { name: wt.branch || wt.displayPath }),
     { title: t('git.manage.switchWorktree') },
   )
   if (!confirmed) return

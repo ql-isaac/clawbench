@@ -14,7 +14,7 @@
         <span v-else-if="!isGit" class="drilldown-count">{{ t('git.commitList.notInitialized') }}</span>
         <span v-else-if="!untracked" class="drilldown-count">{{ t('git.commitList.loading') }}</span>
       </div>
-      <SearchInput v-if="commits.length > 0" v-model="commitSearch" :placeholder="searchPlaceholder" />
+      <SearchInput v-if="commits.length > 0" v-model="commitSearch" :placeholder="searchPlaceholder" class="commit-search-input" />
       <button
         v-if="commits.length > 0"
         class="drilldown-refresh-btn"
@@ -272,6 +272,12 @@ defineExpose({ observeList, unobserveList, commitSearch })
   padding: 1px 6px;
   border-radius: 10px;
   flex-shrink: 0;
+}
+
+.commit-search-input {
+  flex: 0 1 auto;
+  max-width: 160px;
+  min-width: 80px;
 }
 
 .drilldown-refresh-btn {
