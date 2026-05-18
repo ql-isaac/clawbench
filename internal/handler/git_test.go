@@ -718,3 +718,164 @@ func TestServeGitProjectHistory_IncludesParents(t *testing.T) {
 	assert.True(t, ok)
 	assert.GreaterOrEqual(t, len(parents), 1)
 }
+
+// --- parseWorktreePorcelain ---
+
+func TestParseWorktreePorcelain_SingleWorktree(t *testing.T) {
+	output := `worktree /home/user/project
+HEAD abc123def456
+branch refs/heads/main
+`
+	trees := parseWorktreePorcelain(output, "/home/user/project")
+	assert.Len(t, trees, 1)
+	assert.Equal(t, "/home/user/project", trees[0].Path)
+	assert.Equal(t, ".", trees[0].DisplayPath)
+	assert.Equal(t, "main", trees[0].Branch)
+	assert.True(t, trees[0].IsCurrent)
+	assert.False(t, trees[0].Locked)
+}
+
+func TestParseWorktreePorcelain_MultipleWorktrees(t *testing.T) {
+	output := `worktree /home/user/project
+HEAD abc123def456
+branch refs/heads/main
+
+worktree /home/user/project/.worktrees/feature-x
+HEAD def789abc012
+branch refs/heads/feature-x
+`
+	trees := parseWorktreePorcelain(output, "/home/user/project")
+	assert.Len(t, trees, 2)
+
+	// Main worktree
+	assert.Equal(t, "/home/user/project", trees[0].Path)
+	assert.Equal(t, ".", trees[0].DisplayPath)
+	assert.Equal(t, "main", trees[0].Branch)
+	assert.True(t, trees[0].IsCurrent)
+
+	// Linked worktree
+	assert.Equal(t, "/home/user/project/.worktrees/feature-x", trees[1].Path)
+	assert.Equal(t, "./.worktrees/feature-x", trees[1].DisplayPath)
+	assert.Equal(t, "feature-x", trees[1].Branch)
+	assert.False(t, trees[1].IsCurrent)
+}
+
+func TestParseWorktreePorcelain_LockedWorktree(t *testing.T) {
+	output := `worktree /home/user/project
+HEAD abc123def456
+branch refs/heads/main
+
+worktree /home/user/project/.worktrees/hotfix
+HEAD def789abc012
+branch refs/heads/hotfix
+locked
+`
+	trees := parseWorktreePorcelain(output, "/home/user/project")
+	assert.Len(t, trees, 2)
+	assert.False(t, trees[0].Locked)
+	assert.True(t, trees[1].Locked)
+}
+
+func TestParseWorktreePorcelain_LockedWithReason(t *testing.T) {
+	output := `worktree /home/user/project
+HEAD abc123def456
+branch refs/heads/main
+
+worktree /home/user/project/.worktrees/hotfix
+HEAD def789abc012
+branch refs/heads/hotfix
+locked reason for locking
+`
+	trees := parseWorktreePorcelain(output, "/home/user/project")
+	assert.Len(t, trees, 2)
+	assert.True(t, trees[1].Locked)
+}
+
+func TestParseWorktreePorcelain_DetachedHead(t *testing.T) {
+	output := `worktree /home/user/project
+HEAD abc123def456
+branch refs/heads/main
+
+worktree /home/user/project/.worktrees/detached
+HEAD def789abc012
+detached
+`
+	trees := parseWorktreePorcelain(output, "/home/user/project")
+	assert.Len(t, trees, 2)
+	assert.Equal(t, "", trees[1].Branch) // detached has no branch
+}
+
+func TestParseWorktreePorcelain_EmptyOutput(t *testing.T) {
+	trees := parseWorktreePorcelain("", "/home/user/project")
+	assert.Len(t, trees, 0)
+}
+
+func TestParseWorktreePorcelain_WorktreeOutsideProjectPath(t *testing.T) {
+	output := `worktree /home/user/project
+HEAD abc123def456
+branch refs/heads/main
+
+worktree /tmp/other-worktree
+HEAD def789abc012
+branch refs/heads/feature-x
+`
+	trees := parseWorktreePorcelain(output, "/home/user/project")
+	assert.Len(t, trees, 2)
+	assert.Equal(t, ".", trees[0].DisplayPath)
+	assert.Equal(t, "/tmp/other-worktree", trees[1].DisplayPath) // absolute since outside project
+}
+
+// --- ServeGitWorktrees ---
+
+func TestServeGitWorktrees_NotGitRepo(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodGet, "/api/git/worktrees", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, false, resp["isGit"])
+	worktrees, ok := resp["worktrees"].([]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, 0, len(worktrees))
+}
+
+func TestServeGitWorktrees_SingleWorktree(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodGet, "/api/git/worktrees", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, true, resp["isGit"])
+	worktrees, ok := resp["worktrees"].([]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, 1, len(worktrees))
+
+	wt := worktrees[0].(map[string]interface{})
+	assert.Equal(t, true, wt["isCurrent"])
+	assert.Equal(t, env.ProjectDir, wt["path"])
+}
+
+func TestServeGitWorktrees_WrongMethod(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodPost, "/api/git/worktrees", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitWorktrees, req)
+	assertStatus(t, w, http.StatusMethodNotAllowed)
+}

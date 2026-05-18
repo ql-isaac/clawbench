@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
 	"clawbench/internal/model"
 )
@@ -621,5 +623,136 @@ func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
 		"isGit":          true,
 		"hasUncommitted": len(allFiles) > 0,
 		"files":          allFiles,
+	})
+}
+
+// worktreeInfo represents a git worktree in API responses.
+type worktreeInfo struct {
+	Path         string `json:"path"`
+	DisplayPath  string `json:"displayPath"`
+	Branch       string `json:"branch"`
+	IsCurrent    bool   `json:"isCurrent"`
+	Dirty        bool   `json:"dirty"`
+	UntrackedCnt int    `json:"untrackedCount"`
+	Locked       bool   `json:"locked"`
+}
+
+// parseWorktreePorcelain parses `git worktree list --porcelain` output into worktreeInfo slice.
+// Blocks are separated by blank lines. Each block has lines like:
+//
+//	worktree /path
+//	HEAD abc123
+//	branch refs/heads/name
+//	locked            (optional, may have reason text)
+//
+// DisplayPath is relative to projectPath with "." prefix (e.g. "./subdir"),
+// or absolute path if the worktree is not under projectPath.
+func parseWorktreePorcelain(output, projectPath string) []worktreeInfo {
+	var trees []worktreeInfo
+	blocks := strings.Split(strings.TrimSpace(output), "\n\n")
+	for _, block := range blocks {
+		block = strings.TrimSpace(block)
+		if block == "" {
+			continue
+		}
+		var info worktreeInfo
+		for _, line := range strings.Split(block, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			switch {
+			case strings.HasPrefix(line, "worktree "):
+				info.Path = strings.TrimPrefix(line, "worktree ")
+			case strings.HasPrefix(line, "branch "):
+				branch := strings.TrimPrefix(line, "branch refs/heads/")
+				info.Branch = branch
+			case line == "locked" || strings.HasPrefix(line, "locked "):
+				info.Locked = true
+			}
+		}
+		if info.Path == "" {
+			continue
+		}
+		// Compute DisplayPath
+		if strings.HasPrefix(info.Path, projectPath+"/") {
+			info.DisplayPath = "." + info.Path[len(projectPath):]
+		} else if info.Path == projectPath {
+			info.DisplayPath = "."
+		} else {
+			info.DisplayPath = info.Path
+		}
+		info.IsCurrent = info.Path == projectPath
+		trees = append(trees, info)
+	}
+	return trees
+}
+
+// ServeGitWorktrees returns all git worktrees for the project.
+func ServeGitWorktrees(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
+	if !isGitRepo(projectPath) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"isGit":    false,
+			"worktrees": []interface{}{},
+		})
+		return
+	}
+
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = projectPath
+	output, _ := cmd.CombinedOutput()
+
+	trees := parseWorktreePorcelain(string(output), projectPath)
+
+	// Check dirty status for each worktree in parallel
+	type dirtyResult struct {
+		Index         int
+		Dirty         bool
+		UntrackedCnt int
+	}
+	results := make(chan dirtyResult, len(trees))
+	for i, wt := range trees {
+		go func(idx int, path string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			statusCmd := exec.CommandContext(ctx, "git", "-C", path, "status", "--porcelain")
+			out, err := statusCmd.CombinedOutput()
+			if err != nil {
+				results <- dirtyResult{Index: idx}
+				return
+			}
+			dirty := false
+			untrackedCnt := 0
+			for _, line := range strings.Split(string(out), "\n") {
+				if len(line) >= 2 {
+					dirty = true
+					if line[0] == '?' && line[1] == '?' {
+						untrackedCnt++
+					}
+				}
+			}
+			results <- dirtyResult{Index: idx, Dirty: dirty, UntrackedCnt: untrackedCnt}
+		}(i, wt.Path)
+	}
+	for range trees {
+		res := <-results
+		trees[res.Index].Dirty = res.Dirty
+		trees[res.Index].UntrackedCnt = res.UntrackedCnt
+	}
+
+	if trees == nil {
+		trees = []worktreeInfo{}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"isGit":    true,
+		"worktrees": trees,
 	})
 }
