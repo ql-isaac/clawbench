@@ -20,6 +20,12 @@ export async function loadSessionsOnce() {
       const hasUnread = sessions.some((s: any) => s.unreadCount > 0 && s.id !== identity.currentSessionId.value)
       store.state.chatRunning = hasRunning
       store.state.chatUnread = hasUnread
+      // Populate runningSessions set from API data
+      identity.runningSessions.value.clear()
+      for (const s of sessions) {
+        if (s.running) identity.runningSessions.value.add(s.id)
+      }
+      identity.runningSessionsVersion.value++
     }
   } catch { /* ignore */ }
 }
@@ -69,7 +75,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
   // ── Identity refs from singleton ──
   const identity = useSessionIdentity()
-  const { currentSessionTitle, currentBackend, currentAgentId, currentModelId, currentModelName, currentThinkingEffort, runningSessions } = identity
+  const { currentSessionTitle, currentBackend, currentAgentId, currentModelId, currentModelName, currentThinkingEffort, runningSessions, runningSessionsVersion } = identity
 
   // ── Agents from singleton ──
   const { agents, loadAgents, getAgentIcon, getAgentName, syncModelFromAgent, getAgentModel, agentHeaderTitle: makeAgentTitle } = useAgents()
@@ -297,6 +303,11 @@ export function useChatSession(options: UseChatSessionOptions) {
         loading.value = false
         startMsgCountPolling()
       }
+      // Recalculate global chatUnread after switching — the backend has already
+      // marked this session as read (UpdateLastRead), so the session list will
+      // reflect the correct unread state. Without this, chatUnread stays true
+      // when the user is already on the chat tab (switchTab early-returns).
+      await loadSessionsOnce()
     } catch (err) {
       // If another switch happened, don't touch state
       if (switchSessionSeq !== mySeq) return
@@ -409,12 +420,16 @@ export function useChatSession(options: UseChatSessionOptions) {
   // Called from WS session_update event
   function onSessionEvent(data: { session_id?: string; status?: string; has_new_messages?: boolean } | undefined) {
     if (!data) return
+    const sid = data.session_id
     if (data.status === 'running') {
       store.state.chatRunning = true
+      if (sid) { runningSessions.value.add(sid); runningSessionsVersion.value++ }
     } else {
-      store.state.chatRunning = false
+      if (sid) { runningSessions.value.delete(sid); runningSessionsVersion.value++ }
+      // Update global boolean from remaining set
+      store.state.chatRunning = runningSessions.value.size > 0
       // Session completed — mark unread
-      if (data.session_id && data.session_id !== currentSessionId.value) {
+      if (sid && sid !== currentSessionId.value) {
         store.state.chatUnread = true
       }
     }

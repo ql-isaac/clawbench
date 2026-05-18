@@ -284,7 +284,11 @@ function switchTab(tab) {
   if (activeTab.value === tab) return
   activeTab.value = tab
   if (tab === 'chat') {
-    store.state.chatUnread = false
+    // Recalculate instead of blindly clearing — if the user switches to chat
+    // but hasn't opened the unread session, the indicator should keep flashing.
+    // loadSessionsOnce checks unreadCount per session (excluding current), so
+    // it only clears when all sessions are actually read.
+    loadSessionsOnce()
   }
   if (tab === 'tasks') {
     store.state.taskUnread = false
