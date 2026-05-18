@@ -124,7 +124,7 @@ import GitDiffView from './GitDiffView.vue'
 import GitBreadcrumb from './GitBreadcrumb.vue'
 import { renderDiff } from '@/utils/diff.ts'
 import { store } from '@/stores/app.ts'
-import { getCachedCommitInfo } from '@/composables/useFilePathAnnotation.ts'
+import { useCommitNavigation, consumePendingCommitNavigation } from '@/composables/useCommitNavigation.ts'
 const { t } = useI18n()
 
 const switchTab = inject('switchTab', () => {})
@@ -387,6 +387,16 @@ async function onRefresh() {
   setTimeout(() => commitListRef.value?.observeList(), 100)
 }
 
+// ─── Shared commit navigation composable ─────────────────────────────────
+
+const { navigateToCommit, handleDrillBackToCommits } = useCommitNavigation({
+    commits,
+    selectedSHA,
+    currentView,
+    loadCommitFiles,
+    loadProjectHistory,
+})
+
 // ─── Drill-down navigation ──────────────────────────────────────────────────
 
 function onCommitSelect(c) {
@@ -409,65 +419,13 @@ function onCommitSelect(c) {
   }
 }
 
-// Navigate directly to a specific commit's files view
-// Used when clicking a commit hash link from chat.
-// Ensures the commit info is in the commits array so breadcrumbs work.
-function navigateToCommit(sha) {
-  selectedSHA.value = sha
-  currentView.value = 'files'
-
-  // Ensure the commit exists in the commits array for selectedCommit computed
-  const existing = commits.value.find(c => c.sha === sha)
-  if (!existing) {
-    const info = getCachedCommitInfo(sha)
-    if (info && info.sha) {
-      commits.value.unshift(info)
-    } else {
-      // Fallback: fetch commit info via verify-commits API
-      fetchCommitInfo(sha)
-    }
-  }
-
-  loadCommitFiles(sha).catch(() => {})
-}
-
-// Fetch a single commit's info (fallback when cache is empty)
-async function fetchCommitInfo(sha) {
-  try {
-    const resp = await fetch('/api/git/verify-commits', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shas: [sha] }),
-    })
-    if (!resp.ok) return
-    const data = await resp.json()
-    const info = data.results?.[sha]
-    if (info && info.sha && !commits.value.find(c => c.sha === sha)) {
-      commits.value.unshift(info)
-    }
-  } catch {
-    // ignore
-  }
-}
-
-// Watch for commit navigation requests from chat (commit hash links)
-watch(() => store.state.commitNavigateSha, (sha) => {
-  if (!sha) return
-  store.state.commitNavigateSha = null // consume
-  navigateToCommit(sha)
-})
-
 function drillBack(view) {
   if (view === 'commits') {
     selectedSHA.value = null
     files.value = []
     selectedFilePath.value = null
     diffState.value = { loading: false, empty: false, html: '' }
-    // If we navigated here from a commit hash link, commits may only contain
-    // that one commit. Load the full project history for proper navigation.
-    if (commits.value.length <= 1 && isGit.value) {
-      loadProjectHistory()
-    }
+    handleDrillBackToCommits()
   } else if (view === 'files') {
     selectedFilePath.value = null
     diffState.value = { loading: false, empty: false, html: '' }
@@ -578,11 +536,13 @@ onMounted(async () => {
     lastFilePath.value = currentFile
   }
 
-  // If navigating from a commit hash link, skip the default load and go
-  // directly to that commit's files view. The watch on commitNavigateSha
-  // will handle the navigation. onMounted's loadProjectHistory would
-  // reset selectedSHA and currentView, undoing the navigation.
-  if (store.state.commitNavigateSha) return
+  // If navigating from a commit hash link, go directly to that commit
+  const pendingSha = consumePendingCommitNavigation()
+  if (pendingSha) {
+    await navigateToCommit(pendingSha)
+    setTimeout(() => commitListRef.value?.observeList(), 100)
+    return
+  }
 
   if (commits.value.length === 0 && !error.value) {
     if (props.mode === 'file' && props.file?.path) {
