@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -651,6 +652,12 @@ type worktreeInfo struct {
 // DisplayPath is relative to projectPath with "." prefix (e.g. "./subdir"),
 // or absolute path if the worktree is not under projectPath.
 func parseWorktreePorcelain(output, projectPath string) []worktreeInfo {
+	// Resolve symlinks on projectPath so comparisons work on macOS
+	// where /var is a symlink to /private/var.
+	if resolved, err := filepath.EvalSymlinks(projectPath); err == nil {
+		projectPath = resolved
+	}
+
 	var trees []worktreeInfo
 	blocks := strings.Split(strings.TrimSpace(output), "\n\n")
 	for _, block := range blocks {
@@ -666,7 +673,11 @@ func parseWorktreePorcelain(output, projectPath string) []worktreeInfo {
 			}
 			switch {
 			case strings.HasPrefix(line, "worktree "):
-				info.Path = strings.TrimPrefix(line, "worktree ")
+				path := strings.TrimPrefix(line, "worktree ")
+				if resolved, err := filepath.EvalSymlinks(path); err == nil {
+					path = resolved
+				}
+				info.Path = path
 			case strings.HasPrefix(line, "branch "):
 				branch := strings.TrimPrefix(line, "branch refs/heads/")
 				info.Branch = branch
