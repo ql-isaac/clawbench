@@ -291,8 +291,9 @@ function switchTab(tab) {
     loadSessionsOnce()
   }
   if (tab === 'tasks') {
+    // Only stop dock button flash — don't clear per-task unread badges.
+    // Per-task badges are cleared when the user enters that task's execution history.
     store.state.taskUnread = false
-    markAllTasksRead()
   }
   // Close overflow menu when switching to a main tab
   if (!overflowTabs.includes(tab)) {
@@ -328,7 +329,7 @@ useFileWatch({
 
 const { isAppMode } = useAppMode()
 const { syncToNative } = usePortForward()
-const { markAllTasksRead, navigateToTaskSettings, loadTasks } = useTaskTab()
+const { navigateToTaskSettings, loadTasks } = useTaskTab()
 registerSwitchTab(switchTab)
 
 // Wire up WS global events

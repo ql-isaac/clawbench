@@ -178,6 +178,29 @@ async function markAllTasksRead() {
     }
 }
 
+/** Mark a single task as read — clears unread badge for that task only */
+async function markTaskRead(taskId: number) {
+    const task = store.state.tasks.find((t: any) => t.id === taskId)
+    if (!task || (task as any).unreadCount <= 0) return
+    try {
+        const resp = await fetch(`/api/tasks/${taskId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'read' }),
+        })
+        if (!resp.ok) return
+        // Optimistically clear unread count for this task
+        ;(task as any).unreadCount = 0
+        // Re-derive taskUnread from remaining unread tasks
+        const stillHasUnread = store.state.tasks.some((t: any) => t.unreadCount > 0)
+        if (!stillHasUnread) {
+            store.state.taskUnread = false
+        }
+    } catch {
+        // Silently ignore — next poll will correct
+    }
+}
+
 // --- WS event handler ---
 
 // Called from WS task_update event
@@ -202,6 +225,8 @@ export function useTaskTab() {
         currentView.value = 'history'
         execDetailOpen.value = false
         formViewOpen.value = false
+        // Clear unread badge for this task — user is viewing its execution history
+        markTaskRead(taskId)
     }
 
     function goBack() {
@@ -291,6 +316,7 @@ export function useTaskTab() {
         // Data methods
         loadTasks,
         markAllTasksRead,
+        markTaskRead,
 
         // Polling
         startTaskPolling,
