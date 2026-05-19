@@ -84,6 +84,7 @@ import BottomSheet from '@/components/common/BottomSheet.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useAgents } from '@/composables/useAgents.ts'
 import { useDialog } from '@/composables/useDialog.ts'
+import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
 import { formatRelativeTime } from '@/utils/format.ts'
 
 const { t } = useI18n()
@@ -100,6 +101,7 @@ const sessions = ref([])
 const loading = ref(false)
 const { agents, loadAgents, getAgentIcon, getAgentName, isDefaultAgent, getAgentDefaultModelName } = useAgents()
 const dialog = useDialog()
+const { runningSessionsVersion } = useSessionIdentity()
 
 /** Get the display name of an agent's default model. */
 function agentDefaultModelName(agentId) {
@@ -111,9 +113,15 @@ const showAgentSelector = ref(false)
 let agentSelectorOpenTime = 0
 
 const sessionsWithStatus = computed(() => {
+  // Access runningSessionsVersion to establish reactive dependency
+  // so the computed re-evaluates when sessions start/stop running
+  void runningSessionsVersion.value
   return sessions.value.map(s => ({
     ...s,
-    running: props.runningSessionIds.has(s.id)
+    // A session is running if either the WS-event-driven set or the API response says so.
+    // The set updates in real time via WS events; the API field is the source of truth
+    // when the drawer is opened (loadSessions fetches fresh data).
+    running: props.runningSessionIds.has(s.id) || !!s.running
   }))
 })
 

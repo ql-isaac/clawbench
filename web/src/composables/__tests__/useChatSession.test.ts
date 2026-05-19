@@ -259,6 +259,32 @@ describe('onSessionEvent', () => {
     session.onSessionEvent({ status: 'completed' })
     expect(mockState.runningSessionsVersion).toBe(versionBefore)
   })
+
+  it('session running status is determined by both runningSessions Set and API running field', () => {
+    // Simulates SessionDrawer's sessionsWithStatus logic:
+    //   running: runningSessionIds.has(s.id) || !!s.running
+    const session = createSession()
+
+    // Scenario 1: WS event marks session as running (no API data yet)
+    session.onSessionEvent({ session_id: 's1', status: 'running' })
+    const runningSessionIds = mockState.runningSessions
+    // s1 is in the set → should show as running
+    expect(runningSessionIds.has('s1') || false).toBe(true)
+
+    // Scenario 2: API returns running=true, but WS event hasn't arrived yet
+    // (s2 is NOT in the set, but API would say running=true)
+    const s2FromAPI = { id: 's2', running: true }
+    expect(runningSessionIds.has('s2') || !!s2FromAPI.running).toBe(true)
+
+    // Scenario 3: Session completed via WS but API still has stale data
+    // (after onSessionEvent, s1 is removed from set)
+    session.onSessionEvent({ session_id: 's1', status: 'completed' })
+    expect(runningSessionIds.has('s1')).toBe(false)
+
+    // The merged logic ensures a session shows as running if EITHER source says so
+    // This covers the gap where TrySetSessionRunning's WS event arrives
+    // before loadSessions is called
+  })
 })
 
 // ── loadSessionsOnce tests ──

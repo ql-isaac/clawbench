@@ -18,6 +18,9 @@ const currentModelId = ref('')
 const currentModelName = ref('')
 const currentThinkingEffort = ref('')
 const runningSessions = ref(new Set<string>())
+// Bumped on every mutation to runningSessions so computed properties
+// that depend on the set's contents re-evaluate correctly.
+const runningSessionsVersion = ref(0)
 
 // ───────────────────────────────────────────────────────────
 // LocalStorage persistence for model & thinking effort prefs.
@@ -280,6 +283,7 @@ export function useSessionIdentity() {
     currentModelName,
     currentThinkingEffort,
     runningSessions,
+    runningSessionsVersion,
     agentHeaderTitle,
     // Action proxies
     switchSession,

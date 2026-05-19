@@ -197,6 +197,25 @@ describe('identity refs', () => {
     runningSessions.value.clear()
   })
 
+  it('runningSessionsVersion is exposed and can be incremented', () => {
+    const { runningSessionsVersion } = useSessionIdentity()
+    const initial = runningSessionsVersion.value
+    runningSessionsVersion.value = initial + 1
+    expect(runningSessionsVersion.value).toBe(initial + 1)
+    // Clean up
+    runningSessionsVersion.value = initial
+  })
+
+  it('runningSessionsVersion is shared across instances', () => {
+    const instance1 = useSessionIdentity()
+    const instance2 = useSessionIdentity()
+    const initial = instance1.runningSessionsVersion.value
+    instance1.runningSessionsVersion.value = initial + 5
+    expect(instance2.runningSessionsVersion.value).toBe(initial + 5)
+    // Clean up
+    instance1.runningSessionsVersion.value = initial
+  })
+
   it('currentSessionId is writable and shared across instances', () => {
     const instance1 = useSessionIdentity()
     const instance2 = useSessionIdentity()

@@ -72,14 +72,20 @@ func SetSessionRunning(sessionID string, running bool, skipEvent ...bool) {
 // TrySetSessionRunning atomically checks and sets running state.
 // Returns true if session was successfully marked as running (was not running before).
 // Returns false if session was already running.
+// Emits a "running" session_update event on success.
 func TrySetSessionRunning(sessionID string) bool {
 	activeMu.Lock()
-	defer activeMu.Unlock()
 
 	if activeSessions[sessionID] {
+		activeMu.Unlock()
 		return false
 	}
 	activeSessions[sessionID] = true
+	activeMu.Unlock()
+
+	// Emit event so frontends know the session started running
+	emitSessionEvent(sessionID, "running", false)
+
 	return true
 }
 
