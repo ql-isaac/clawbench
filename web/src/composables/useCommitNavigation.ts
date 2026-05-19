@@ -30,6 +30,14 @@ export function hasPendingCommitNavigation(): boolean {
 }
 
 /**
+ * Reset module-level state for testing.
+ * @internal
+ */
+export function _resetPendingShaForTesting() {
+    pendingSha.value = null
+}
+
+/**
  * The reactive pending SHA ref. GitHistory components can watch this
  * to handle navigation even when already mounted and active.
  */
@@ -73,9 +81,8 @@ export function useCommitNavigation(options: {
      * Ensures the commit info is in the commits array so breadcrumbs work.
      */
     async function navigateToCommit(sha: string) {
-        currentView.value = 'files'
-
-        // Resolve short SHA to full SHA and get commit info
+        // Resolve short SHA to full SHA and get commit info BEFORE switching view
+        // to avoid showing an empty files view while the async fetch is in progress.
         let commitInfo = commits.value.find(c => c.sha === sha || c.sha.startsWith(sha))
         if (!commitInfo) {
             // Try annotation cache first
@@ -98,6 +105,9 @@ export function useCommitNavigation(options: {
         // Use the full SHA from commit info for consistent state
         const fullSha = commitInfo?.sha || sha
         selectedSHA.value = fullSha
+
+        // Switch to files view only after commit info is resolved
+        currentView.value = 'files'
 
         loadCommitFiles(fullSha).catch(() => {})
     }
