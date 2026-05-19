@@ -5,7 +5,7 @@
 # 用法:
 #   ./server.sh              # 后台启动
 #   ./server.sh --fg         # 前台启动
-#   ./server.sh --stop       # 停止所有运行实例
+#   ./server.sh --stop       # 停止本项目的服务
 #   ./server.sh --restart    # 重启
 #
 
@@ -15,6 +15,10 @@ CONFIG="config/config.yaml"
 AUTO_PW_FILE=".clawbench/auto-password"
 
 RELEASE_PORT=20000
+
+# All runtime data under .clawbench/ (green portable deployment)
+PID_FILE=".clawbench/server.pid"
+LOG_FILE=".clawbench/server.log"
 
 # --- Inline utility functions (from scripts/common.sh) ---
 
@@ -107,44 +111,33 @@ _stop_servers() {
 
 # --- End inline utilities ---
 
-# PID and LOG files — default port uses legacy paths for backward compat.
-if [[ -n "$PORT" && "$PORT" != "$RELEASE_PORT" ]]; then
-    PID_FILE="/tmp/${NAME}-${PORT}.pid"
-    LOG_FILE="/tmp/${NAME}-${PORT}.log"
-else
-    PID_FILE="/tmp/${NAME}.pid"
-    LOG_FILE="/tmp/${NAME}-release.log"
-fi
+# Resolve effective port from config (fallback to default).
+_resolve_port() {
+    local port
+    port=$(grep "^port:" "$CONFIG" 2>/dev/null | awk '{print $2}' | tr -d '"')
+    echo "${port:-$RELEASE_PORT}"
+}
 
-# Stop ALL running clawbench instances by scanning PID files.
+EFFECTIVE_PORT=$(_resolve_port)
+
+# Stop only this project's instance using project-local PID file.
 _stop_release() {
-    local found=0
-    for pf in /tmp/${NAME}.pid /tmp/${NAME}-*.pid; do
-        [[ -f "$pf" ]] || continue
+    if [[ -f "$PID_FILE" ]]; then
         local pid
-        pid=$(cat "$pf")
+        pid=$(cat "$PID_FILE")
         if kill -0 "$pid" 2>/dev/null; then
-            local port
-            if [[ "$pf" == "/tmp/${NAME}.pid" ]]; then
-                port=$RELEASE_PORT
-            else
-                port=$(basename "$pf" | sed "s/${NAME}-//;s/\.pid//")
-            fi
-            echo "Stopping $NAME on port $port (PID $pid)..."
-            _stop_servers "$pf" "$port" "release backend"
-            found=1
+            echo "Stopping $NAME (PID $pid)..."
+            _stop_servers "$PID_FILE" "$EFFECTIVE_PORT" "release backend"
         else
-            rm -f "$pf"
+            echo "Stale PID file, cleaning up."
+            rm -f "$PID_FILE"
         fi
-    done
-
-    if [[ $found -eq 0 ]]; then
-        echo "No running $NAME instances found."
+    else
+        echo "No PID file found ($PID_FILE)."
     fi
 
     # Clear stale DuckDB lock files to resolve RAG lock conflicts
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local lock_file="$SCRIPT_DIR/.clawbench/rag.duckdb"
+    local lock_file=".clawbench/rag.duckdb"
     if [[ -f "${lock_file}.lock" ]]; then
         echo "Removing stale DuckDB lock..."
         rm -f "${lock_file}.lock"
@@ -157,12 +150,15 @@ start_release() {
 
     check_binary "$BIN"
 
+    # Ensure .clawbench directory exists
+    mkdir -p .clawbench
+
     local WATCH_DIR
     WATCH_DIR=$(get_watch_dir "$CONFIG")
     echo "=== Starting $NAME (release) ==="
     echo "  Binary:   $BIN"
     echo "  Config:   $CONFIG"
-    echo "  Port:     ${PORT:-$RELEASE_PORT}"
+    echo "  Port:     $EFFECTIVE_PORT"
     echo "  Watch:    ${WATCH_DIR:-default}"
     echo "  PIDFile:  $PID_FILE"
     echo "  Log:      $LOG_FILE"
@@ -170,25 +166,17 @@ start_release() {
     echo ""
 
     if [[ -n "$FOREGROUND" ]]; then
-        echo "Open http://localhost:${PORT:-$RELEASE_PORT} in your browser"
+        echo "Open http://localhost:$EFFECTIVE_PORT in your browser"
         echo ""
-        if [[ -n "$PORT" ]]; then
-            PORT=$PORT exec "$BIN"
-        else
-            exec "$BIN"
-        fi
+        PORT=$EFFECTIVE_PORT exec "$BIN"
     else
-        if [[ -n "$PORT" ]]; then
-            PORT=$PORT nohup $BIN >> "$LOG_FILE" 2>&1 &
-        else
-            nohup $BIN >> "$LOG_FILE" 2>&1 &
-        fi
+        PORT=$EFFECTIVE_PORT nohup $BIN >> "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
         disown $! 2>/dev/null
 
         sleep 0.5
         if kill -0 $(cat "$PID_FILE") 2>/dev/null; then
-            echo "Started (PID $(cat "$PID_FILE")) on port ${PORT:-$RELEASE_PORT}"
+            echo "Started (PID $(cat "$PID_FILE")) on port $EFFECTIVE_PORT"
             echo "Log: $LOG_FILE"
         else
             echo "Failed to start." >&2
