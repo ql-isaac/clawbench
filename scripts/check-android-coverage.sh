@@ -69,7 +69,9 @@ fi
 # Step 3: Try to get baseline coverage report
 BASELINE_XML=""
 # 3a. CI download step (already placed by workflow)
-for _bf in "$BASELINE_DIR/jacocoTestReport.xml" "$BASELINE_DIR/coverage/jacocoTestReport.xml"; do
+for _bf in "$BASELINE_DIR/jacocoTestReport.xml" \
+           "$BASELINE_DIR/coverage/jacocoTestReport.xml" \
+           "$BASELINE_DIR/android/app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml"; do
   if [ -f "$_bf" ]; then
     BASELINE_XML="$_bf"
     echo "ℹ Using baseline from .clawbench/baseline/"
@@ -80,7 +82,9 @@ if [ -z "$BASELINE_XML" ] && command -v gh &>/dev/null; then
   echo "ℹ Attempting baseline download via gh CLI..."
   mkdir -p "$BASELINE_DIR"
   if gh run download --name main-android-coverage --dir "$BASELINE_DIR" 2>/dev/null; then
-    for _bf in "$BASELINE_DIR/jacocoTestReport.xml" "$BASELINE_DIR/coverage/jacocoTestReport.xml"; do
+    for _bf in "$BASELINE_DIR/jacocoTestReport.xml" \
+           "$BASELINE_DIR/coverage/jacocoTestReport.xml" \
+           "$BASELINE_DIR/android/app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml"; do
       if [ -f "$_bf" ]; then
         BASELINE_XML="$_bf"
         echo "ℹ Baseline downloaded via gh CLI"
@@ -136,18 +140,33 @@ def git_to_jacoco_path(git_path):
 tree = ET.parse(coverage_xml)
 root = tree.getroot()
 
-# Tier 1: per-class LINE coverage
-current = {}
+# Tier 1: per-class LINE coverage (using sourcefile/line for consistency with baseline)
+# We use sourcefile/line ci/mi aggregation (same as baseline) so metrics are comparable.
+# Inner classes (e.g., Foo$1) are aggregated with their outer class (Foo).
+current_class_stmts = defaultdict(lambda: {"covered": 0, "total": 0})
 for pkg in root.findall(".//package"):
-    for cls in pkg.findall("class"):
-        for counter in cls.findall("counter"):
-            if counter.get("type") == "LINE":
-                covered = int(counter.get("covered", "0"))
-                missed = int(counter.get("missed", "0"))
-                total = covered + missed
-                if total > 0:
-                    class_name = cls.get("name", "").replace("/", ".")
-                    current[class_name] = (covered / total) * 100
+    pkg_name = pkg.get("name", "")
+    for sf in pkg.findall("sourcefile"):
+        sf_name = sf.get("name", "")
+        # Derive class key: package + sourcefile name (strip .java), aggregate inner classes
+        base_name = sf_name[:-5] if sf_name.endswith(".java") else sf_name  # strip .java
+        if pkg_name:
+            class_key = f"{pkg_name.replace('/', '.')}.{base_name}"
+        else:
+            class_key = base_name
+        for line_elem in sf.findall("line"):
+            ci = int(line_elem.get("ci", "0"))
+            mi = int(line_elem.get("mi", "0"))
+            total = ci + mi
+            if total > 0:
+                current_class_stmts[class_key]["total"] += total
+                if ci > 0:
+                    current_class_stmts[class_key]["covered"] += ci
+
+current = {}
+for cls_key, data in current_class_stmts.items():
+    if data["total"] > 0:
+        current[cls_key] = (data["covered"] / data["total"]) * 100
 
 # ══════════════════════════════════════════════════════════════════
 # TIER 1: Project Gate
@@ -200,8 +219,12 @@ else:
                     continue
                 total = ci + mi
                 if total > 0:
-                    # Derive class name from package + sourcefile
-                    class_key = pkg_name.replace("/", ".") if pkg_name else ""
+                    # Derive class key from package + sourcefile (strip .java), same as current
+                    base_name = sf_name[:-5] if sf_name.endswith(".java") else sf_name
+                    if pkg_name:
+                        class_key = f"{pkg_name.replace('/', '.')}.{base_name}"
+                    else:
+                        class_key = base_name
                     adjusted_class_stmts[class_key]["total"] += total
                     if ci > 0:
                         adjusted_class_stmts[class_key]["covered"] += ci
