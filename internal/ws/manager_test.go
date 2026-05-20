@@ -598,3 +598,167 @@ func TestManager_BroadcastEvent_JPushAlert_TaskUpdate(t *testing.T) {
 		t.Errorf("expected task alert, got %q", receivedAlert)
 	}
 }
+
+func TestManager_BroadcastEvent_JPushNotSentForRunning(t *testing.T) {
+	pushCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCalled = true
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// session_update with status "running" — should NOT trigger JPush
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID: "s1",
+			Status:    "running",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if pushCalled {
+		t.Error("JPush should NOT be called for running status")
+	}
+
+	// But the event should still be buffered
+	mgr.mu.Lock()
+	sub := mgr.subscriptions["client-1"]
+	mgr.mu.Unlock()
+	if len(sub.GetBufferedEvents()) != 1 {
+		t.Errorf("running event should still be buffered, got %d events", len(sub.GetBufferedEvents()))
+	}
+}
+
+func TestManager_BroadcastEvent_JPushSentForCompleted(t *testing.T) {
+	pushCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCalled = true
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// session_update with status "completed" — SHOULD trigger JPush
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID: "s1",
+			Status:    "completed",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if !pushCalled {
+		t.Error("JPush should be called for completed status")
+	}
+}
+
+func TestManager_BroadcastEvent_JPushNotSentForTaskRunning(t *testing.T) {
+	pushCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCalled = true
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// task_update with status "running" — should NOT trigger JPush
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "task_update",
+		Data: &TaskUpdateData{
+			TaskID: "t1",
+			Status: "running",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if pushCalled {
+		t.Error("JPush should NOT be called for task running status")
+	}
+}
+
+func TestManager_BroadcastEvent_JPushSentForCancelled(t *testing.T) {
+	pushCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCalled = true
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// session_update with status "cancelled" — SHOULD trigger JPush
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID: "s1",
+			Status:    "cancelled",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if !pushCalled {
+		t.Error("JPush should be called for cancelled status")
+	}
+}

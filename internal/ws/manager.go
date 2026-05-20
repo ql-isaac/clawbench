@@ -226,8 +226,19 @@ func (m *Manager) broadcastToSubscription(key string, msg ServerMessage) {
 		sub.bufferEvent(msg)
 	}
 
-	// Send JPush if we have a registration ID
-	if pushRegID != "" && m.jpush != nil && m.jpush.Enabled() {
+	// Send JPush only for terminal events (completed/cancelled/failed).
+	// Non-terminal events (running, etc.) are delivered via WS or buffered for replay,
+	// but should never trigger a push notification — the user doesn't need to be
+	// interrupted just because a session started running.
+	shouldPush := false
+	switch d := msg.Data.(type) {
+	case *SessionUpdateData:
+		shouldPush = d.Status == "completed" || d.Status == "cancelled"
+	case *TaskUpdateData:
+		shouldPush = d.Status == "completed" || d.Status == "failed" || d.Status == "cancelled"
+	}
+
+	if pushRegID != "" && m.jpush != nil && m.jpush.Enabled() && shouldPush {
 		sub.mu.Unlock() // unlock before potentially slow network call
 		extras := map[string]string{"event_type": msg.Event}
 		// Extract session_id or task_id from data
