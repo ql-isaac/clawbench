@@ -126,6 +126,12 @@ func InitDB(runFromServer ...bool) error {
 		CREATE INDEX IF NOT EXISTS idx_executions_session ON task_executions(session_id);
 		CREATE INDEX IF NOT EXISTS idx_sessions_type ON chat_sessions(session_type, project_path, deleted);
 
+		-- Covering index for session-based queries (GetChatMessageCount, GetAssistantMessageCount,
+		-- unread subquery, GetChatHistoryPaged) — avoids full table scan through large content rows.
+		CREATE INDEX IF NOT EXISTS idx_history_session_id ON chat_history(session_id, deleted, role, streaming, created_at);
+		-- Index for task listing by project
+		CREATE INDEX IF NOT EXISTS idx_tasks_project ON scheduled_tasks(project_path, created_at DESC);
+
 		CREATE TABLE IF NOT EXISTS tts_summaries (
 			cache_key TEXT PRIMARY KEY,
 			summary TEXT NOT NULL,

@@ -192,6 +192,36 @@ func getIndexes(t *testing.T, db *sql.DB) map[string]bool {
 	return indexes
 }
 
+// ---------- Performance indexes ----------
+
+func TestSchema_HistorySessionIDIndex(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	defer DB.Close()
+
+	indexes := getIndexes(t, DB)
+	assert.True(t, indexes["idx_history_session_id"], "expected idx_history_session_id index to exist")
+}
+
+func TestSchema_TasksProjectIndex(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	defer DB.Close()
+
+	indexes := getIndexes(t, DB)
+	assert.True(t, indexes["idx_tasks_project"], "expected idx_tasks_project index to exist")
+}
+
 // ---------- Table creation ----------
 
 func TestInitDB_CreatesTables(t *testing.T) {
