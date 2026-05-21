@@ -55,6 +55,7 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 			model TEXT DEFAULT '',
 			session_type TEXT NOT NULL DEFAULT 'chat',
 			external_session_id TEXT DEFAULT '',
+			thinking_effort TEXT DEFAULT '',
 			deleted INTEGER NOT NULL DEFAULT 0,
 			last_read_at DATETIME,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -236,6 +237,34 @@ func TestInitDB_ReadWriteSeparation(t *testing.T) {
 	assert.NoError(t, err, "DBRead should be able to query")
 
 	// Verify CloseDB closes both
+	CloseDB()
+}
+
+// TestCloseDB_NilDB verifies that CloseDB does not panic when DB and DBRead are nil.
+func TestCloseDB_NilDB(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	DB = nil
+	DBRead = nil
+
+	// Should not panic
+	CloseDB()
+}
+
+// TestCloseDB_NilDBRead verifies that CloseDB does not panic when DBRead is nil but DB is not.
+func TestCloseDB_NilDBRead(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	assert.NoError(t, err)
+	DB = db
+	DBRead = nil
+
+	// Should not panic, should close DB
 	CloseDB()
 }
 
