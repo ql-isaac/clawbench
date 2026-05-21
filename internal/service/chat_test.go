@@ -2147,8 +2147,9 @@ func TestGetLatestSessionID(t *testing.T) {
 	assert.Equal(t, s1, id)
 	assert.Equal(t, "claude", backend)
 
-	// Create another with more recent timestamp
+	// Create another and force its updated_at ahead (SQLite timestamps have second precision)
 	s2, _ := service.CreateSession("/project", "codebuddy", "Second", "codebuddy", "", "default", "chat")
+	service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime('now', '+1 second') WHERE id = ?", s2)
 
 	// Should return the newer one
 	id, backend, err = service.GetLatestSessionID("/project")
