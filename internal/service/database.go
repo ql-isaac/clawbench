@@ -144,7 +144,9 @@ func InitDB(runFromServer ...bool) error {
 		);
 
 		CREATE TABLE IF NOT EXISTS forwarded_ports (
-			port INTEGER PRIMARY KEY,
+			local_port INTEGER PRIMARY KEY,
+			port INTEGER NOT NULL,
+			host TEXT NOT NULL DEFAULT '',
 			name TEXT NOT NULL DEFAULT '',
 			protocol TEXT NOT NULL DEFAULT 'http',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -201,6 +203,29 @@ func InitDB(runFromServer ...bool) error {
 	if hasThinkingEffort == 0 {
 		if _, err := DB.Exec("ALTER TABLE chat_sessions ADD COLUMN thinking_effort TEXT DEFAULT ''"); err != nil {
 			return fmt.Errorf("failed to add thinking_effort column: %w", err)
+		}
+	}
+
+	// Migrate: add host column to forwarded_ports for custom target host
+	var hasForwardedPortHost int
+	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('forwarded_ports') WHERE name='host'").Scan(&hasForwardedPortHost)
+	if hasForwardedPortHost == 0 {
+		if _, err := DB.Exec("ALTER TABLE forwarded_ports ADD COLUMN host TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("failed to add host column to forwarded_ports: %w", err)
+		}
+	}
+
+	// Migrate: add local_port column for auto-assigned local port
+	// For existing rows, local_port = port (backward compatible)
+	var hasForwardedPortLocalPort int
+	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('forwarded_ports') WHERE name='local_port'").Scan(&hasForwardedPortLocalPort)
+	if hasForwardedPortLocalPort == 0 {
+		if _, err := DB.Exec("ALTER TABLE forwarded_ports ADD COLUMN local_port INTEGER"); err != nil {
+			return fmt.Errorf("failed to add local_port column to forwarded_ports: %w", err)
+		}
+		// Backfill: local_port = port for existing rows
+		if _, err := DB.Exec("UPDATE forwarded_ports SET local_port = port WHERE local_port IS NULL"); err != nil {
+			return fmt.Errorf("failed to backfill local_port in forwarded_ports: %w", err)
 		}
 	}
 

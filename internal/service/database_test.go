@@ -3,6 +3,8 @@ package service
 import (
 	"database/sql"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"clawbench/internal/model"
@@ -775,4 +777,327 @@ func TestGetChatQuickSend_OrderedBySortOrder(t *testing.T) {
 	assert.Equal(t, "C", items[0].Label)
 	assert.Equal(t, "A", items[1].Label)
 	assert.Equal(t, "B", items[2].Label)
+}
+
+// ---------- Forwarded ports schema: host, local_port columns ----------
+
+func TestSchema_ForwardedPortsColumns(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	columns := getTableColumns(t, DB, "forwarded_ports")
+	assert.Contains(t, columns, "local_port", "forwarded_ports should have local_port column")
+	assert.Contains(t, columns, "port", "forwarded_ports should have port column")
+	assert.Contains(t, columns, "host", "forwarded_ports should have host column")
+	assert.Contains(t, columns, "name", "forwarded_ports should have name column")
+	assert.Contains(t, columns, "protocol", "forwarded_ports should have protocol column")
+}
+
+func TestSchema_ForwardedPortsMigration_HostColumn(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Create DB with old schema (no host column)
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Verify host column exists after migration
+	columns := getTableColumns(t, DB, "forwarded_ports")
+	assert.Contains(t, columns, "host", "host column should exist after migration")
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_LocalPortColumn(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Create DB with schema that includes all columns
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Insert a row and verify local_port defaults correctly
+	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (8080, 8080, '', 'test', 'http')")
+	assert.NoError(t, err)
+
+	var localPort, port int
+	var host string
+	err = DB.QueryRow("SELECT local_port, port, host FROM forwarded_ports WHERE local_port = 8080").Scan(&localPort, &port, &host)
+	assert.NoError(t, err)
+	assert.Equal(t, 8080, localPort)
+	assert.Equal(t, 8080, port)
+	assert.Equal(t, "", host)
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_LocalPortBackfill(t *testing.T) {
+	// Simulate migration: old table without local_port → add column + backfill
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// First init creates the full schema
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Insert with local_port = port (backward compatible default)
+	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (3000, 3000, '', 'app', 'http')")
+	assert.NoError(t, err)
+
+	var localPort, port int
+	err = DB.QueryRow("SELECT local_port, port FROM forwarded_ports WHERE port = 3000").Scan(&localPort, &port)
+	assert.NoError(t, err)
+	assert.Equal(t, port, localPort, "local_port should equal port for backward compatibility")
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_HostDefaultValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Insert without specifying host — should default to empty string
+	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, name, protocol) VALUES (5173, 5173, 'vite', 'http')")
+	assert.NoError(t, err)
+
+	var host string
+	err = DB.QueryRow("SELECT host FROM forwarded_ports WHERE local_port = 5173").Scan(&host)
+	assert.NoError(t, err)
+	assert.Equal(t, "", host, "host should default to empty string")
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_HostWithCustomValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Insert with a custom host value
+	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (8081, 8080, '192.168.1.100', 'remote', 'http')")
+	assert.NoError(t, err)
+
+	var host string
+	err = DB.QueryRow("SELECT host FROM forwarded_ports WHERE local_port = 8081").Scan(&host)
+	assert.NoError(t, err)
+	assert.Equal(t, "192.168.1.100", host)
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_Idempotent(t *testing.T) {
+	// Running InitDB twice should not fail (migrations are idempotent)
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	CloseDB()
+
+	// Re-init should not fail even though columns already exist
+	err = InitDB()
+	assert.NoError(t, err)
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
+	// Simulate upgrading from old schema without host column
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Step 1: Create DB with old schema (no host column, uses port as primary key)
+	dbDir := filepath.Join(tmpDir, ".clawbench")
+	assert.NoError(t, os.MkdirAll(dbDir, 0755))
+	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
+	assert.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+
+	// Create old-style table without host column and without local_port
+	// Other tables must have enough columns so InitDB's index creation succeeds
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS forwarded_ports (
+			port INTEGER PRIMARY KEY,
+			name TEXT NOT NULL DEFAULT '',
+			protocol TEXT NOT NULL DEFAULT 'http',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS chat_sessions (
+			id TEXT PRIMARY KEY,
+			project_path TEXT NOT NULL,
+			backend TEXT NOT NULL,
+			title TEXT NOT NULL,
+			session_type TEXT NOT NULL DEFAULT 'chat',
+			deleted INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(project_path, backend, id)
+		);
+		CREATE TABLE IF NOT EXISTS chat_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_path TEXT NOT NULL,
+			role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+			content TEXT NOT NULL,
+			session_id TEXT,
+			backend TEXT NOT NULL DEFAULT 'claude',
+			streaming INTEGER NOT NULL DEFAULT 0,
+			deleted INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS scheduled_tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_path TEXT NOT NULL,
+			name TEXT NOT NULL,
+			cron_expr TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			prompt TEXT NOT NULL,
+			session_id TEXT DEFAULT '',
+			status TEXT DEFAULT 'active',
+			repeat_mode TEXT DEFAULT 'unlimited',
+			max_runs INTEGER DEFAULT 0,
+			last_run_at DATETIME,
+			next_run_at DATETIME,
+			run_count INTEGER DEFAULT 0,
+			last_read_at DATETIME,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS task_executions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id INTEGER NOT NULL,
+			session_id TEXT NOT NULL,
+			trigger_type TEXT NOT NULL DEFAULT 'auto',
+			status TEXT NOT NULL DEFAULT 'running',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS tts_summaries (
+			cache_key TEXT PRIMARY KEY,
+			summary TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS terminal_quick_commands (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			label TEXT NOT NULL,
+			command TEXT NOT NULL,
+			hidden INTEGER NOT NULL DEFAULT 0,
+			auto_execute INTEGER NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS chat_quick_send (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			label TEXT NOT NULL,
+			command TEXT NOT NULL,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS recent_projects (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_path TEXT UNIQUE NOT NULL,
+			accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS ai_raw_responses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id TEXT NOT NULL,
+			message_id INTEGER NOT NULL,
+			backend TEXT NOT NULL DEFAULT '',
+			raw_output TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	assert.NoError(t, err)
+
+	// Insert data with old schema (port is primary key)
+	_, err = db.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (8080, 'app', 'http')")
+	assert.NoError(t, err)
+	_, err = db.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (3000, 'web', 'https')")
+	assert.NoError(t, err)
+
+	db.Close()
+
+	// Step 2: Call InitDB which should detect missing columns and run migrations
+	err = InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	// Step 3: Verify host column was added
+	columns := getTableColumns(t, DB, "forwarded_ports")
+	assert.Contains(t, columns, "host", "host column should exist after migration")
+	assert.Contains(t, columns, "local_port", "local_port column should exist after migration")
+
+	// Step 4: Verify existing data is preserved and local_port is backfilled
+	rows, err := DB.Query("SELECT port, local_port, host, name FROM forwarded_ports ORDER BY port")
+	assert.NoError(t, err)
+	defer rows.Close()
+
+	var count int
+	for rows.Next() {
+		var port, localPort int
+		var host, name string
+		assert.NoError(t, rows.Scan(&port, &localPort, &host, &name))
+		assert.Equal(t, port, localPort, "local_port should equal port after backfill")
+		assert.Equal(t, "", host, "host should default to empty string after migration")
+		count++
+	}
+	assert.Equal(t, 2, count, "should have 2 rows after migration")
 }

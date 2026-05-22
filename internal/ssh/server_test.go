@@ -99,7 +99,7 @@ func startEchoServer(t *testing.T) int {
 
 func newTestRegistry(t *testing.T) *service.ProxyRegistry {
 	t.Helper()
-	r := service.NewProxyRegistry("1024-65535", 0)
+	r := service.NewProxyRegistry(0)
 	t.Cleanup(func() { r.Stop() })
 	return r
 }
@@ -200,7 +200,8 @@ func TestSSHPortForward_AllowedButUnregisteredPortWorks(t *testing.T) {
 
 func TestSSHPortForward_DisallowedPortRejectedByTunnel(t *testing.T) {
 	// Create a registry that only allows specific ports
-	r := service.NewProxyRegistry("3000-4000", 0)
+	r := service.NewProxyRegistry(0)
+	r.SetAllowedPorts("3000-4000")
 	defer r.Stop()
 
 	srv := testServerHelper(t, "test-password", r)
@@ -216,7 +217,7 @@ func TestSSHPortForward_DisallowedPortRejectedByTunnel(t *testing.T) {
 func TestSSHPortForward_RegisteredPortWorks(t *testing.T) {
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	portReg.RegisterPort(echoPort, "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -250,8 +251,8 @@ func TestSSHPortForward_MultiplePorts(t *testing.T) {
 	// Start two echo servers
 	echoPort1 := startEchoServer(t)
 	echoPort2 := startEchoServer(t)
-	portReg.RegisterPort(echoPort1, "echo1", "http")
-	portReg.RegisterPort(echoPort2, "echo2", "http")
+	portReg.RegisterPort(echoPort1, "", "echo1", "http")
+	portReg.RegisterPort(echoPort2, "", "echo2", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -292,11 +293,12 @@ func TestSSHPortForward_MultiplePorts(t *testing.T) {
 
 func TestSSHPortForward_DisallowedPortRejected(t *testing.T) {
 	// Create a registry that only allows specific ports
-	r := service.NewProxyRegistry("3000-4000", 0)
+	r := service.NewProxyRegistry(0)
+	r.SetAllowedPorts("3000-4000")
 	defer r.Stop()
 
 	// RegisterPort should reject a port outside the allowed range
-	err := r.RegisterPort(8080, "outside-range", "http")
+	err := r.RegisterPort(8080, "", "outside-range", "http")
 	if err == nil {
 		t.Error("expected RegisterPort to reject port 8080 (outside allowed range 3000-4000)")
 	}
@@ -310,7 +312,7 @@ func TestSSHPortForward_DisallowedPortRejected(t *testing.T) {
 func TestSSHPortForward_LargeDataTransfer(t *testing.T) {
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	portReg.RegisterPort(echoPort, "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -558,7 +560,7 @@ func TestSSHServer_ConnectionStats_MultipleClients(t *testing.T) {
 func TestSSHServer_ConnectionStats_ActiveChannels(t *testing.T) {
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	portReg.RegisterPort(echoPort, "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -689,4 +691,40 @@ func TestSSHServer_SuccessfulAuthResetsCounter(t *testing.T) {
 	// Should still be able to connect with correct password
 	client2 := testSSHClient(t, srv.addr, "clawbench", "correct-password")
 	client2.Close()
+}
+
+// --- IPv6 / JoinHostPort Tests ---
+
+func TestSSHServer_JoinHostPort_LocalhostTarget(t *testing.T) {
+	// Verify that the SSH server correctly uses net.JoinHostPort for localhost targets.
+	// This tests the fix from fmt.Sprintf("127.0.0.1:%d") → net.JoinHostPort.
+	portReg := newTestRegistry(t)
+	echoPort := startEchoServer(t)
+	portReg.RegisterPort(echoPort, "", "echo", "http")
+
+	srv := testServerHelper(t, "test-password", portReg)
+	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
+
+	// Connect using "localhost" as the target — should be normalized to 127.0.0.1
+	conn, err := client.Dial("tcp", fmt.Sprintf("localhost:%d", echoPort))
+	if err != nil {
+		t.Fatalf("expected port forwarding via localhost to work, got: %v", err)
+	}
+	defer conn.Close()
+
+	testMsg := []byte("hello via localhost")
+	_, err = conn.Write(testMsg)
+	if err != nil {
+		t.Fatalf("failed to write: %v", err)
+	}
+
+	buf := make([]byte, 1024)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	n, err := conn.Read(buf)
+	if err != nil {
+		t.Fatalf("failed to read: %v", err)
+	}
+	if string(buf[:n]) != string(testMsg) {
+		t.Errorf("echo mismatch: got %q, want %q", string(buf[:n]), string(testMsg))
+	}
 }

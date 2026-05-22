@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -119,7 +120,7 @@ func extractIP(addr net.Addr) string {
 
 // Server is an SSH server that supports local port forwarding (direct-tcpip channels).
 // It allows authenticated clients to create `-L` tunnels to forward local ports
-// to services running on the server (127.0.0.1).
+// to any reachable host:port (localhost, LAN, or remote).
 type Server struct {
 	mu             sync.Mutex
 	listener       net.Listener
@@ -346,6 +347,12 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 
 	targetPort := int(d.PortToConnect)
 
+	// Resolve the target host — normalize "localhost"/empty, resolve DNS hostnames
+	targetHost := d.HostToConnect
+	if targetHost == "" || targetHost == "localhost" {
+		targetHost = "127.0.0.1"
+	}
+
 	// Validate the target port — only check allowed range.
 	// SSH tunnels operate at the transport layer and don't need URL-rewriting
 	// metadata, so IsPortRegistered (which tracks protocol info for the HTTP
@@ -376,8 +383,8 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 	// Discard channel-specific requests
 	go gossh.DiscardRequests(requests)
 
-	// Connect to the local service
-	targetAddr := fmt.Sprintf("127.0.0.1:%d", targetPort)
+	// Connect to the target host:port
+	targetAddr := net.JoinHostPort(targetHost, strconv.Itoa(targetPort))
 	backend, err := net.Dial("tcp", targetAddr)
 	if err != nil {
 		slog.Debug("ssh: backend unreachable", slog.String("target", targetAddr), slog.String("err", err.Error()))
@@ -386,8 +393,8 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 	defer backend.Close()
 
 	slog.Debug("ssh: forwarding connection",
-		slog.Int("port", targetPort),
-		slog.String("originator", fmt.Sprintf("%s:%d", d.OriginatorAddress, d.OriginatorPort)),
+		slog.String("target", targetAddr),
+		slog.String("originator", net.JoinHostPort(d.OriginatorAddress, strconv.FormatUint(uint64(d.OriginatorPort), 10))),
 	)
 
 	// Bidirectional relay
