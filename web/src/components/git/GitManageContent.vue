@@ -26,6 +26,7 @@
           :initial-collapsed="false"
           hide-header
           @switch-worktree="onSwitchWorktree"
+          @delete-worktree="onDeleteWorktree"
           @retry="loadWorktrees"
         />
       </div>
@@ -41,6 +42,7 @@
           :initial-collapsed="false"
           hide-header
           @switch-branch="onSwitchBranch"
+          @delete-branch="onDeleteBranch"
           @retry="loadBranches"
         />
       </div>
@@ -53,6 +55,7 @@
           :error="tagsError"
           @retry="loadTags"
           @switch-tag="onSwitchTag"
+          @delete-tag="onDeleteTag"
         />
       </div>
     </div>
@@ -79,7 +82,7 @@ import { ref, computed, onMounted, inject, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { GitBranch, FolderTree, Tag } from 'lucide-vue-next'
 import { store } from '@/stores/app.ts'
-import { apiGet, apiPost } from '@/utils/api'
+import { apiGet, apiPost, apiDelete } from '@/utils/api'
 import { useDialog } from '@/composables/useDialog.ts'
 import GitWorktreeList from './GitWorktreeList.vue'
 import GitBranchList from './GitBranchList.vue'
@@ -276,6 +279,71 @@ async function onSwitchTag(tag: any) {
     }
   } finally {
     checkoutInProgress.value = false
+  }
+}
+
+async function onDeleteBranch(branch: any) {
+  const confirmed = await dialog.confirm(
+    t('git.manage.deleteBranchConfirm', { name: branch.name }),
+    { title: t('git.manage.deleteBranch'), dangerous: true },
+  )
+  if (!confirmed) return
+  try {
+    const result = await apiDelete<{ success: boolean; error?: string; errorDetail?: string }>('/api/git/branch', { body: { name: branch.name } })
+    if (result.success) {
+      await Promise.all([loadBranches(), loadWorktrees()])
+    } else if (result.error) {
+      const errorMessages: Record<string, string> = {
+        cannot_delete_current: t('git.manage.cannotDeleteCurrent'),
+        cannot_delete_default: t('git.manage.cannotDeleteDefault'),
+        branch_not_found: t('git.manage.branchNotFound'),
+      }
+      await dialog.alert(errorMessages[result.error] || result.errorDetail || t('git.manage.deleteFailed'))
+      await loadBranches()
+    }
+  } catch {
+    await dialog.alert(t('git.manage.deleteFailed'))
+  }
+}
+
+async function onDeleteWorktree(wt: any) {
+  const confirmed = await dialog.confirm(
+    t('git.manage.deleteWorktreeConfirm', { name: wt.branch || wt.path }),
+    { title: t('git.manage.deleteWorktree'), dangerous: true },
+  )
+  if (!confirmed) return
+  try {
+    const result = await apiDelete<{ success: boolean; error?: string; errorDetail?: string }>('/api/git/worktrees', { body: { path: wt.path } })
+    if (result.success) {
+      await Promise.all([loadWorktrees(), loadBranches()])
+    } else if (result.error) {
+      const errorMessages: Record<string, string> = {
+        cannot_delete_current: t('git.manage.cannotDeleteCurrentWorktree'),
+      }
+      await dialog.alert(errorMessages[result.error] || result.errorDetail || t('git.manage.deleteFailed'))
+      await loadWorktrees()
+    }
+  } catch {
+    await dialog.alert(t('git.manage.deleteFailed'))
+  }
+}
+
+async function onDeleteTag(tag: any) {
+  const confirmed = await dialog.confirm(
+    t('git.manage.deleteTagConfirm', { name: tag.name }),
+    { title: t('git.manage.deleteTag'), dangerous: true },
+  )
+  if (!confirmed) return
+  try {
+    const result = await apiDelete<{ success: boolean; error?: string; errorDetail?: string }>('/api/git/tags', { body: { name: tag.name } })
+    if (result.success) {
+      await loadTags()
+    } else if (result.error) {
+      await dialog.alert(result.errorDetail || t('git.manage.deleteFailed'))
+      await loadTags()
+    }
+  } catch {
+    await dialog.alert(t('git.manage.deleteFailed'))
   }
 }
 </script>

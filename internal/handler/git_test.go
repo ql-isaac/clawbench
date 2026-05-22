@@ -2211,3 +2211,353 @@ func TestServeGitWorktrees_ChangeCountClean(t *testing.T) {
 	assert.True(t, ok, "changeCount should be a number")
 	assert.Equal(t, 0, int(changeCount))
 }
+
+// --- serveGitDeleteBranch ---
+
+func TestServeGitDeleteBranch_Success(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Create a second branch
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+	run("git", "branch", "feature-x")
+
+	req := newRequest(t, http.MethodDelete, "/api/git/branch", map[string]interface{}{
+		"name": "feature-x",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitBranch, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, true, resp["success"])
+}
+
+func TestServeGitDeleteBranch_CurrentBranch(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/branch", map[string]interface{}{
+		"name": "main",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitBranch, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, false, resp["success"])
+	assert.Equal(t, "cannot_delete_current", resp["error"])
+}
+
+func TestServeGitDeleteBranch_DefaultBranch(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Create and switch to a non-default branch
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+	run("git", "checkout", "-b", "feature-y")
+	// Now current branch is feature-y, but main is still default
+
+	req := newRequest(t, http.MethodDelete, "/api/git/branch", map[string]interface{}{
+		"name": "main",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitBranch, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, false, resp["success"])
+	assert.Equal(t, "cannot_delete_default", resp["error"])
+}
+
+func TestServeGitDeleteBranch_NotFound(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/branch", map[string]interface{}{
+		"name": "nonexistent",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitBranch, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, false, resp["success"])
+	assert.Equal(t, "branch_not_found", resp["error"])
+}
+
+func TestServeGitDeleteBranch_EmptyName(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/branch", map[string]interface{}{
+		"name": "",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitBranch, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+func TestServeGitDeleteBranch_NotGitRepo(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodDelete, "/api/git/branch", map[string]interface{}{
+		"name": "some-branch",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitBranch, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+func TestServeGitDeleteBranch_UnmergedForce(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+	// Create branch, make a commit on it, switch back to main
+	run("git", "checkout", "-b", "unmerged-branch")
+	createTestFile(t, env.ProjectDir, "unmerged.txt", "unmerged content")
+	run("git", "add", ".")
+	run("git", "commit", "-m", "unmerged commit")
+	run("git", "checkout", "main")
+
+	// Try to delete unmerged branch — should force delete
+	req := newRequest(t, http.MethodDelete, "/api/git/branch", map[string]interface{}{
+		"name": "unmerged-branch",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitBranch, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, true, resp["success"])
+}
+
+// --- serveGitDeleteWorktree ---
+
+func TestServeGitDeleteWorktree_Success(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+	// Create a worktree
+	wtPath := filepath.Join(filepath.Dir(env.ProjectDir), "wt-test")
+	run("git", "worktree", "add", wtPath, "-b", "wt-branch")
+
+	req := newRequest(t, http.MethodDelete, "/api/git/worktrees", map[string]interface{}{
+		"path": wtPath,
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, true, resp["success"])
+}
+
+func TestServeGitDeleteWorktree_CurrentWorktree(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/worktrees", map[string]interface{}{
+		"path": env.ProjectDir,
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, false, resp["success"])
+	assert.Equal(t, "cannot_delete_current", resp["error"])
+}
+
+func TestServeGitDeleteWorktree_EmptyPath(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/worktrees", map[string]interface{}{
+		"path": "",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitWorktrees, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+func TestServeGitDeleteWorktree_NotGitRepo(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodDelete, "/api/git/worktrees", map[string]interface{}{
+		"path": "/some/path",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitWorktrees, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+// --- serveGitDeleteTag ---
+
+func TestServeGitDeleteTag_Success(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+	run("git", "tag", "v1.0")
+
+	req := newRequest(t, http.MethodDelete, "/api/git/tags", map[string]interface{}{
+		"name": "v1.0",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitTags, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, true, resp["success"])
+}
+
+func TestServeGitDeleteTag_NotFound(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/tags", map[string]interface{}{
+		"name": "nonexistent",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitTags, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, false, resp["success"])
+	assert.Equal(t, "delete_failed", resp["error"])
+}
+
+func TestServeGitDeleteTag_EmptyName(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/tags", map[string]interface{}{
+		"name": "",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitTags, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+func TestServeGitDeleteTag_NotGitRepo(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodDelete, "/api/git/tags", map[string]interface{}{
+		"name": "v1.0",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitTags, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+// Verify DELETE on branch/worktree/tags doesn't break GET (method dispatch)
+
+func TestServeGitBranch_GET_StillWorks(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodGet, "/api/git/branch", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitBranch, req)
+	assertOK(t, w)
+}
+
+func TestServeGitTags_GET_StillWorks(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodGet, "/api/git/tags", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitTags, req)
+	assertOK(t, w)
+}

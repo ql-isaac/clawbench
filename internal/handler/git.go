@@ -157,7 +157,12 @@ func ServeGitProjectHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeGitBranch returns the current branch name for the project.
+// DELETE /api/git/branch deletes a local branch.
 func ServeGitBranch(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		serveGitDeleteBranch(w, r)
+		return
+	}
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
@@ -1156,7 +1161,12 @@ func ServeGitBranches(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeGitWorktrees returns all git worktrees for the project.
+// DELETE /api/git/worktrees deletes a git worktree.
 func ServeGitWorktrees(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		serveGitDeleteWorktree(w, r)
+		return
+	}
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
@@ -1373,7 +1383,12 @@ type tagInfo struct {
 }
 
 // ServeGitTags returns all tags with commit info.
+// DELETE /api/git/tags deletes a local tag.
 func ServeGitTags(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		serveGitDeleteTag(w, r)
+		return
+	}
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
@@ -1452,5 +1467,196 @@ func ServeGitTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"isGit": true,
 		"tags":  tags,
+	})
+}
+
+// serveGitDeleteBranch deletes a local branch.
+func serveGitDeleteBranch(w http.ResponseWriter, r *http.Request) {
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
+	if !isGitRepo(projectPath) {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "not_git_repo",
+		})
+		return
+	}
+
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "invalid_request",
+		})
+		return
+	}
+
+	// Check if it's the current branch
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	cmd.Dir = projectPath
+	curOut, _ := cmd.Output()
+	currentBranch := strings.TrimSpace(string(curOut))
+	if currentBranch == body.Name {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"error":   "cannot_delete_current",
+		})
+		return
+	}
+
+	// Check if it's the default branch
+	defaultBranch := detectDefaultBranch(projectPath)
+	if defaultBranch == body.Name {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"error":   "cannot_delete_default",
+		})
+		return
+	}
+
+	// Try safe delete first (-d), fall back to force (-D)
+	cmd = exec.Command("git", "branch", "-d", body.Name)
+	cmd.Dir = projectPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		errMsg := strings.TrimSpace(string(out))
+		if strings.Contains(errMsg, "not fully merged") || strings.Contains(errMsg, "not merged") {
+			cmd = exec.Command("git", "branch", "-D", body.Name)
+			cmd.Dir = projectPath
+			out, err = cmd.CombinedOutput()
+		}
+		if err != nil {
+			errMsg = strings.TrimSpace(string(out))
+			errorCode := "delete_failed"
+			if strings.Contains(errMsg, "not found") || strings.Contains(errMsg, "did not match") {
+				errorCode = "branch_not_found"
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"success":     false,
+				"error":       errorCode,
+				"errorDetail": errMsg,
+			})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
+}
+
+// serveGitDeleteWorktree removes a git worktree.
+func serveGitDeleteWorktree(w http.ResponseWriter, r *http.Request) {
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
+	if !isGitRepo(projectPath) {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "not_git_repo",
+		})
+		return
+	}
+
+	var body struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Path) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "invalid_request",
+		})
+		return
+	}
+
+	// Check if it's the current worktree
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = projectPath
+	output, _ := cmd.CombinedOutput()
+	trees := parseWorktreePorcelain(string(output), projectPath)
+	for _, wt := range trees {
+		if wt.Path == body.Path && wt.IsCurrent {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"success": false,
+				"error":   "cannot_delete_current",
+			})
+			return
+		}
+	}
+
+	// Remove worktree
+	cmd = exec.Command("git", "worktree", "remove", body.Path)
+	cmd.Dir = projectPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		errMsg := strings.TrimSpace(string(out))
+		if strings.Contains(errMsg, "dirty") || strings.Contains(errMsg, "modified") || strings.Contains(errMsg, "uncommitted") {
+			cmd = exec.Command("git", "worktree", "remove", "--force", body.Path)
+			cmd.Dir = projectPath
+			out, err = cmd.CombinedOutput()
+		}
+		if err != nil {
+			errMsg = strings.TrimSpace(string(out))
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"success":     false,
+				"error":       "delete_failed",
+				"errorDetail": errMsg,
+			})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
+}
+
+// serveGitDeleteTag deletes a local tag.
+func serveGitDeleteTag(w http.ResponseWriter, r *http.Request) {
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
+	if !isGitRepo(projectPath) {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "not_git_repo",
+		})
+		return
+	}
+
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "invalid_request",
+		})
+		return
+	}
+
+	cmd := exec.Command("git", "tag", "-d", body.Name)
+	cmd.Dir = projectPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success":     false,
+			"error":       "delete_failed",
+			"errorDetail": strings.TrimSpace(string(out)),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
 	})
 }

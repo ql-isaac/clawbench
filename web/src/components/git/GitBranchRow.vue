@@ -1,28 +1,34 @@
 <template>
-  <div
-    class="git-branch-row"
-    :class="{ current: branch.isCurrent, switching }"
-    @click="handleClick"
+  <SwipeToDeleteRow
+    :deletable="!branch.isCurrent && !branch.isDefault"
+    @delete="$emit('delete', branch)"
   >
-    <div class="branch-main">
-      <GitBranch :size="14" class="branch-icon" />
-      <span class="branch-name">{{ branch.name }}</span>
+    <div
+      class="git-branch-row"
+      :class="{ current: branch.isCurrent, switching }"
+      @click="handleClick"
+    >
+      <div class="branch-main">
+        <GitBranch :size="14" class="branch-icon" />
+        <span class="branch-name">{{ branch.name }}</span>
+      </div>
+      <div class="branch-right">
+        <span v-if="branch.isDefault" class="branch-default-badge">{{ t('git.manage.default') }}</span>
+        <span v-if="branch.ahead > 0" class="track-ahead">{{ t('git.manage.ahead') }}{{ branch.ahead }}</span>
+        <span v-if="branch.behind > 0" class="track-behind">{{ t('git.manage.behind') }}{{ branch.behind }}</span>
+      </div>
+      <div v-if="switching" class="branch-spinner">
+        <div class="spinner" style="width:14px;height:14px;border-width:2px;" />
+      </div>
     </div>
-    <div class="branch-right">
-      <span v-if="branch.isDefault" class="branch-default-badge">{{ t('git.manage.default') }}</span>
-      <span v-if="branch.ahead > 0" class="track-ahead">{{ t('git.manage.ahead') }}{{ branch.ahead }}</span>
-      <span v-if="branch.behind > 0" class="track-behind">{{ t('git.manage.behind') }}{{ branch.behind }}</span>
-    </div>
-    <div v-if="switching" class="branch-spinner">
-      <div class="spinner" style="width:14px;height:14px;border-width:2px;" />
-    </div>
-  </div>
+  </SwipeToDeleteRow>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { GitBranch } from 'lucide-vue-next'
+import SwipeToDeleteRow from './SwipeToDeleteRow.vue'
 
 const { t } = useI18n()
 
@@ -31,7 +37,7 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['switch'])
+const emit = defineEmits(['switch', 'delete'])
 
 const switching = ref(false)
 

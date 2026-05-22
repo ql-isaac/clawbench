@@ -9,21 +9,25 @@
     </div>
     <div v-else-if="tags.length === 0" class="section-empty">{{ t('git.manage.noTags') }}</div>
     <template v-else>
-      <div
+      <SwipeToDeleteRow
         v-for="tag in tags"
         :key="tag.name"
-        class="tag-row"
-        @click="$emit('switch-tag', tag)"
+        @delete="$emit('delete-tag', tag)"
       >
-        <div class="tag-main">
-          <Tag :size="14" class="tag-icon" />
-          <span class="tag-name">{{ tag.name }}</span>
+        <div
+          class="tag-row"
+          @click="$emit('switch-tag', tag)"
+        >
+          <div class="tag-main">
+            <Tag :size="14" class="tag-icon" />
+            <span class="tag-name">{{ tag.name }}</span>
+          </div>
+          <div v-if="tag.msg" class="tag-msg" :title="tag.msg">{{ tag.msg }}</div>
+          <div class="tag-meta">
+            <span v-if="tag.date" class="tag-date">{{ shortDate(tag.date) }}</span>
+          </div>
         </div>
-        <div v-if="tag.msg" class="tag-msg" :title="tag.msg">{{ tag.msg }}</div>
-        <div class="tag-meta">
-          <span v-if="tag.date" class="tag-date">{{ shortDate(tag.date) }}</span>
-        </div>
-      </div>
+      </SwipeToDeleteRow>
     </template>
   </div>
 </template>
@@ -31,6 +35,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { Tag } from 'lucide-vue-next'
+import SwipeToDeleteRow from './SwipeToDeleteRow.vue'
 
 const { t } = useI18n()
 
@@ -40,7 +45,7 @@ defineProps<{
   error?: boolean
 }>()
 
-defineEmits(['retry', 'switch-tag'])
+defineEmits(['retry', 'switch-tag', 'delete-tag'])
 
 function shortDate(dateStr: string) {
   if (!dateStr) return ''

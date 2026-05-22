@@ -1,28 +1,34 @@
 <template>
-  <div
-    class="git-worktree-row"
-    :class="{ current: worktree.isCurrent, locked: worktree.locked, missing: worktree.missing }"
-    @click="!worktree.isCurrent && !worktree.missing && $emit('switch', worktree)"
+  <SwipeToDeleteRow
+    :deletable="!worktree.isCurrent"
+    @delete="$emit('delete', worktree)"
   >
-    <div class="wt-row-main">
-      <div class="wt-row-name">
-        <FolderTree :size="14" class="wt-row-icon" />
-        <span>{{ worktree.branch || '—' }}</span>
+    <div
+      class="git-worktree-row"
+      :class="{ current: worktree.isCurrent, locked: worktree.locked, missing: worktree.missing }"
+      @click="!worktree.isCurrent && !worktree.missing && $emit('switch', worktree)"
+    >
+      <div class="wt-row-main">
+        <div class="wt-row-name">
+          <FolderTree :size="14" class="wt-row-icon" />
+          <span>{{ worktree.branch || '—' }}</span>
+        </div>
+        <div class="wt-row-path">{{ worktree.path }}</div>
       </div>
-      <div class="wt-row-path">{{ worktree.path }}</div>
+      <div class="wt-row-badges">
+        <span v-if="worktree.dirty" class="wt-badge wt-badge-dirty">{{ t('git.manage.dirty', { count: worktree.changeCount || worktree.untrackedCount }) }}</span>
+        <span v-else class="wt-badge wt-badge-clean">{{ t('git.manage.clean') }}</span>
+        <span v-if="worktree.locked" class="wt-badge wt-badge-locked">{{ t('git.manage.locked') }}</span>
+        <span v-if="worktree.missing" class="wt-badge wt-badge-missing">{{ t('git.manage.pathMissing') }}</span>
+      </div>
     </div>
-    <div class="wt-row-badges">
-      <span v-if="worktree.dirty" class="wt-badge wt-badge-dirty">{{ t('git.manage.dirty', { count: worktree.changeCount || worktree.untrackedCount }) }}</span>
-      <span v-else class="wt-badge wt-badge-clean">{{ t('git.manage.clean') }}</span>
-      <span v-if="worktree.locked" class="wt-badge wt-badge-locked">{{ t('git.manage.locked') }}</span>
-      <span v-if="worktree.missing" class="wt-badge wt-badge-missing">{{ t('git.manage.pathMissing') }}</span>
-    </div>
-  </div>
+  </SwipeToDeleteRow>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { FolderTree } from 'lucide-vue-next'
+import SwipeToDeleteRow from './SwipeToDeleteRow.vue'
 
 const { t } = useI18n()
 
@@ -30,7 +36,7 @@ defineProps({
   worktree: { type: Object, required: true },
 })
 
-defineEmits(['switch'])
+defineEmits(['switch', 'delete'])
 </script>
 
 <style scoped>

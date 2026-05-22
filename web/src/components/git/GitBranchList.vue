@@ -25,6 +25,7 @@
           :branch="b"
           :disabled="checkoutInProgress"
           @switch="$emit('switch-branch', $event)"
+          @delete="$emit('delete-branch', $event)"
         />
       </template>
     </div>
@@ -57,7 +58,7 @@ const props = withDefaults(defineProps<{
   hideHeader: false,
 })
 
-defineEmits(['switch-branch', 'retry'])
+defineEmits(['switch-branch', 'delete-branch', 'retry'])
 
 const STORAGE_KEY = 'git-branch-collapsed'
 const collapsed = ref(false)

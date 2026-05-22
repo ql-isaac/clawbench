@@ -23,6 +23,7 @@
           :key="wt.path"
           :worktree="wt"
           @switch="$emit('switch-worktree', $event)"
+          @delete="$emit('delete-worktree', $event)"
         />
       </div>
     </div>
@@ -51,7 +52,7 @@ const props = withDefaults(defineProps<{
   hideHeader: false,
 })
 
-defineEmits(['switch-worktree', 'retry'])
+defineEmits(['switch-worktree', 'delete-worktree', 'retry'])
 
 const STORAGE_KEY = 'git-worktree-collapsed'
 const collapsed = ref(false)
