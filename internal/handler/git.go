@@ -1576,13 +1576,20 @@ func serveGitDeleteWorktree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve symlinks on body.Path so comparisons work on macOS
+	// where /var is a symlink to /private/var.
+	deletePath := body.Path
+	if resolved, err := filepath.EvalSymlinks(body.Path); err == nil {
+		deletePath = resolved
+	}
+
 	// Check if it's the current worktree
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
 	cmd.Dir = projectPath
 	output, _ := cmd.CombinedOutput()
 	trees := parseWorktreePorcelain(string(output), projectPath)
 	for _, wt := range trees {
-		if wt.Path == body.Path && wt.IsCurrent {
+		if wt.Path == deletePath && wt.IsCurrent {
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"success": false,
 				"error":   "cannot_delete_current",
