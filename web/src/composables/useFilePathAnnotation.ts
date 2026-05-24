@@ -11,6 +11,12 @@ import { clearWorktreeCache } from '@/composables/useWorktreeAnnotation.ts'
  * When projectRoot is empty, relative paths are returned as-is (best-effort).
  */
 export function resolveFilePath(path: string, projectRoot: string): string | null {
+    // Reject paths containing glob wildcards, angle brackets, or double-star.
+    // These are glob patterns or template variables, not real filesystem paths.
+    if (/[*?\\[\]<>]/.test(path) || path.includes('**')) return null
+    // Reject URLs (handled by localhost annotation, not file path annotation)
+    if (/^https?:\/\//i.test(path)) return null
+
     if (path.startsWith('/')) {
         // Absolute path: must be under projectRoot
         if (!projectRoot) return null
@@ -89,8 +95,13 @@ const FILE_PATH_RE = /(?:\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)+\.[a-zA-Z][a-zA-Z0-9
  * - Contains at least one '/' (e.g. src/foo.ts, ./bar.go)
  * - Or has a short file extension (e.g. ChatPanel.vue, main.go)
  * Bare identifiers like `useAutoSpeech`, `onUnmounted`, `ref` should NOT match.
+ * Rejects strings containing glob wildcards, angle brackets, or double-star
+ * — these are glob patterns or template variables, not real file paths.
  */
 function looksLikeFilePath(text: string): boolean {
+    if (/[*?\\[\]<>]/.test(text) || text.includes('**')) return false
+    // Exclude URLs (handled by localhost annotation)
+    if (/^https?:\/\//i.test(text)) return false
     return /\/|\.[a-zA-Z][a-zA-Z0-9]{0,3}$/.test(text)
 }
 
@@ -106,7 +117,7 @@ function looksLikeFilePath(text: string): boolean {
  * Processing order:
  *   1. <a href="..."> tags with local-file hrefs → append open button
  *   2. <code> tags whose text content looks like a path → add class + button
- *   3. Text nodes (outside pre/a/code) → regex match paths → insert span + button
+ *   3. Text nodes (outside a/code) → regex match paths → insert span + button
  *
  * Returns the annotated HTML and a list of detected (resolved) paths
  * for the caller to verify asynchronously.
@@ -135,34 +146,34 @@ export function annotateFilePaths(
         a.insertAdjacentHTML('afterend', fileOpenButtonHtml(resolved))
     }
 
-    // ── Step 2: <code> tags whose content looks like a file path ──
+    // ── Step 2: <code> tags whose content is purely a file path ──
+    // Only handles the case where the entire <code> content is a single path.
+    // Mixed content (e.g. `import "src/main.go"`) is handled by Step 3's
+    // text-node walker, which now also enters <code> elements.
     for (const code of doc.querySelectorAll('code')) {
-        // Skip <code> inside <pre> blocks (multi-line code blocks should not get buttons)
-        if (code.closest('pre')) continue
         // Skip <code> already annotated as worktree (worktree annotation runs first)
         if (code.classList.contains('chat-worktree-path')) continue
         const stripped = (code.textContent || '').trim()
         if (!looksLikeFilePath(stripped)) continue
         const resolved = resolveFilePath(stripped, projectRoot)
-        if (!resolved) continue
+        if (!resolved || resolved.includes(' ') || resolved.includes('"')) continue
+        // Entire <code> content is a valid file path — annotate the whole element
         detectedPaths.push(resolved)
         code.classList.add('chat-file-path')
         code.setAttribute('data-file-path', resolved)
         code.insertAdjacentHTML('afterend', fileOpenButtonHtml(resolved))
     }
 
-    // ── Step 3: Text nodes (outside pre/a/code/worktree) → regex match paths ──
+    // ── Step 3: Text nodes (outside a/worktree-annotated, but including inside <code>) → regex match paths ──
     const textNodes: Text[] = []
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
         acceptNode(node: Text) {
             const parent = node.parentElement
             if (!parent) return NodeFilter.FILTER_REJECT
-            // Skip <pre> blocks
-            if (parent.closest('pre')) return NodeFilter.FILTER_REJECT
             // Skip text inside <a> tags (handled in step 1)
             if (parent.tagName === 'A' || parent.closest('a')) return NodeFilter.FILTER_REJECT
-            // Skip text inside <code> tags (handled in step 2)
-            if (parent.tagName === 'CODE' || parent.closest('code')) return NodeFilter.FILTER_REJECT
+            // Skip text inside <code> elements already annotated by step 2
+            if (parent.classList.contains('chat-file-path')) return NodeFilter.FILTER_REJECT
             // Skip text inside worktree-annotated elements (worktree annotation runs first)
             if (parent.classList.contains('chat-worktree-path') || parent.closest('.chat-worktree-path')) return NodeFilter.FILTER_REJECT
             return NodeFilter.FILTER_ACCEPT
@@ -246,53 +257,59 @@ export function annotateFilePaths(
 
 // Cache of verified paths: path -> true (exists) | false (not found)
 const verifiedCache = new Map<string, boolean>()
-// In-flight verification requests to avoid duplicates
-const inFlight = new Map<string, Promise<boolean>>()
-
-async function checkPathExists(path: string): Promise<boolean> {
-    if (verifiedCache.has(path)) return verifiedCache.get(path)!
-    if (inFlight.has(path)) return inFlight.get(path)!
-
-    const promise = (async () => {
-        try {
-            const [fileResp, dirResp] = await Promise.all([
-                fetch(`/api/file/${encodeURIComponent(path)}`, { method: 'HEAD' }),
-                fetch(`/api/dir?path=${encodeURIComponent(path)}`, { method: 'HEAD' }),
-            ])
-            return fileResp.ok || dirResp.ok
-        } catch {
-            return true // Network error — assume exists (best effort)
-        }
-    })()
-
-    inFlight.set(path, promise)
-    const exists = await promise
-    verifiedCache.set(path, exists)
-    inFlight.delete(path)
-    return exists
-}
+// In-flight batch request to avoid duplicate calls
+let batchInFlight: Promise<{ results: Record<string, string> }> | null = null
 
 /**
  * Check which file paths actually exist on the server,
  * and hide buttons for files that don't exist.
+ * Uses a single batch POST /api/file/batch-exists request instead of
+ * per-path HEAD requests, dramatically reducing HTTP overhead.
  */
 export async function verifyFilePaths(paths: string[], containerEl: HTMLElement): Promise<void> {
-    // Batch verification with concurrency limit
-    const limit = 6
     const unique = [...new Set(paths)]
+    if (unique.length === 0) return
+
+    // Check cache first, collect uncached paths
+    const uncached: string[] = []
     const results = new Map<string, boolean>()
 
-    for (let i = 0; i < unique.length; i += limit) {
-        const batch = unique.slice(i, i + limit)
-        const batchResults = await Promise.all(batch.map(async (path) => {
-            const exists = await checkPathExists(path)
-            return { path, exists }
-        }))
-        for (const { path, exists } of batchResults) {
-            results.set(path, exists)
+    for (const p of unique) {
+        if (verifiedCache.has(p)) {
+            results.set(p, verifiedCache.get(p)!)
+        } else {
+            uncached.push(p)
         }
     }
 
+    // Batch request for uncached paths
+    if (uncached.length > 0) {
+        try {
+            // Reuse in-flight batch request if one is already running
+            if (!batchInFlight) {
+                batchInFlight = fetch('/api/file/batch-exists', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paths: uncached }),
+                }).then(r => r.json())
+            }
+            const resp = await batchInFlight
+            batchInFlight = null
+
+            for (const [path, type] of Object.entries(resp.results)) {
+                const exists = type === 'file' || type === 'dir'
+                results.set(path, exists)
+                verifiedCache.set(path, exists)
+            }
+        } catch {
+            // Network error — assume all exist (best effort)
+            for (const p of uncached) {
+                results.set(p, true)
+            }
+        }
+    }
+
+    // Remove non-existent path annotations from DOM
     for (const [path, exists] of results) {
         if (!exists) {
             containerEl.querySelectorAll(`.chat-file-open-btn[data-file-path="${CSS.escape(path)}"]`).forEach(btn => {
@@ -310,7 +327,7 @@ export async function verifyFilePaths(paths: string[], containerEl: HTMLElement)
  */
 export function clearVerifiedCache(): void {
     verifiedCache.clear()
-    inFlight.clear()
+    batchInFlight = null
     clearCommitHashCache()
     clearWorktreeCache()
 }
