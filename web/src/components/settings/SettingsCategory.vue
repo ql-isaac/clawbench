@@ -50,17 +50,17 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const toast = useToast()
-const { localConfig, serverConfig, setLocalConfig, getServerValueWithDefault, setServerValue, patchAgentPref, getAgentModelPref, getAgentThinkingPref } = useSettingsConfig()
-const { agents, loadAgents, getAgentModels, getAgentThinkingEffortLevels, hasThinkingEffortLevels, getDefaultModelId } = useAgents()
+const { localConfig, serverConfig, setLocalConfig, getServerValueWithDefault, setServerValue, patchAgentPref } = useSettingsConfig()
+const { agents, loadAgents, getAgentModels } = useAgents()
 const { isAppMode } = useAppMode()
 const { pushRegistered } = useGlobalEvents()
 
 const openEditorKey = ref<string | null>(null)
 const showPasswordDialog = ref(false)
 
-// Load agents when this category is shown
+// Load agents when chat category is shown (for default_agent options)
 watch(() => props.categoryId, (id) => {
-  if (id === 'chat' || id === 'agents') loadAgents(true)
+  if (id === 'chat') loadAgents(true)
 }, { immediate: true })
 
 function resolveConfigValue(key: string): any {
@@ -80,60 +80,6 @@ function isDependsOnMet(dependsOn: ItemSpec['dependsOn']): boolean {
 
 // Resolve i18n labels at runtime, and dynamically inject agent options
 const items = computed(() => {
-  // For the 'agents' category, dynamically build items from the agent list
-  if (props.categoryId === 'agents') {
-    const result: any[] = []
-
-    for (const agent of agents.value) {
-      // Agent group header — just shows the agent icon + name as a label
-      result.push({
-        key: `agent-header-${agent.id}`,
-        label: `${agent.icon} ${agent.name}`,
-        labelKey: '',
-        type: 'info' as const,
-        source: 'local' as const,
-        modelValue: '',
-      })
-      // Model preference (only if agent has multiple models)
-      const models = getAgentModels(agent.id)
-      if (models.length > 1) {
-        const savedModel = getAgentModelPref(agent.id)
-        const currentModel = savedModel || getDefaultModelId(agent.id)
-        result.push({
-          key: `agent-model-${agent.id}`,
-          label: t('settings.items.agentModel'),
-          labelKey: 'settings.items.agentModel',
-          type: 'select' as const,
-          source: 'local' as const,
-          modelValue: currentModel,
-          options: models.map((m: any) => ({
-            label: m.name || m.id,
-            value: m.id,
-          })),
-        })
-      }
-      // Thinking effort preference (only if agent supports it)
-      if (hasThinkingEffortLevels(agent.id)) {
-        const levels = getAgentThinkingEffortLevels(agent.id)
-        const savedThinking = getAgentThinkingPref(agent.id)
-        const currentThinking = savedThinking || agent.preferredThinkingEffort || agent.thinkingEffort || ''
-        result.push({
-          key: `agent-thinking-${agent.id}`,
-          label: t('settings.items.agentThinking'),
-          labelKey: 'settings.items.agentThinking',
-          type: 'select' as const,
-          source: 'local' as const,
-          modelValue: currentThinking,
-          options: levels.map((level: string) => ({
-            label: level,
-            value: level,
-          })),
-        })
-      }
-    }
-    return result
-  }
-
   const raw = categoryItems[props.categoryId] ?? []
   // Filter by dependsOn and inject header pseudo-items
   const expanded: any[] = []
@@ -195,19 +141,9 @@ function resolveOptionLabel(_itemKey: string, opt: { labelKey: string; value: an
 function getItemValue(item: any): any {
   // Header pseudo-items have no value
   if (item.type === 'header') return undefined
-  // Dynamically injected items with explicit modelValue
+  // Dynamically injected items with explicit modelValue (e.g. push-registration-status)
   if (item.modelValue !== undefined && item.source === 'local' && item.type === 'info') {
     return item.modelValue
-  }
-  // Agent model/thinking prefs are handled specially
-  if (item.key?.startsWith('agent-model-')) {
-    return item.modelValue
-  }
-  if (item.key?.startsWith('agent-thinking-')) {
-    return item.modelValue
-  }
-  if (item.key?.startsWith('agent-header-')) {
-    return ''
   }
   // Version info items
   if (item.key === 'serverVersion') {
@@ -232,18 +168,6 @@ function getItemValue(item: any): any {
 }
 
 async function handleUpdate(item: any, value: any) {
-  // Agent model preference
-  if (item.key?.startsWith('agent-model-')) {
-    const agentId = item.key.replace('agent-model-', '')
-    try { await patchAgentPref(agentId, 'preferred_model', value) } catch { toast.show(t('settings.saveFailed'), { icon: '⚠️', type: 'error', duration: 3000 }) }
-    return
-  }
-  // Agent thinking preference
-  if (item.key?.startsWith('agent-thinking-')) {
-    const agentId = item.key.replace('agent-thinking-', '')
-    try { await patchAgentPref(agentId, 'preferred_thinking_effort', value) } catch { toast.show(t('settings.saveFailed'), { icon: '⚠️', type: 'error', duration: 3000 }) }
-    return
-  }
   // Password type: skip if empty or still masked (contains bullet chars)
   if (item.type === 'password') {
     if (!value || value.includes('•')) return
