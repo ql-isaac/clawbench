@@ -24,7 +24,7 @@ def autoVersionName() {
 
 android {
     namespace 'com.clawbench.app'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.clawbench.app"
