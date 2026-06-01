@@ -1,3 +1,5 @@
+//go:build !norag
+
 package rag
 
 // Shared test constants to avoid goconst duplicates across test files.
