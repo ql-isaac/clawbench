@@ -10,6 +10,7 @@ TARGET_OS=""
 TARGET_ARCH=""
 BUILD_ANDROID=""
 DOWNLOAD_PI=""
+BUILD_TAGS=""
 for arg in "$@"; do
     case "$arg" in
         --windows)
@@ -38,6 +39,9 @@ for arg in "$@"; do
             ;;
         --with-pi)
             DOWNLOAD_PI=1
+            ;;
+        --no-rag)
+            BUILD_TAGS="norag"
             ;;
     esac
 done
@@ -92,10 +96,10 @@ if command -v go >/dev/null 2>&1; then
         if [ "$TARGET_OS" = "windows" ]; then
             BINARY_NAME="${NAME}.exe"
         fi
-        GOOS=$TARGET_OS GOARCH=$TARGET_ARCH go build -ldflags "$LDFLAGS" -o "$BINARY_NAME" ./cmd/server
+        GOOS=$TARGET_OS GOARCH=$TARGET_ARCH go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "$BINARY_NAME" ./cmd/server
         echo "  Cross-compiled: $BINARY_NAME ($TARGET_OS/$TARGET_ARCH)"
     else
-        go build -ldflags "$LDFLAGS" -o "$NAME" ./cmd/server
+        go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "$NAME" ./cmd/server
         echo "  Go binary: ./$NAME"
     fi
 else

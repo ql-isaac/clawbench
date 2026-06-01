@@ -1,3 +1,5 @@
+//go:build !norag
+
 package handler
 
 import (
