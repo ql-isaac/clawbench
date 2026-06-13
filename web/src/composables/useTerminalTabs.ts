@@ -1,0 +1,299 @@
+import { ref, reactive, computed, type Ref } from 'vue'
+import { useTerminalSession, type TerminalErrorMessages } from './useTerminalSession'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import type { Terminal as TerminalType } from '@xterm/xterm'
+
+export interface TerminalTab {
+  id: string
+  sessionId: string
+  cwd: string
+  title: string
+  session: ReturnType<typeof useTerminalSession>
+  xterm: TerminalType | null
+  fitAddon: FitAddon | null
+  container: HTMLElement | null
+}
+
+let tabCounter = 0
+
+function generateTabId(): string {
+  return `tab-${++tabCounter}-${Date.now()}`
+}
+
+/** Extract last directory segment from a path for tab title. */
+function cwdToTitle(cwd: string): string {
+  if (!cwd) return 'Terminal'
+  const cleaned = cwd.replace(/\/+$/, '')
+  const last = cleaned.split('/').pop() || ''
+  return last || 'Terminal'
+}
+
+export function useTerminalTabs(
+  getWsUrl: (cwd?: string) => string,
+  opts: {
+    fontSize: Ref<number>
+    getXtermTheme: () => Record<string, unknown>
+    errorMessages: TerminalErrorMessages
+    onExit?: (tabId: string) => void
+    onError?: (tabId: string, message: string, code: string) => void
+    onAutoExec?: (tabId: string, command: string) => void
+    toast?: (msg: string, opts?: Record<string, unknown>) => void
+  },
+) {
+  const tabs: Ref<TerminalTab[]> = ref([])
+  const activeTabId = ref('')
+
+  const activeTab = computed(() =>
+    tabs.value.find((t) => t.id === activeTabId.value) || null,
+  )
+
+  function createXtermInstance(): { term: TerminalType; fit: FitAddon } {
+    const term = new Terminal({
+      theme: opts.getXtermTheme(),
+      fontSize: opts.fontSize.value,
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+      cursorBlink: true,
+      convertEol: true,
+      scrollback: 5000,
+      rightClickSelectsWord: true,
+    })
+    const fit = new FitAddon()
+    term.loadAddon(fit)
+    term.loadAddon(new WebLinksAddon())
+    ;(term as any).fitAddon = fit
+    return { term, fit }
+  }
+
+  function createTab(cwd?: string): TerminalTab {
+    const id = generateTabId()
+    const resolvedCwd = cwd || ''
+    const title = cwdToTitle(resolvedCwd)
+    const session = useTerminalSession(() => getWsUrl(resolvedCwd), opts.errorMessages)
+    const { term, fit } = createXtermInstance()
+
+    const tab = reactive<TerminalTab>({
+      id,
+      sessionId: '',
+      cwd: resolvedCwd,
+      title,
+      session,
+      xterm: term,
+      fitAddon: fit,
+      container: null,
+    })
+
+    // Wire session callbacks
+    session.setCallbacks({
+      onOutput: (data: string) => {
+        term.write(data)
+      },
+      onReplay: (data: string) => {
+        term.clear()
+        term.write(data)
+      },
+      onStatus: (status: { running: boolean; cwd: string }) => {
+        if (status.cwd) {
+          tab.cwd = status.cwd
+          tab.title = cwdToTitle(status.cwd)
+        }
+      },
+      onExit: () => {
+        opts.onExit?.(id)
+      },
+      onError: (message: string, code: string) => {
+        opts.onError?.(id, message, code)
+      },
+    })
+
+    // Handle terminal input
+    term.onData((data) => {
+      session.sendInput(data)
+    })
+
+    // Send resize to backend
+    term.onResize(({ cols, rows }) => {
+      session.sendResize(cols, rows)
+    })
+
+    // Watch session ID updates — synced manually via syncTabSessionId()
+
+    tabs.value.push(tab as unknown as TerminalTab)
+    activeTabId.value = id
+    return tab as unknown as TerminalTab
+  }
+
+  function closeTab(id: string): { switchToId: string | null } {
+    const idx = tabs.value.findIndex((t) => t.id === id)
+    if (idx === -1) return { switchToId: null }
+
+    const tab = tabs.value[idx]
+
+    // Kill PTY via WebSocket close message
+    tab.session.sendClose()
+
+    // Dispose xterm
+    if (tab.xterm) {
+      tab.xterm.dispose()
+    }
+
+    // Remove from array
+    tabs.value.splice(idx, 1)
+
+    // If this was the last tab, auto-create a new one
+    if (tabs.value.length === 0) {
+      const newTab = createTab()
+      return { switchToId: newTab.id }
+    }
+
+    // If we closed the active tab, switch to adjacent
+    if (activeTabId.value === id) {
+      const newIdx = Math.min(idx, tabs.value.length - 1)
+      activeTabId.value = tabs.value[newIdx].id
+    }
+
+    return { switchToId: activeTabId.value }
+  }
+
+  function switchTab(id: string) {
+    const tab = tabs.value.find((t) => t.id === id)
+    if (!tab) return
+
+    activeTabId.value = id
+
+    // Fit the newly active terminal after a tick (DOM needs to be visible)
+    if (tab.fitAddon && tab.container) {
+      requestAnimationFrame(() => {
+        try {
+          tab.fitAddon?.fit()
+        } catch {
+          // May fail if container is not yet visible
+        }
+      })
+    }
+
+    // Focus the terminal
+    tab.xterm?.focus()
+  }
+
+  /** Update tab CWD and title (called when session status reports new cwd). */
+  function updateTabCwd(id: string, cwd: string) {
+    const tab = tabs.value.find((t) => t.id === id)
+    if (tab) {
+      tab.cwd = cwd
+      tab.title = cwdToTitle(cwd)
+    }
+  }
+
+  /** Sync session ID from session composable to tab record. */
+  function syncTabSessionId(id: string) {
+    const tab = tabs.value.find((t) => t.id === id)
+    if (tab) {
+      tab.sessionId = tab.session.sessionId
+    }
+  }
+
+  /** Mount an xterm instance to its container element. */
+  function mountTabXterm(tab: TerminalTab, container: HTMLElement) {
+    if (!tab.xterm) return
+
+    // Always record the container, even if xterm is already open
+    tab.container = container
+
+    if (tab.xterm.element) return // Already mounted
+
+    tab.xterm.open(container)
+    // Note: wheel/contextmenu handlers are added by TerminalPanelContent.mountTabToContainer()
+  }
+
+  /** Disconnect all tabs (called when terminal panel becomes inactive). */
+  function disconnectAll() {
+    for (const tab of tabs.value) {
+      tab.session.disconnect()
+      // Sync session ID after disconnect (it's preserved for reconnect)
+      syncTabSessionId(tab.id)
+    }
+  }
+
+  /** Connect a specific tab (called when switching to it or panel becomes active). */
+  async function connectTab(id: string) {
+    const tab = tabs.value.find((t) => t.id === id)
+    if (!tab) return
+
+    syncTabSessionId(tab.id)
+
+    if (tab.session.connectionState === 'disconnected') {
+      try {
+        await tab.session.connect()
+        syncTabSessionId(tab.id)
+      } catch {
+        // Error will be shown via overlay
+      }
+    }
+  }
+
+  /** Connect the active tab (called when panel becomes active). */
+  async function connectActiveTab() {
+    if (activeTab.value) {
+      await connectTab(activeTab.value.id)
+    }
+  }
+
+  /** Dispose all tabs (called on component unmount). */
+  function disposeAll() {
+    for (const tab of tabs.value) {
+      tab.session.sendClose()
+      if (tab.xterm) {
+        tab.xterm.dispose()
+      }
+    }
+    tabs.value = []
+    activeTabId.value = ''
+  }
+
+  /** Update font size on all xterm instances. */
+  function updateFontSize(size: number) {
+    for (const tab of tabs.value) {
+      if (tab.xterm) {
+        tab.xterm.options.fontSize = size
+      }
+    }
+  }
+
+  /** Update theme on all xterm instances. */
+  function updateTheme(theme: Record<string, unknown>) {
+    for (const tab of tabs.value) {
+      if (tab.xterm) {
+        tab.xterm.options.theme = theme
+      }
+    }
+  }
+
+  /** Get a tab by its local ID. */
+  function getTab(id: string): TerminalTab | undefined {
+    return tabs.value.find((t) => t.id === id)
+  }
+
+  // Initialize with one default tab
+  createTab()
+
+  return {
+    tabs,
+    activeTabId,
+    activeTab,
+    createTab,
+    closeTab,
+    switchTab,
+    updateTabCwd,
+    syncTabSessionId,
+    mountTabXterm,
+    disconnectAll,
+    connectTab,
+    connectActiveTab,
+    disposeAll,
+    updateFontSize,
+    updateTheme,
+    getTab,
+  }
+}

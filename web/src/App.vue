@@ -10,7 +10,7 @@
     <SetupWizard v-else-if="needsSetup" @complete="handleSetupComplete" />
 
     <!-- Main app -->
-    <div v-else class="app-container" :class="{ 'chrome-hidden': terminalKeyboardActive, 'chat-keyboard-open': chatKeyboardActive, 'project-switching': switchingProject }" :key="projectKey">
+    <div v-else class="app-container" :class="{ 'chrome-hidden': terminalActive, 'chat-keyboard-open': chatKeyboardActive, 'project-switching': switchingProject }" :key="projectKey">
       <AppHeader
         :hidden="terminalActive"
         :project-root="projectRoot"
@@ -557,7 +557,8 @@ window.addEventListener('clawbench-back-press', () => {
 window.addEventListener('clawbench-foreground', handleForeground)
 const terminalRequestedCwd = ref(null)
 
-// Hide AppHeader when terminal tab is active (always); hide Dock + padding only when keyboard is open
+// Hide AppHeader when terminal tab is active (always); remove padding-top too
+// so terminal fills the full screen. Dock is hidden only when keyboard is open.
 const terminalActive = computed(() => activeTab.value === 'terminal')
 const { keyboardHeight: terminalKeyboardHeight } = useTerminalKeyboard()
 const terminalKeyboardActive = computed(() => terminalActive.value && terminalKeyboardHeight.value > 0)
@@ -1216,7 +1217,7 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* When terminal keyboard is open, remove header padding so content expands to top */
+/* When terminal tab is active, remove header padding so content expands to top */
 .chrome-hidden {
     padding-top: 0 !important;
 }

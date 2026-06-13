@@ -1160,6 +1160,11 @@ export default {
     symbols: '符号',
     rebuildSession: '重建会话',
     rebuilding: '正在切换目录...',
+    closeTab: '关闭标签页',
+    copyPath: '复制路径',
+    newTabHere: '在此目录新建标签页',
+    tabLimitReached: '已达到终端会话上限',
+    newTab: '新标签页',
   },
   setup: {
     welcomeTitle: '未检测到智能体',

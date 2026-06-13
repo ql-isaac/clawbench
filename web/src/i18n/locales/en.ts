@@ -1160,6 +1160,11 @@ export default {
     symbols: 'Symbols',
     rebuildSession: 'Rebuild Session',
     rebuilding: 'Switching directory...',
+    closeTab: 'Close Tab',
+    copyPath: 'Copy Path',
+    newTabHere: 'New Tab Here',
+    tabLimitReached: 'Maximum terminal sessions reached',
+    newTab: 'New Tab',
   },
   setup: {
     welcomeTitle: 'No Agents Detected',
