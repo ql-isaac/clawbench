@@ -185,6 +185,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   open: []
+  'cwd-handled': []
 }>()
 
 const { t } = useI18n()
@@ -488,8 +489,8 @@ function handleTabClick(tabId: string) {
 
 function handleCreateTab() {
   if (!canCreateMore.value) return
-  const cwd = computeCwd()
-  const tab = tabManager.createTab(cwd || undefined)
+  // Default new tab uses project root (empty cwd), not current directory
+  const tab = tabManager.createTab()
   // Mount the new tab's xterm after next tick (DOM needs to render the container)
   nextTick(() => {
     const container = tabContainerRefs.get(tab.id)
@@ -674,6 +675,29 @@ watch(() => props.active, async (isActive) => {
     viewport.stopWatching()
     gestures.detach()
   }
+})
+
+// Watch requestedCwd — when the file manager emits "open terminal here",
+// create a new tab in the specified directory.
+watch(() => props.requestedCwd, async (cwd) => {
+  if (!cwd || !props.active || !isMounted.value) return
+  if (!canCreateMore.value) return
+  const tab = tabManager.createTab(cwd)
+  await nextTick()
+  const container = tabContainerRefs.get(tab.id)
+  if (container && !tab.container) {
+    mountTabToContainer(tab, container)
+  }
+  if (tab.session.connectionState === 'disconnected') {
+    tab.session.connect().then(() => {
+      tabManager.syncTabSessionId(tab.id)
+      requestAnimationFrame(() => {
+        try { tab.fitAddon?.fit() } catch { /* ignore */ }
+      })
+    }).catch(() => { /* error shown via overlay */ })
+  }
+  // Signal parent to clear requestedCwd so re-triggering the same directory works
+  emit('cwd-handled')
 })
 
 // Theme observer

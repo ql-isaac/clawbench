@@ -124,6 +124,7 @@
             <TerminalPanelContent
               :requested-cwd="terminalRequestedCwd"
               :active="activeTab === 'terminal'"
+              @cwd-handled="terminalRequestedCwd = null"
             />
           </TabPanel>
 
