@@ -11,6 +11,7 @@ import (
 
 	"clawbench/internal/ai"
 	"clawbench/internal/model"
+	"clawbench/internal/summarize"
 	"clawbench/internal/ws"
 )
 
@@ -362,6 +363,12 @@ func SendSessionEvent(sessionID string, event ai.StreamEvent) bool {
 // access from HTTP handlers (write) and session completion goroutines (read).
 var chatSummaryEnabled atomic.Bool
 
+// chatSummaryMode controls how chat messages are summarized.
+// "simple" = extract last text after tool_use (no AI call)
+// "ai" = use AI summarizer via AsyncSummarize
+// "" = disabled (no summarization)
+var chatSummaryMode atomic.Value // stores string
+
 func init() {
 	chatSummaryEnabled.Store(true) // default enabled
 }
@@ -371,11 +378,26 @@ func SetChatSummaryEnabled(enabled bool) {
 	chatSummaryEnabled.Store(enabled)
 }
 
+// SetChatSummaryMode sets the chat summarization mode.
+func SetChatSummaryMode(mode string) {
+	chatSummaryMode.Store(mode)
+}
+
+// GetChatSummaryMode returns the current chat summarization mode.
+func GetChatSummaryMode() string {
+	v := chatSummaryMode.Load()
+	if v == nil {
+		return ""
+	}
+	return v.(string)
+}
+
 // triggerChatSummarization triggers async summarization for the last assistant
 // message(s) in a session when it completes normally.
 // Skipped for cancelled/disconnected sessions (those use skipEvent=true in SetSessionRunning).
 func triggerChatSummarization(sessionID string) {
-	if !chatSummaryEnabled.Load() || taskSummarizerInstance == nil {
+	mode := GetChatSummaryMode()
+	if mode == "" || !chatSummaryEnabled.Load() {
 		return
 	}
 
@@ -417,5 +439,43 @@ func triggerChatSummarization(sessionID string) {
 	// Get project path for WS event
 	projectPath := GetSessionProjectPath(sessionID)
 
+	if mode == "simple" {
+		// Fast path: extract last answer text directly, no AI call
+		text := summarize.ExtractLastAnswerFromBlocks(content.Blocks)
+		if text == "" {
+			return
+		}
+		if err := SaveSummary("chat_message", lastAssistant.ID, text); err != nil {
+			slog.Warn(
+				"failed to save simple summary",
+				slog.String("target_type", "chat_message"),
+				slog.Int64("target_id", lastAssistant.ID),
+				slog.String("err", err.Error()),
+			)
+			return
+		}
+		// Broadcast summary_update via WebSocket
+		mgr := ws.GetManager()
+		if mgr != nil {
+			mgr.BroadcastEvent(ws.ServerMessage{
+				Type:  "event",
+				ID:    ws.GenerateEventID(),
+				Event: "summary_update",
+				Data: ws.SummaryUpdateData{
+					TargetType:  "chat_message",
+					TargetID:    lastAssistant.ID,
+					Summary:     text,
+					ProjectPath: projectPath,
+					SessionID:   sessionID,
+				},
+			})
+		}
+		return
+	}
+
+	// AI mode: use existing AsyncSummarize path
+	if taskSummarizerInstance == nil {
+		return
+	}
 	AsyncSummarize("chat_message", lastAssistant.ID, content.Blocks, projectPath, sessionID)
 }

@@ -92,7 +92,7 @@ type TerminalConfig struct {
 
 // SummarizeConfig holds unified summarization configuration shared by TTS and scheduled tasks.
 type SummarizeConfig struct {
-	Backend     string    `yaml:"backend"`      // Summarization backend: "simple" (default), "api", "claude", "codebuddy", etc.
+	Backend     string    `yaml:"backend"`      // Summarization backend: "" (disabled), "simple" (extract final answer), "api", "claude", "codebuddy", etc.
 	Model       string    `yaml:"model"`        // Model for summarization (empty = backend default)
 	ChatSummary *bool     `yaml:"chat_summary"` // Enable auto-summarization for chat messages (default: true, nil = true)
 	API         APIConfig `yaml:"api"`          // API-based summarization (used when backend is "api")

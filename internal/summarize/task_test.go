@@ -229,3 +229,69 @@ func TestExtractTextFromBlocks_EmptyTextSkipped(t *testing.T) {
 	result := ExtractTextFromBlocks(blocks)
 	assert.Equal(t, "Content\n\nMore", result)
 }
+
+// --- ExtractLastAnswerFromBlocks ---
+
+func TestExtractLastAnswerFromBlocks_TextAfterToolUse(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "Let me check."},
+		{Type: "tool_use", Name: "Bash", ID: "1"},
+		{Type: "text", Text: "Here is the answer."},
+	}
+	result := ExtractLastAnswerFromBlocks(blocks)
+	assert.Equal(t, "Here is the answer.", result)
+}
+
+func TestExtractLastAnswerFromBlocks_MultipleToolUse(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "Searching..."},
+		{Type: "tool_use", Name: "Grep", ID: "1"},
+		{Type: "text", Text: "Still looking..."},
+		{Type: "tool_use", Name: "Read", ID: "2"},
+		{Type: "text", Text: "Final answer here."},
+	}
+	result := ExtractLastAnswerFromBlocks(blocks)
+	assert.Equal(t, "Final answer here.", result)
+}
+
+func TestExtractLastAnswerFromBlocks_NoToolUse(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "First answer."},
+		{Type: "text", Text: "Second paragraph."},
+	}
+	result := ExtractLastAnswerFromBlocks(blocks)
+	assert.Equal(t, "First answer.", result) // falls back to first text block
+}
+
+func TestExtractLastAnswerFromBlocks_NoTextAfterToolUse(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "Let me check."},
+		{Type: "tool_use", Name: "Bash", ID: "1"},
+	}
+	result := ExtractLastAnswerFromBlocks(blocks)
+	assert.Equal(t, "Let me check.", result) // falls back to first text block
+}
+
+func TestExtractLastAnswerFromBlocks_OnlyToolUse(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "tool_use", Name: "Bash", ID: "1"},
+		{Type: "tool_use", Name: "Read", ID: "2"},
+	}
+	result := ExtractLastAnswerFromBlocks(blocks)
+	assert.Equal(t, "", result)
+}
+
+func TestExtractLastAnswerFromBlocks_Empty(t *testing.T) {
+	result := ExtractLastAnswerFromBlocks([]model.ContentBlock{})
+	assert.Equal(t, "", result)
+}
+
+func TestExtractLastAnswerFromBlocks_SkipsThinking(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "tool_use", Name: "Bash", ID: "1"},
+		{Type: "thinking", Text: "Let me think..."},
+		{Type: "text", Text: "The result is 42."},
+	}
+	result := ExtractLastAnswerFromBlocks(blocks)
+	assert.Equal(t, "The result is 42.", result)
+}

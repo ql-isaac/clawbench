@@ -134,6 +134,7 @@ export const categoryItems: Record<string, ItemSpec[]> = {
   summarization: [
     // Summarization backend (shared by TTS and tasks)
     { labelKey: 'settings.items.summarizeBackend', descriptionKey: 'settings.items.summarizeBackendDesc', key: 'summarize.backend', type: 'select', source: 'server', options: [
+      { labelKey: 'settings.items.summarizeDisabled', value: '' },
       { labelKey: 'settings.items.summarizeSimple', value: 'simple' },
       { labelKey: 'settings.items.summarizeApi', value: 'api' },
       { labelKey: 'settings.items.summarizeClaude', value: 'claude' },

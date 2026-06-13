@@ -141,3 +141,29 @@ func ExtractTextFromBlocks(blocks []model.ContentBlock) string {
 	}
 	return buf.String()
 }
+
+// ExtractLastAnswerFromBlocks extracts text from blocks after the last tool_use block.
+// This captures the AI's final answer rather than intermediate reasoning or tool-call commentary.
+// If no tool_use blocks exist, falls back to the first non-empty text block.
+// Returns empty string if no suitable text is found.
+func ExtractLastAnswerFromBlocks(blocks []model.ContentBlock) string {
+	lastToolIdx := -1
+	for i, b := range blocks {
+		if b.Type == "tool_use" {
+			lastToolIdx = i
+		}
+	}
+	// Find first text block after the last tool_use
+	for i := lastToolIdx + 1; i < len(blocks); i++ {
+		if blocks[i].Type == "text" && blocks[i].Text != "" {
+			return blocks[i].Text
+		}
+	}
+	// No text after last tool_use — fall back to first text block
+	for _, b := range blocks {
+		if b.Type == "text" && b.Text != "" {
+			return b.Text
+		}
+	}
+	return ""
+}

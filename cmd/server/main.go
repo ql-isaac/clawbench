@@ -486,7 +486,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 
 	var ttsSummarizer summarize.Summarizer
 	switch summarizeBackend {
-	case "simple":
+	case "", "simple":
 		ttsSummarizer = summarize.NewSimple()
 		slog.Info("tts summarizer configured", slog.String("backend", "simple"))
 	case "api":
@@ -584,7 +584,22 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 	scheduler := service.NewScheduler()
 
 	// Initialize task summarizer if summarization backend is configured (MUST be before scheduler.Start())
-	if cfg.Summarize.Backend != "" && cfg.Summarize.Backend != "simple" {
+	if cfg.Summarize.Backend == "simple" {
+		// Simple mode: extract final answer for chat, SimpleSummarizer for tasks
+		pipeline := summarize.NewPipelineWithOpts(
+			func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+				return summarize.NewSimple().Summarize(ctx, text, "")
+			},
+			"",
+			summarize.SummarizeOption{PreserveMarkdown: true},
+		)
+		taskSummarizer := summarize.NewTaskSummarizerFromPipeline(pipeline)
+		scheduler.SetTaskSummarizer(taskSummarizer)
+		service.SetTaskSummarizerInstance(taskSummarizer)
+		service.SetChatSummaryMode("simple")
+		service.SetChatSummaryEnabled(cfg.Summarize.IsChatSummaryEnabled())
+		slog.Info("task summarizer configured", slog.String("backend", "simple"))
+	} else if cfg.Summarize.Backend != "" {
 		taskSummarizer, err := initTaskSummarizer(cfg)
 		if err != nil {
 			slog.Warn(
@@ -596,7 +611,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 			scheduler.SetTaskSummarizer(taskSummarizer)
 			// Also set the global instance for AsyncSummarize (chat messages + task executions)
 			service.SetTaskSummarizerInstance(taskSummarizer)
-			// Configure chat message auto-summarization based on config
+			service.SetChatSummaryMode("ai")
 			service.SetChatSummaryEnabled(cfg.Summarize.IsChatSummaryEnabled())
 			slog.Info(
 				"task summarizer configured",
@@ -604,6 +619,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 			)
 		}
 	}
+	// else: cfg.Summarize.Backend == "" — fully disabled, no taskSummarizerInstance
 
 	// Load all tasks from all projects
 	if err := scheduler.LoadTasksFromDB(""); err != nil {
