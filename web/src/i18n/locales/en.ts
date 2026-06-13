@@ -354,6 +354,7 @@ export default {
     title: 'Sessions',
     newSession: 'New session',
     selectAgent: 'Select agent',
+    setAsDefaultAgent: 'Set as default agent',
     noSessions: 'No sessions',
     running: 'Running',
     fromTask: 'Task',

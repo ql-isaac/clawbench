@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { apiGet } from '@/utils/api'
+import { apiGet, apiPatch } from '@/utils/api'
 import { gt } from '@/composables/useLocale'
 import { updateModeState, updateAvailableModes, updateThinkingEffortState, updateAvailableThinkingEfforts, updateCommandState, currentAgentId } from '@/composables/useSessionIdentity.ts'
 import { updatePlanEntries } from '@/composables/usePlanProgress'
@@ -204,6 +204,12 @@ function updateAgentField(agentId: string, field: string, value: any): void {
     }
 }
 
+/** Set the global default agent via PATCH /api/config. Takes effect immediately (hot-reload). */
+async function setDefaultAgent(agentId: string): Promise<void> {
+    await apiPatch('/api/config', { default_agent: agentId })
+    defaultAgentId.value = agentId
+}
+
 /** Update agent's model list from ACP. Saves original CLI models first so they can be restored. */
 export function updateACPModelList(agentId: string, models: Array<{ id: string; name: string }>, currentModelId?: string): void {
     const agent = agents.value.find(a => a.id === agentId)
@@ -319,6 +325,7 @@ export function useAgents() {
         hasThinkingEffortLevels,
         getEffectiveThinkingEffort,
         updateAgentField,
+        setDefaultAgent,
         canRefreshModels,
         agentCanResume,
         supportsDualTransport,

@@ -354,6 +354,7 @@ export default {
     title: '会话',
     newSession: '新建会话',
     selectAgent: '选择智能体',
+    setAsDefaultAgent: '设为默认智能体',
     noSessions: '暂无会话',
     running: '运行中',
     fromTask: '定时',
