@@ -100,10 +100,18 @@ jobs:
           file clawbench-linux
           ldd clawbench-linux
 
-      - name: Download Pi binary (embedded agent for setup wizard)
-        env:
-          PI_VERSION: "0.78.0"
+      - name: Resolve latest Pi version
+        id: pi-version
         run: |
+          PI_VERSION=$(gh api repos/earendil-works/pi/releases/latest --jq '.tag_name' | sed 's/^v//')
+          echo "version=$PI_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Latest Pi version: v${PI_VERSION}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Pi binary (embedded agent for setup wizard)
+        run: |
+          PI_VERSION="${{ steps.pi-version.outputs.version }}"
           PI_URL="https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-linux-x64.tar.gz"
           mkdir -p .clawbench/pi
           curl -sL "$PI_URL" | tar xzf - -C .clawbench/pi --strip-components=1
@@ -157,19 +165,29 @@ jobs:
           $VERSION = if (git describe --tags --always 2>$null) { git describe --tags --always } else { "dev" }
           go build -tags "fts5" -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench.exe ./cmd/server
 
+      - name: Resolve latest Pi version
+        id: pi-version
+        shell: pwsh
+        run: |
+          $resp = Invoke-RestMethod -Uri "https://api.github.com/repos/earendil-works/pi/releases/latest" -Headers @{ Authorization = "token $env:GITHUB_TOKEN" }
+          $PI_VERSION = $resp.tag_name -replace '^v',''
+          "version=$PI_VERSION" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          Write-Host "Latest Pi version: v${PI_VERSION}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download Pi binary (embedded agent for setup wizard)
         shell: pwsh
-        env:
-          PI_VERSION: "0.78.0"
         run: |
-          $PI_URL = "https://github.com/earendil-works/pi/releases/download/v${env:PI_VERSION}/pi-windows-x64.zip"
+          $PI_VERSION = "${{ steps.pi-version.outputs.version }}"
+          $PI_URL = "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-windows-x64.zip"
           New-Item -ItemType Directory -Force -Path .clawbench\pi
           $tmpZip = "$env:TEMP\pi-download.zip"
           Invoke-WebRequest -Uri $PI_URL -OutFile $tmpZip
           Expand-Archive -Path $tmpZip -DestinationPath .clawbench\pi -Force
           Remove-Item $tmpZip -Force
-          Set-Content -Path ".clawbench\pi\VERSION" -Value $env:PI_VERSION
-          Write-Host "Pi v${env:PI_VERSION} downloaded"
+          Set-Content -Path ".clawbench\pi\VERSION" -Value $PI_VERSION
+          Write-Host "Pi v${PI_VERSION} downloaded"
 
       - name: Package Windows
         shell: pwsh
@@ -212,10 +230,18 @@ jobs:
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
           go build -tags "fts5" -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-arm64 ./cmd/server
 
-      - name: Download Pi binary (embedded agent for setup wizard)
-        env:
-          PI_VERSION: "0.78.0"
+      - name: Resolve latest Pi version
+        id: pi-version
         run: |
+          PI_VERSION=$(gh api repos/earendil-works/pi/releases/latest --jq '.tag_name' | sed 's/^v//')
+          echo "version=$PI_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Latest Pi version: v${PI_VERSION}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Pi binary (embedded agent for setup wizard)
+        run: |
+          PI_VERSION="${{ steps.pi-version.outputs.version }}"
           PI_URL="https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-arm64.tar.gz"
           mkdir -p .clawbench/pi
           curl -sL "$PI_URL" | tar xzf - -C .clawbench/pi --strip-components=1
@@ -267,10 +293,18 @@ jobs:
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
           go build -tags "fts5" -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-amd64 ./cmd/server
 
-      - name: Download Pi binary (embedded agent for setup wizard)
-        env:
-          PI_VERSION: "0.78.0"
+      - name: Resolve latest Pi version
+        id: pi-version
         run: |
+          PI_VERSION=$(gh api repos/earendil-works/pi/releases/latest --jq '.tag_name' | sed 's/^v//')
+          echo "version=$PI_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Latest Pi version: v${PI_VERSION}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Pi binary (embedded agent for setup wizard)
+        run: |
+          PI_VERSION="${{ steps.pi-version.outputs.version }}"
           PI_URL="https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-x64.tar.gz"
           mkdir -p .clawbench/pi
           curl -sL "$PI_URL" | tar xzf - -C .clawbench/pi --strip-components=1
