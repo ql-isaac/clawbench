@@ -36,6 +36,9 @@ export function useTerminalTabs(
     fontSize: Ref<number>
     getXtermTheme: () => Record<string, unknown>
     errorMessages: TerminalErrorMessages
+    /** Called when a tab is closed but the WS was already disconnected.
+     *  The backend PTY session needs to be killed via HTTP API. */
+    onCloseSessionViaHttp?: (sessionId: string) => void
     onExit?: (tabId: string) => void
     onError?: (tabId: string, message: string, code: string) => void
     onAutoExec?: (tabId: string, command: string) => void
@@ -130,8 +133,16 @@ export function useTerminalTabs(
 
     const tab = tabs.value[idx]
 
-    // Kill PTY via WebSocket close message
+    // Save sessionId before sendClose clears it
+    const sessionId = tab.session.sessionId as unknown as string
+
+    // Kill PTY: send WS close message, or fall back to HTTP API if WS is disconnected
     tab.session.sendClose()
+    if (sessionId && !tab.session.wsOpen) {
+      // WS was already closed — sendClose couldn't reach the backend.
+      // Use HTTP API to kill the orphaned PTY session.
+      opts.onCloseSessionViaHttp?.(sessionId)
+    }
 
     // Dispose xterm
     if (tab.xterm) {
@@ -243,7 +254,13 @@ export function useTerminalTabs(
   /** Dispose all tabs (called on component unmount). */
   function disposeAll() {
     for (const tab of tabs.value) {
+      const sessionId = tab.session.sessionId as unknown as string
       tab.session.sendClose()
+      // If WS was disconnected, sendClose couldn't reach the backend.
+      // Use HTTP API to kill the PTY session.
+      if (sessionId && !tab.session.wsOpen) {
+        opts.onCloseSessionViaHttp?.(sessionId)
+      }
       if (tab.xterm) {
         tab.xterm.dispose()
       }

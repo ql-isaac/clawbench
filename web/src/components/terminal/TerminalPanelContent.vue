@@ -309,6 +309,9 @@ const tabManager = useTerminalTabs(getWsUrl, {
     shellStartFailed: t('terminal.shellStartFailed'),
     websocketFailed: t('terminal.websocketFailed'),
   },
+  onCloseSessionViaHttp: (sessionId: string) => {
+    fetch(`/api/terminal/close?session=${encodeURIComponent(sessionId)}`, { method: 'POST' }).catch(() => {})
+  },
   onExit: (_tabId) => {
     toast.show(t('terminal.ptyExited'), { type: 'info' })
   },

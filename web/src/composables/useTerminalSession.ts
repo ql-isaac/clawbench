@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 import { useReconnect } from './useReconnect'
 import {
   NO_RECONNECT_CODES,
@@ -201,12 +201,16 @@ export function useTerminalSession(
     sessionId.value = ''
   }
 
+  /** Whether the WebSocket is currently open. */
+  const wsOpen = computed(() => ws.value?.readyState === WebSocket.OPEN)
+
   return {
     connectionState,
     errorMessage,
     errorCode,
     currentCwd,
     sessionId,
+    wsOpen,
     connect,
     disconnect,
     reset,
