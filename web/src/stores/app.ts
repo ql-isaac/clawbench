@@ -319,29 +319,29 @@ async function selectFile(path: string, isImageFile = false, isAudioFile = false
     if (isPdf) {
         const fileName = baseName(path)
         state.currentFile = { name: fileName, path, content: null, isPdf: true }
-        return
+        return true
     }
     if (isImage) {
         const fileName = baseName(path)
         state.currentFile = { name: fileName, path, content: null, isImage: true }
-        return
+        return true
     }
     if (isAudio) {
         const fileName = baseName(path)
         state.currentFile = { name: fileName, path, content: null, isAudio: true }
-        return
+        return true
     }
     if (isVideo) {
         const fileName = baseName(path)
         state.currentFile = { name: fileName, path, content: null, isVideo: true }
-        return
+        return true
     }
     if (!isText && !forceText) {
         // Unknown extension → treat as binary, don't even call the API
         const fileName = baseName(path)
         const sizeInfo = state.dirEntries.find(e => e.name === fileName)
         state.currentFile = { name: fileName, path, content: null, isBinary: true, size: sizeInfo?.size }
-        return
+        return true
     }
 
     try {
@@ -358,7 +358,7 @@ async function selectFile(path: string, isImageFile = false, isAudioFile = false
                 const fileName = baseName(path)
                 const sizeInfo = state.dirEntries.find(e => e.name === fileName)
                 state.currentFile = { name: fileName, path, content: null, tooLarge: true, size: sizeInfo?.size }
-                return
+                return true
             }
             throw new Error(err.error || 'Failed')
         }
