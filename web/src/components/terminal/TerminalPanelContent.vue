@@ -77,7 +77,7 @@
         <div class="toolbar-scroll">
           <!-- Group: Modifiers -->
           <div class="key-group">
-            <button v-if="!gestures.enabled.value" class="toolbar-btn btn-modifier" @click="terminalKeys.sendEscape(); focusTerminal()" title="Esc">Esc</button>
+            <button class="toolbar-btn btn-modifier" @click="terminalKeys.sendEscape(); focusTerminal()" title="Esc">Esc</button>
             <button v-if="!gestures.enabled.value" class="toolbar-btn btn-modifier" @click="terminalKeys.sendTab(); focusTerminal()" title="Tab">Tab</button>
             <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.ctrl !== 'inactive', locked: terminalKeys.activeModifiers.value.ctrl === 'locked' }" @click="handleModifier('ctrl')" @contextmenu.prevent title="Ctrl">Ctl</button>
             <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.alt !== 'inactive', locked: terminalKeys.activeModifiers.value.alt === 'locked' }" @click="handleModifier('alt')" @contextmenu.prevent title="Alt">Alt</button>
@@ -367,7 +367,6 @@ const gestures = useTerminalGestures(
     sendArrowRight: terminalKeys.sendArrowRight,
     sendPageUp: terminalKeys.sendPageUp,
     sendPageDown: terminalKeys.sendPageDown,
-    sendEscape: terminalKeys.sendEscape,
     sendTab: terminalKeys.sendTab,
     onPinchZoom: (delta: number) => applyFontSize(fontSize.value + delta),
     onTouchScroll: handleTerminalTouchScroll,
