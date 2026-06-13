@@ -1165,6 +1165,8 @@ export default {
     newTabHere: '在此目录新建标签页',
     tabLimitReached: '已达到终端会话上限',
     newTab: '新标签页',
+    noSessions: '暂无终端会话',
+    createSession: '创建会话',
   },
   setup: {
     welcomeTitle: '未检测到智能体',

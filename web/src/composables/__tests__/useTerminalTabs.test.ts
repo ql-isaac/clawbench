@@ -233,15 +233,22 @@ describe('useTerminalTabs', () => {
       expect(mgr.activeTabId.value).toBe(tab1.id)
     })
 
-    it('auto-creates a new tab when closing the last tab', () => {
+    it('allows closing the last tab without auto-creating a new one', () => {
       const mgr = createTabManager()
       const onlyTab = mgr.tabs.value[0]
       expect(mgr.tabs.value).toHaveLength(1)
 
       const result = mgr.closeTab(onlyTab.id)
-      expect(mgr.tabs.value).toHaveLength(1)
-      expect(mgr.tabs.value[0].id).not.toBe(onlyTab.id)
-      expect(result.switchToId).toBe(mgr.tabs.value[0].id)
+      expect(mgr.tabs.value).toHaveLength(0)
+      expect(result.switchToId).toBeNull()
+    })
+
+    it('activeTab becomes null when all tabs are closed', () => {
+      const mgr = createTabManager()
+      const onlyTab = mgr.tabs.value[0]
+
+      mgr.closeTab(onlyTab.id)
+      expect(mgr.activeTab.value).toBeNull()
     })
 
     it('returns switchToId for the new active tab', () => {

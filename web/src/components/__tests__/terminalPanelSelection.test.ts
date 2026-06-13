@@ -46,14 +46,10 @@ describe('TerminalPanel xterm selection defaults', () => {
       // Hover/active use semi-transparent overlays
       expect(toolbarStyle).toContain('--toolbar-key-hover')
       expect(toolbarStyle).toContain('--toolbar-key-active')
-      // Scrollbar still present
-      expect(toolbarStyle).toContain('--toolbar-scrollbar-track')
-      expect(toolbarStyle).toContain('--toolbar-scrollbar-thumb')
-      expect(toolbarStyle).toContain('--toolbar-scrollbar-thumb-hover')
+      // Scroll fade instead of scrollbar
+      expect(toolbarStyle).toContain('scrollbar-width: none')
+      expect(toolbarStyle).toContain('scroll-fade')
       // No decorative masks or accent colors
-      expect(toolbarStyle).not.toContain('mask-image')
-      expect(toolbarStyle).toContain('height: 2px')
-      expect(toolbarStyle).toContain('transition: background 140ms ease')
       expect(toolbarStyle).not.toContain('var(--color-green)')
       expect(toolbarStyle).not.toContain('var(--color-yellow)')
       expect(toolbarStyle).not.toContain('var(--color-purple)')

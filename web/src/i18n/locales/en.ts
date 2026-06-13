@@ -1165,6 +1165,8 @@ export default {
     newTabHere: 'New Tab Here',
     tabLimitReached: 'Maximum terminal sessions reached',
     newTab: 'New Tab',
+    noSessions: 'No terminal sessions',
+    createSession: 'Create Session',
   },
   setup: {
     welcomeTitle: 'No Agents Detected',

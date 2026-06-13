@@ -94,12 +94,20 @@ export function useTerminalKeys(sendInput: (data: string) => void) {
     sendInput('\x1a')
   }
 
+  function sendCtrlS() {
+    sendInput('\x13')
+  }
+
   function sendEscape() {
     sendInput('\x1b')
   }
 
   function sendTab() {
     sendInput('\t')
+  }
+
+  function sendShiftTab() {
+    sendInput('\x1b[Z')
   }
 
   function sendArrowUp() {
@@ -160,8 +168,10 @@ export function useTerminalKeys(sendInput: (data: string) => void) {
     clearOnceModifiers,
     sendCtrlC,
     sendCtrlZ,
+    sendCtrlS,
     sendEscape,
     sendTab,
+    sendShiftTab,
     sendArrowUp,
     sendArrowDown,
     sendArrowRight,

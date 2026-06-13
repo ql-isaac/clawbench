@@ -1,5 +1,16 @@
 <template>
   <div class="terminal-panel" :style="panelStyle">
+    <!-- Empty state when all tabs are closed -->
+    <div v-if="tabs.length === 0" class="terminal-empty-state">
+      <TerminalIcon :size="40" class="terminal-empty-icon" />
+      <p class="terminal-empty-text">{{ t('terminal.noSessions') }}</p>
+      <button class="terminal-empty-create-btn" @click="handleCreateTab">
+        <PlusIcon :size="16" />
+        <span>{{ t('terminal.createSession') }}</span>
+      </button>
+    </div>
+
+    <template v-else>
     <!-- Tab bar (replaces old header) -->
     <div class="terminal-tab-bar">
       <div class="terminal-tab-list">
@@ -61,7 +72,7 @@
     <div class="terminal-toolbar">
       <!-- Symbol bar (toggleable, above main toolbar) -->
       <div v-if="showSymbolBar" class="symbol-bar">
-        <div class="symbol-bar-scroll">
+        <div ref="symbolBarScrollRef" class="symbol-bar-scroll" :class="{ 'scroll-fade-left': symbolBarScrollFade.left, 'scroll-fade-right': symbolBarScrollFade.right }" @scroll="updateSymbolBarScrollFade">
           <button v-for="sym in symbolKeys" :key="sym" class="toolbar-btn btn-symbol" @click="handleSymbolClick(sym)">{{ sym }}</button>
         </div>
       </div>
@@ -74,19 +85,21 @@
         <button class="toolbar-btn modifier gesture-toggle" :class="{ active: showSymbolBar }" @click="toggleSymbolBar()" @contextmenu.prevent :title="t('terminal.symbols')">
           <HashIcon :size="14" />
         </button>
-        <div class="toolbar-scroll">
+        <div ref="toolbarScrollRef" class="toolbar-scroll" :class="{ 'scroll-fade-left': toolbarScrollFade.left, 'scroll-fade-right': toolbarScrollFade.right }" @scroll="updateToolbarScrollFade">
           <!-- Group: Modifiers -->
           <div class="key-group">
             <button class="toolbar-btn btn-modifier" @click="terminalKeys.sendEscape(); focusTerminal()" title="Esc">Esc</button>
             <button v-if="!gestures.enabled.value" class="toolbar-btn btn-modifier" @click="terminalKeys.sendTab(); focusTerminal()" title="Tab">Tab</button>
             <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.ctrl !== 'inactive', locked: terminalKeys.activeModifiers.value.ctrl === 'locked' }" @click="handleModifier('ctrl')" @contextmenu.prevent title="Ctrl">Ctl</button>
             <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.alt !== 'inactive', locked: terminalKeys.activeModifiers.value.alt === 'locked' }" @click="handleModifier('alt')" @contextmenu.prevent title="Alt">Alt</button>
-            <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.shift !== 'inactive', locked: terminalKeys.activeModifiers.value.shift === 'locked' }" @click="handleModifier('shift')" @contextmenu.prevent title="Shift"><ShiftIcon :size="14" /></button>
+            <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.shift !== 'inactive', locked: terminalKeys.activeModifiers.value.shift === 'locked' }" @click="handleModifier('shift')" @contextmenu.prevent title="Shift">Shift</button>
+            <button class="toolbar-btn btn-modifier btn-shift-tab" @click="terminalKeys.sendShiftTab(); focusTerminal()" title="Shift+Tab"><span class="shift-tab-label">Shift</span><span class="shift-tab-label">Tab</span></button>
           </div>
           <!-- Group: Shortcuts (Ctrl+C / Ctrl+Z) -->
           <div class="key-group">
             <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlC(); focusTerminal()" title="Ctrl+C">⌃C</button>
             <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlZ(); focusTerminal()" title="Ctrl+Z">⌃Z</button>
+            <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlS(); focusTerminal()" title="Ctrl+S">⌃S</button>
           </div>
           <!-- Group: Navigation -->
           <div class="key-group">
@@ -117,6 +130,7 @@
         </div>
       </div>
     </div>
+    </template>
 
     <!-- Quick commands popup -->
     <PopupMenu v-model:show="showCommands" :target-element="cmdBtnRef" :max-width="220" :max-height="280" :menu-items-count="visibleCommands.length + 1">
@@ -146,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import '@xterm/xterm/css/xterm.css'
 
@@ -177,7 +191,7 @@ import {
   incrementSymbolFreq,
 } from '@/utils/terminalSymbolFreq'
 
-import { Copy as CopyIcon, Zap as ZapIcon, Hand as HandIcon, RefreshCw as RefreshCwIcon, ArrowUpFromLine as ShiftIcon, Hash as HashIcon, Plus as PlusIcon, MoreVertical as MoreVerticalIcon } from 'lucide-vue-next'
+import { Copy as CopyIcon, Zap as ZapIcon, Hand as HandIcon, RefreshCw as RefreshCwIcon, Hash as HashIcon, Plus as PlusIcon, MoreVertical as MoreVerticalIcon, Terminal as TerminalIcon } from 'lucide-vue-next'
 const props = defineProps<{
   requestedCwd?: string | null
   active?: boolean
@@ -223,6 +237,47 @@ const showCommands = ref(false)
 const cmdBtnRef = ref<HTMLElement | null>(null)
 const showSymbolBar = ref(false)
 const rebuildingTabId = ref<string | null>(null)
+
+// Scroll fade state for toolbar and symbol bar
+const toolbarScrollFade = reactive({ left: false, right: false })
+const symbolBarScrollFade = reactive({ left: false, right: false })
+
+function computeScrollFade(el: HTMLElement): { left: boolean; right: boolean } {
+  const { scrollLeft, scrollWidth, clientWidth } = el
+  return {
+    left: scrollLeft > 2,
+    right: scrollLeft + clientWidth < scrollWidth - 2,
+  }
+}
+
+function updateToolbarScrollFade(e: Event) {
+  const el = e.currentTarget as HTMLElement
+  const fade = computeScrollFade(el)
+  toolbarScrollFade.left = fade.left
+  toolbarScrollFade.right = fade.right
+}
+
+function updateSymbolBarScrollFade(e: Event) {
+  const el = e.currentTarget as HTMLElement
+  const fade = computeScrollFade(el)
+  symbolBarScrollFade.left = fade.left
+  symbolBarScrollFade.right = fade.right
+}
+
+// Refs for scroll containers
+const toolbarScrollRef = ref<HTMLElement | null>(null)
+const symbolBarScrollRef = ref<HTMLElement | null>(null)
+
+function refreshToolbarFade() {
+  const el = toolbarScrollRef.value
+  if (!el) return
+  const fade = computeScrollFade(el)
+  toolbarScrollFade.left = fade.left
+  toolbarScrollFade.right = fade.right
+}
+
+// Re-evaluate fade when gesture toggle changes visible buttons
+watch(() => gestures.enabled.value, () => nextTick(refreshToolbarFade))
 
 // Tab menu state
 const showTabMenu = ref(false)
@@ -401,8 +456,9 @@ function disableVolumeKeys() {
 // Computed
 const canCreateMore = computed(() => tabs.value.length < maxSessions.value)
 
-// Sync terminal session count to Android notification
+// Sync terminal session count to Android notification and store
 watch(() => tabs.value.length, (count) => {
+  store.state.terminalSessionCount = count
   if (isAppMode.value) {
     try {
       const native = (window as any).AndroidNative
@@ -532,7 +588,6 @@ function handleTabMenuClose() {
   if (!tabId) return
   const result = tabManager.closeTab(tabId)
   if (result.switchToId) {
-    // If a new tab was auto-created, mount its xterm
     nextTick(() => {
       const container = tabContainerRefs.get(result.switchToId!)
       const tab = tabManager.getTab(result.switchToId!)
@@ -549,7 +604,6 @@ function handleTabMenuClose() {
       }
     })
   }
-  focusTerminal()
 }
 
 function handleTabMenuCopyPath() {
@@ -718,6 +772,9 @@ onMounted(async () => {
   // Fetch quick commands in the background — don't block terminal setup
   fetchCommands().catch(() => { /* ignore */ })
 
+  // Initialize scroll fade state
+  nextTick(refreshToolbarFade)
+
   themeObserver = new MutationObserver(() => {
     tabManager.updateTheme(getXtermTheme())
   })
@@ -771,6 +828,46 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
   height: 100%;
   overflow: hidden;
   position: relative;
+}
+
+/* Empty state */
+.terminal-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  padding: 32px;
+}
+
+.terminal-empty-icon {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.terminal-empty-text {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.terminal-empty-create-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.terminal-empty-create-btn:active {
+  background: var(--bg-tertiary);
 }
 
 /* Tab bar */
@@ -1060,9 +1157,6 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
   --toolbar-key-selected-bg: color-mix(in srgb, var(--text-primary) 14%, transparent);
   --toolbar-key-selected-text: var(--text-primary);
   --toolbar-divider: color-mix(in srgb, var(--border-color) 48%, transparent);
-  --toolbar-scrollbar-track: color-mix(in srgb, var(--border-color) 20%, transparent);
-  --toolbar-scrollbar-thumb: color-mix(in srgb, var(--text-muted) 46%, transparent);
-  --toolbar-scrollbar-thumb-hover: color-mix(in srgb, var(--text-primary) 58%, transparent);
 }
 
 [data-theme="dark"] .terminal-toolbar {
@@ -1074,9 +1168,6 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
   --toolbar-key-selected-bg: color-mix(in srgb, var(--text-primary) 18%, transparent);
   --toolbar-key-selected-text: var(--text-primary);
   --toolbar-divider: color-mix(in srgb, var(--border-color) 52%, transparent);
-  --toolbar-scrollbar-track: color-mix(in srgb, var(--border-color) 30%, transparent);
-  --toolbar-scrollbar-thumb: color-mix(in srgb, var(--text-muted) 54%, transparent);
-  --toolbar-scrollbar-thumb-hover: color-mix(in srgb, var(--text-primary) 68%, transparent);
 }
 
 .symbol-bar {
@@ -1091,13 +1182,34 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
   gap: 3px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: var(--toolbar-scrollbar-thumb) transparent;
+  scrollbar-width: none;
+  position: relative;
 }
-.symbol-bar-scroll::-webkit-scrollbar { height: 2px; }
-.symbol-bar-scroll::-webkit-scrollbar-track { background: transparent; }
-.symbol-bar-scroll::-webkit-scrollbar-thumb { background: var(--toolbar-scrollbar-thumb); border-radius: 999px; }
-.symbol-bar-scroll:hover::-webkit-scrollbar-thumb { background: var(--toolbar-scrollbar-thumb-hover); }
+.symbol-bar-scroll::-webkit-scrollbar { display: none; }
+.symbol-bar-scroll::before,
+.symbol-bar-scroll::after {
+  content: '';
+  position: sticky;
+  top: 0;
+  bottom: 0;
+  min-width: 0;
+  flex-shrink: 0;
+  pointer-events: none;
+  z-index: 1;
+  transition: min-width 200ms ease;
+}
+.symbol-bar-scroll::before {
+  left: 0;
+  min-width: 0;
+  background: linear-gradient(to right, var(--bg-secondary), transparent);
+}
+.symbol-bar-scroll::after {
+  right: 0;
+  min-width: 0;
+  background: linear-gradient(to left, var(--bg-secondary), transparent);
+}
+.symbol-bar-scroll.scroll-fade-left::before { min-width: 16px; }
+.symbol-bar-scroll.scroll-fade-right::after { min-width: 16px; }
 
 .main-toolbar-row {
   display: flex;
@@ -1116,16 +1228,34 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
   -webkit-overflow-scrolling: touch;
   flex: 1;
   min-width: 0;
-  padding-bottom: 1px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--toolbar-scrollbar-thumb) transparent;
+  scrollbar-width: none;
+  position: relative;
 }
-.toolbar-scroll::-webkit-scrollbar { height: 2px; }
-.toolbar-scroll::-webkit-scrollbar-track {
-  background: linear-gradient(90deg, transparent 0, var(--toolbar-scrollbar-track) 14px, var(--toolbar-scrollbar-track) calc(100% - 14px), transparent 100%);
+.toolbar-scroll::-webkit-scrollbar { display: none; }
+.toolbar-scroll::before,
+.toolbar-scroll::after {
+  content: '';
+  position: sticky;
+  top: 0;
+  bottom: 0;
+  min-width: 0;
+  flex-shrink: 0;
+  pointer-events: none;
+  z-index: 1;
+  transition: min-width 200ms ease;
 }
-.toolbar-scroll::-webkit-scrollbar-thumb { background: var(--toolbar-scrollbar-thumb); border-radius: 999px; transition: background 140ms ease; }
-.toolbar-scroll:hover::-webkit-scrollbar-thumb { background: var(--toolbar-scrollbar-thumb-hover); }
+.toolbar-scroll::before {
+  left: 0;
+  min-width: 0;
+  background: linear-gradient(to right, var(--bg-secondary), transparent);
+}
+.toolbar-scroll::after {
+  right: 0;
+  min-width: 0;
+  background: linear-gradient(to left, var(--bg-secondary), transparent);
+}
+.toolbar-scroll.scroll-fade-left::before { min-width: 16px; }
+.toolbar-scroll.scroll-fade-right::after { min-width: 16px; }
 
 .key-group { display: flex; align-items: center; gap: 3px; }
 .key-group + .key-group { position: relative; margin-left: 6px; }
@@ -1170,6 +1300,14 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
 .toolbar-btn.danger { color: var(--toolbar-key-text); opacity: 0.78; }
 .toolbar-btn.danger:hover { opacity: 1; background: var(--toolbar-key-hover); }
 .toolbar-btn.gesture-toggle { min-width: 32px; border-radius: 9px; }
+
+.btn-shift-tab {
+  flex-direction: column;
+  gap: 0;
+  line-height: 1;
+  padding: 3px 5px;
+}
+.shift-tab-label { font-size: 9px; font-weight: 700; line-height: 1.3; }
 
 @media (max-width: 768px) {
   .main-toolbar-row { padding-bottom: max(4px, env(safe-area-inset-bottom)); }

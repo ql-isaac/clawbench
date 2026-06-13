@@ -65,6 +65,9 @@ interface AppState {
     // Task just completed (brief flash for dock button animation)
     taskJustCompleted: boolean
 
+    // Terminal session count (for dock badge)
+    terminalSessionCount: number
+
     // Task list (kept in sync by global polling)
     tasks: any[]
 
@@ -110,6 +113,7 @@ const state = reactive<AppState>({
     taskUnread: false,
     taskRunning: false,
     taskJustCompleted: false,
+    terminalSessionCount: 0,
     tasks: [],
 
     // File browser
@@ -190,6 +194,7 @@ function resetProjectState(): void {
     state.taskUnread = false
     state.taskRunning = false
     state.taskJustCompleted = false
+    state.terminalSessionCount = 0
     state.tasks = []
     // Config defaults
     state.uploadMaxSizeMB = 100

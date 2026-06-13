@@ -153,19 +153,13 @@ export function useTerminalTabs(
     // Remove from array
     tabs.value.splice(idx, 1)
 
-    // If this was the last tab, auto-create a new one
-    if (tabs.value.length === 0) {
-      const newTab = createTab()
-      return { switchToId: newTab.id }
-    }
-
     // If we closed the active tab, switch to adjacent
-    if (activeTabId.value === id) {
+    if (tabs.value.length > 0 && activeTabId.value === id) {
       const newIdx = Math.min(idx, tabs.value.length - 1)
       activeTabId.value = tabs.value[newIdx].id
     }
 
-    return { switchToId: activeTabId.value }
+    return { switchToId: tabs.value.length > 0 ? activeTabId.value : null }
   }
 
   function switchTab(id: string) {

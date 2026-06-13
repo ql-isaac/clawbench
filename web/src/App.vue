@@ -200,6 +200,7 @@
                 <component :is="dockSlot4Icon" />
               </button>
               <span v-if="dockSlot4Tab === 'tasks' && store.state.taskUnread && activeTab !== 'tasks'" class="dock-badge"></span>
+              <span v-if="dockSlot4Tab === 'terminal' && store.state.terminalSessionCount > 0 && activeTab !== 'terminal'" class="dock-badge dock-badge-count">{{ store.state.terminalSessionCount }}</span>
             </div>
             <div class="dock-overflow-wrapper">
               <button
@@ -1320,6 +1321,21 @@ onUnmounted(() => {
     background: var(--accent-color, #0066cc);
     z-index: 2;
     pointer-events: none;
+}
+
+.dock-badge-count {
+    width: auto;
+    height: auto;
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    color: #fff;
+    top: -4px;
+    right: -6px;
 }
 
 .dock-btn.has-running {
