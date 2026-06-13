@@ -83,7 +83,7 @@ type Config struct {
 // TerminalConfig holds configuration for the interactive web terminal.
 type TerminalConfig struct {
 	Enabled      bool   `yaml:"enabled"`        // Enable interactive terminal (default: true)
-	IdleTimeout  string `yaml:"idle_timeout"`   // Close PTY after no WS connections for this duration (default: "10m")
+	IdleTimeout  string `yaml:"idle_timeout"`   // Close PTY after no WS connections for this duration (default: "0" = never timeout)
 	BufferLines  int    `yaml:"buffer_lines"`   // Replay buffer line count (default: 2000)
 	MaxLineBytes int    `yaml:"max_line_bytes"` // Per-line byte cap to prevent memory bloat (default: 65536 = 64KB)
 	MaxBufferMB  int    `yaml:"max_buffer_mb"`  // Total buffer memory cap in MB (default: 4)

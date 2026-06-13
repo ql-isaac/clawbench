@@ -172,7 +172,7 @@ describe('useTerminalSession', () => {
   })
 
   describe('disconnect', () => {
-    it('closes the WebSocket and resets state', async () => {
+    it('closes the WebSocket and resets reconnect state', async () => {
       const session = createSession()
 
       const connectPromise = session.connect()
@@ -186,10 +186,9 @@ describe('useTerminalSession', () => {
 
       expect(closeSpy).toHaveBeenCalled()
       expect(session.connectionState.value).toBe('disconnected')
-      expect(session.sessionId.value).toBe('')
     })
 
-    it('clears the session ID so next connect creates a fresh session', async () => {
+    it('preserves session ID for reattach on next connect', async () => {
       const session = createSession()
 
       const connectPromise = session.connect()
@@ -206,7 +205,8 @@ describe('useTerminalSession', () => {
       expect(session.sessionId.value).toBe('old-session')
 
       session.disconnect()
-      expect(session.sessionId.value).toBe('')
+      // sessionId is preserved — allows reattach to existing PTY on next connect
+      expect(session.sessionId.value).toBe('old-session')
     })
 
     it('is safe to call when already disconnected', () => {
@@ -630,14 +630,22 @@ describe('useTerminalSession', () => {
   })
 
   describe('disconnect vs reset', () => {
-    it('disconnect clears sessionId but reset also clears error messages', async () => {
+    it('disconnect preserves sessionId but reset clears it and error messages', async () => {
       const session = createSession()
 
-      // Connect and receive a fatal error
+      // Connect and receive a session ID
       const connectPromise = session.connect()
       mockWebSocketInstance!.simulateOpen()
       await connectPromise
 
+      mockWebSocketInstance!.simulateMessage({
+        type: 'status',
+        sessionId: 'session-123',
+        cwd: '/home',
+        running: true,
+      })
+
+      // Also receive a fatal error
       mockWebSocketInstance!.simulateMessage({
         type: 'error',
         message: 'Shell failed',
@@ -646,15 +654,18 @@ describe('useTerminalSession', () => {
 
       expect(session.errorMessage.value).toBe('Shell failed')
       expect(session.errorCode.value).toBe('shell_start_failed')
+      expect(session.sessionId.value).toBe('session-123')
 
-      // Disconnect does NOT clear error message
+      // Disconnect does NOT clear error message and preserves sessionId
       session.disconnect()
       expect(session.errorMessage.value).toBe('Shell failed') // still there
+      expect(session.sessionId.value).toBe('session-123') // preserved for reattach
 
-      // Reset DOES clear error message
+      // Reset DOES clear error message and sessionId
       session.reset()
       expect(session.errorMessage.value).toBe('')
       expect(session.errorCode.value).toBe('')
+      expect(session.sessionId.value).toBe('')
     })
   })
 

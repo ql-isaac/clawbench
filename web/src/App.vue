@@ -195,10 +195,10 @@
               <FolderOpen />
             </button>
             <div class="dock-btn-wrap">
-              <button class="dock-btn" :class="{ active: activeTab === 'tasks', 'has-unread': store.state.taskUnread && activeTab !== 'tasks', 'just-completed': store.state.taskJustCompleted && activeTab !== 'tasks', 'has-running': store.state.taskRunning && activeTab !== 'tasks' }" @click.stop="switchTab('tasks')" :title="t('nav.tasks')">
-                <CalendarClock />
+              <button class="dock-btn" :class="{ active: activeTab === dockSlot4Tab, 'has-unread': dockSlot4Tab === 'tasks' && store.state.taskUnread && activeTab !== 'tasks', 'just-completed': dockSlot4Tab === 'tasks' && store.state.taskJustCompleted && activeTab !== 'tasks', 'has-running': dockSlot4Tab === 'tasks' && store.state.taskRunning && activeTab !== 'tasks' }" @click.stop="handleDockSlot4Click" :title="dockSlot4Title">
+                <component :is="dockSlot4Icon" />
               </button>
-              <span v-if="store.state.taskUnread && activeTab !== 'tasks'" class="dock-badge"></span>
+              <span v-if="dockSlot4Tab === 'tasks' && store.state.taskUnread && activeTab !== 'tasks'" class="dock-badge"></span>
             </div>
             <div class="dock-overflow-wrapper">
               <button
@@ -222,15 +222,19 @@
     <Teleport to="body">
       <Transition name="dock-popup">
         <div v-if="overflowMenuOpen" class="dock-overflow-popup" :style="overflowPopupStyle" @keydown.escape="overflowMenuOpen = false">
-          <button class="dock-overflow-item" :class="{ active: activeTab === 'history' }" @click.stop="handleOverflowSelect('history')">
+          <button class="dock-overflow-item" :class="{ active: activeTab === 'tasks', 'dock-slot4-selected': dockSlot4Tab === 'tasks' }" @click.stop="handleOverflowSelect('tasks')">
+            <CalendarClock :size="16" />
+            <span>{{ t('nav.tasks') }}</span>
+          </button>
+          <button class="dock-overflow-item" :class="{ active: activeTab === 'history', 'dock-slot4-selected': dockSlot4Tab === 'history' }" @click.stop="handleOverflowSelect('history')">
             <GitBranch :size="16" />
             <span>{{ t('git.history.projectHistory') }}</span>
           </button>
-          <button v-if="!isSSHDisabled" class="dock-overflow-item" :class="{ active: activeTab === 'proxy' }" @click.stop="handleOverflowSelect('proxy')">
+          <button v-if="!isSSHDisabled" class="dock-overflow-item" :class="{ active: activeTab === 'proxy', 'dock-slot4-selected': dockSlot4Tab === 'proxy' }" @click.stop="handleOverflowSelect('proxy')">
             <EthernetPort :size="16" />
             <span>{{ t('nav.portForward') }}</span>
           </button>
-          <button v-if="!isTerminalDisabled" class="dock-overflow-item" :class="{ active: activeTab === 'terminal' }" @click.stop="handleOverflowSelect('terminal')">
+          <button v-if="!isTerminalDisabled" class="dock-overflow-item" :class="{ active: activeTab === 'terminal', 'dock-slot4-selected': dockSlot4Tab === 'terminal' }" @click.stop="handleOverflowSelect('terminal')">
             <TerminalIcon :size="16" />
             <span>{{ t('terminal.title') }}</span>
           </button>
@@ -793,20 +797,48 @@ function handleDockTerminal() {
 const overflowMenuOpen = ref(false)
 const overflowBtnRef = ref(null)
 const overflowTabs = computed(() => {
-  const tabs = ['history']
+  const tabs = ['tasks', 'history']
   if (!isSSHDisabled.value) tabs.push('proxy')
   if (!isTerminalDisabled.value) tabs.push('terminal')
   tabs.push('settings')
   return tabs
 })
 const overflowTabMeta = {
+  tasks:   { icon: CalendarClock, titleKey: 'nav.tasks' },
   history: { icon: GitBranch, titleKey: 'git.history.projectHistory' },
   proxy:   { icon: EthernetPort, titleKey: 'nav.portForward' },
   terminal:{ icon: TerminalIcon, titleKey: 'terminal.title' },
   settings:{ icon: Settings, titleKey: 'nav.settings' },
 }
 
-const isOverflowTabActive = computed(() => overflowTabs.value.includes(activeTab.value))
+// Dock slot 4: dynamic slot showing user's selected overflow item
+const STORAGE_KEY_DOCK_SLOT4 = 'clawbench_dock_slot4'
+const dockSlot4Tab = ref(localStorage.getItem(STORAGE_KEY_DOCK_SLOT4) || 'tasks')
+const dockSlot4Icon = computed(() => overflowTabMeta[dockSlot4Tab.value]?.icon ?? CalendarClock)
+const dockSlot4Title = computed(() => overflowTabMeta[dockSlot4Tab.value] ? t(overflowTabMeta[dockSlot4Tab.value].titleKey) : t('nav.tasks'))
+
+function setDockSlot4(tab) {
+  dockSlot4Tab.value = tab
+  localStorage.setItem(STORAGE_KEY_DOCK_SLOT4, tab)
+}
+
+function handleDockSlot4Click() {
+  const tab = dockSlot4Tab.value
+  if (tab === 'terminal') {
+    handleDockTerminal()
+  } else {
+    switchTab(tab)
+  }
+}
+
+const isOverflowTabActive = computed(() => overflowTabs.value.includes(activeTab.value) && activeTab.value !== dockSlot4Tab.value)
+
+// If the saved dock-slot4 tab becomes unavailable (e.g. terminal disabled), fall back to tasks
+watch(overflowTabs, (tabs) => {
+  if (!tabs.includes(dockSlot4Tab.value)) {
+    setDockSlot4('tasks')
+  }
+})
 
 const overflowPopupStyle = computed(() => {
   const btn = overflowBtnRef.value
@@ -819,13 +851,16 @@ const overflowPopupStyle = computed(() => {
   }
 })
 
-const overflowButtonIcon = computed(() =>
-  overflowTabMeta[activeTab.value]?.icon ?? MoreHorizontal
-)
+const overflowButtonIcon = computed(() => {
+  // Show the active overflow tab's icon, unless it's the dock-slot4 tab (which has its own button)
+  if (activeTab.value === dockSlot4Tab.value) return MoreHorizontal
+  return overflowTabMeta[activeTab.value]?.icon ?? MoreHorizontal
+})
 
-const overflowButtonTitle = computed(() =>
-  overflowTabMeta[activeTab.value] ? t(overflowTabMeta[activeTab.value].titleKey) : t('nav.more')
-)
+const overflowButtonTitle = computed(() => {
+  if (activeTab.value === dockSlot4Tab.value) return t('nav.more')
+  return overflowTabMeta[activeTab.value] ? t(overflowTabMeta[activeTab.value].titleKey) : t('nav.more')
+})
 
 function toggleOverflowMenu() {
   if (isOverflowTabActive.value && !overflowMenuOpen.value) {
@@ -845,6 +880,10 @@ function handleOverflowSelect(tab) {
     return
   }
   overflowMenuOpen.value = false
+  // Remember this tab as the dock slot 4 shortcut (except settings)
+  if (tab !== 'settings') {
+    setDockSlot4(tab)
+  }
   if (tab === 'terminal') {
     handleDockTerminal()
   } else {
@@ -1395,6 +1434,16 @@ onUnmounted(() => {
 .dock-overflow-item.active {
     background: color-mix(in srgb, var(--accent-color) 15%, transparent);
     color: var(--accent-color);
+}
+
+.dock-overflow-item.dock-slot4-selected::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .dock-overflow-divider {

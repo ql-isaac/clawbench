@@ -108,7 +108,7 @@ export function useTerminalSession(getWsUrl: () => string) {
   function disconnect() {
     reconnect.reset()
     fatalError = false
-    sessionId.value = '' // intentional close = next connect creates new session
+    // sessionId intentionally NOT cleared — allows reattach to existing PTY on next connect()
     if (ws.value) {
       ws.value.close()
       ws.value = null
@@ -190,6 +190,8 @@ export function useTerminalSession(getWsUrl: () => string) {
       ws.value.send(JSON.stringify({ type: 'close' }))
     }
     disconnect()
+    // Explicit close kills the PTY — clear sessionId so next connect creates a new session
+    sessionId.value = ''
   }
 
   return {

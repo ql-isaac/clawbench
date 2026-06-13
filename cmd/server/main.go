@@ -703,7 +703,12 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 		defer func() { terminalMgr.Close() }()
 		slog.Info(
 			"terminal manager initialized",
-			slog.String("idle_timeout", cfg.Terminal.IdleTimeout),
+			slog.String("idle_timeout", func() string {
+				if cfg.Terminal.IdleTimeout == "" || cfg.Terminal.IdleTimeout == "0" {
+					return "never"
+				}
+				return cfg.Terminal.IdleTimeout
+			}()),
 			slog.Int("buffer_lines", cfg.Terminal.BufferLines),
 		)
 	}
