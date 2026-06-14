@@ -124,9 +124,6 @@
             <button ref="cmdBtnRef" class="toolbar-btn btn-action" @click="showCommands = !showCommands" :title="t('terminal.quickCommands')">
               <ZapIcon :size="14" />
             </button>
-            <button class="toolbar-btn btn-action" @click="handleCopyOutput" :title="t('terminal.copyOutput')">
-              <CopyIcon :size="14" />
-            </button>
           </div>
         </div>
         </div>
@@ -193,7 +190,7 @@ import {
   incrementSymbolFreq,
 } from '@/utils/terminalSymbolFreq'
 
-import { Copy as CopyIcon, Zap as ZapIcon, Hand as HandIcon, Hash as HashIcon, Plus as PlusIcon, MoreVertical as MoreVerticalIcon, Terminal as TerminalIcon } from 'lucide-vue-next'
+import { Zap as ZapIcon, Hand as HandIcon, Hash as HashIcon, Plus as PlusIcon, MoreVertical as MoreVerticalIcon, Terminal as TerminalIcon } from 'lucide-vue-next'
 const props = defineProps<{
   requestedCwd?: string | null
   active?: boolean
@@ -537,6 +534,18 @@ function mountTabToContainer(tab: TerminalTab, container: HTMLElement) {
   container.addEventListener('contextmenu', contextMenuHandler)
   ;(container as any).__terminalContextMenuHandler = contextMenuHandler
 
+  // Auto-copy selected text on selection change (long-press select → auto copy)
+  if (tab.xterm) {
+    const selectionDisposable = tab.xterm.onSelectionChange(() => {
+      const selection = tab.xterm?.getSelection()
+      if (selection) {
+        navigator.clipboard.writeText(selection).catch(() => {})
+        toast.show(t('common.copied'), { type: 'success', duration: 1500 })
+      }
+    })
+    ;(tab as any).__selectionDisposable = selectionDisposable
+  }
+
   // Fit the terminal after mounting
   requestAnimationFrame(() => {
     try { tab.fitAddon?.fit() } catch { /* ignore */ }
@@ -665,21 +674,6 @@ async function handleRebuild() {
 }
 
 // Copy output from active tab
-function handleCopyOutput() {
-  const term = activeTab.value?.xterm
-  if (!term) return
-  const buffer = term.buffer.active
-  const lines: string[] = []
-  for (let i = 0; i < buffer.length; i++) {
-    const line = buffer.getLine(i)?.translateToString(true)
-    if (line) lines.push(line)
-  }
-  const text = lines.filter(l => l.trim()).join('\n')
-  navigator.clipboard.writeText(text).catch(() => {})
-  toast.show(t('common.copied'), { type: 'success', duration: 1500 })
-  focusTerminal()
-}
-
 function executeCommand(cmd: { id: number; label: string; command: string }) {
   activeTab.value?.session.sendInput(cmd.command + '\r')
   showCommands.value = false
