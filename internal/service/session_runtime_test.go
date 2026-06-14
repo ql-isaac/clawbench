@@ -695,7 +695,7 @@ func TestGetSessionResponsePreview_TextBeforeToolOnly(t *testing.T) {
 	DBRead = db // Same instance for :memory: SQLite — data is shared
 	defer func() { DB = origDB; DBRead = origDBRead }()
 
-	// [text("thinking..."), tool_use] — no text AFTER tool_use, should return empty
+	// [text("thinking..."), tool_use] — no text AFTER tool_use, falls back to longest text block
 	textBlock := model.ContentBlock{Type: "text", Text: "让我思考一下"}
 	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
 	blocks := map[string]any{"blocks": []model.ContentBlock{textBlock, toolBlock}}
@@ -704,7 +704,7 @@ func TestGetSessionResponsePreview_TextBeforeToolOnly(t *testing.T) {
 	insertTestMessage(t, db, "session-preview-text-before-tool", "assistant", string(contentJSON))
 
 	result := getSessionResponsePreview("session-preview-text-before-tool")
-	assert.Equal(t, "", result)
+	assert.Equal(t, "让我思考一下", result)
 }
 
 // --- Real-data based tests (extracted from ClawBench production database) ---
