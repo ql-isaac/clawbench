@@ -776,9 +776,9 @@ function findToolBlock({ msgId, blockIdx }) {
   return (block && block.type === 'tool_use') ? block : null
 }
 
-async function handleFileOpenInOverlay(filePath) {
+async function handleFileOpenInOverlay(filePath, lineStart) {
   toolDetailOverlay.value.show = false
-  const ok = await openFilePath(filePath)
+  const ok = await openFilePath(filePath, lineStart)
   if (ok) switchTab('viewer')
 }
 

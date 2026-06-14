@@ -652,6 +652,7 @@ async function handleSetupComplete() {
     window.addEventListener('open-file-manager', handleOpenFileManager)
     window.addEventListener('navigate-to-commit', handleNavigateToCommit)
     window.addEventListener('quote-sent', playQuoteEmitAnimation)
+    window.addEventListener('scroll-to-line', (e) => { scrollToLine(e.detail.line) })
     window.addEventListener('clawbench-open-session', handleOpenSession)
     window.addEventListener('clawbench-open-task', handleOpenTask)
     document.addEventListener('click', handleOverflowOutsideClick)
@@ -769,9 +770,12 @@ async function handleBrowseSelectFile(path) {
     if (ok) activeTab.value = 'viewer'
 }
 
-async function handleTaskOpenFile(filePath) {
+async function handleTaskOpenFile(filePath, lineStart) {
     const ok = await store.selectFile(filePath)
-    if (ok) switchTab('viewer')
+    if (ok) {
+        switchTab('viewer')
+        if (lineStart) scrollToLine(lineStart)
+    }
 }
 
 function onTaskCardClick(taskId) {
@@ -1055,6 +1059,7 @@ onMounted(async () => {
     window.addEventListener('open-file-manager', handleOpenFileManager)
     window.addEventListener('navigate-to-commit', handleNavigateToCommit)
     window.addEventListener('quote-sent', playQuoteEmitAnimation)
+    window.addEventListener('scroll-to-line', (e) => { scrollToLine(e.detail.line) })
     window.addEventListener('clawbench-open-session', handleOpenSession)
     window.addEventListener('clawbench-open-task', handleOpenTask)
     document.addEventListener('click', handleOverflowOutsideClick)

@@ -74,7 +74,7 @@
         <div v-if="showSymbolBar" class="symbol-bar">
           <div class="scroll-wrapper" :class="{ 'scroll-fade-left': symbolBarScrollFade.left, 'scroll-fade-right': symbolBarScrollFade.right }">
             <div ref="symbolBarScrollRef" class="symbol-bar-scroll" @scroll="updateSymbolBarScrollFade">
-              <button v-for="sym in symbolKeys" :key="sym" class="toolbar-btn btn-symbol" @click="handleSymbolClick(sym)">{{ sym }}</button>
+              <button v-for="sym in selectedSymbols" :key="sym.id" class="toolbar-btn btn-symbol" @click="handleSymbolClick(sym.char!)">{{ sym.label }}</button>
             </div>
           </div>
         </div>
@@ -90,39 +90,26 @@
         </button>
         <div class="scroll-wrapper" :class="{ 'scroll-fade-left': toolbarScrollFade.left, 'scroll-fade-right': toolbarScrollFade.right }">
           <div ref="toolbarScrollRef" class="toolbar-scroll" @scroll="updateToolbarScrollFade">
-          <!-- Group: Modifiers -->
-          <div class="key-group">
-            <button class="toolbar-btn btn-modifier" @click="terminalKeys.sendEscape(); focusTerminal()" title="Esc">Esc</button>
-            <button v-if="!gestures.enabled.value" class="toolbar-btn btn-modifier" @click="terminalKeys.sendTab(); focusTerminal()" title="Tab">Tab</button>
-            <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.ctrl !== 'inactive', locked: terminalKeys.activeModifiers.value.ctrl === 'locked' }" @click="handleModifier('ctrl')" @contextmenu.prevent title="Ctrl">Ctrl</button>
-            <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.alt !== 'inactive', locked: terminalKeys.activeModifiers.value.alt === 'locked' }" @click="handleModifier('alt')" @contextmenu.prevent title="Alt">Alt</button>
-            <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.shift !== 'inactive', locked: terminalKeys.activeModifiers.value.shift === 'locked' }" @click="handleModifier('shift')" @contextmenu.prevent title="Shift">Shift</button>
-            <button class="toolbar-btn btn-modifier btn-shift-tab" @click="terminalKeys.sendShiftTab(); focusTerminal()" title="Shift+Tab"><span class="shift-tab-label">Shift</span><span class="shift-tab-label">Tab</span></button>
-          </div>
-          <!-- Group: Shortcuts (Ctrl+C / Ctrl+Z) -->
-          <div class="key-group">
-            <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlC(); focusTerminal()" title="Ctrl+C">⌃C</button>
-            <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlZ(); focusTerminal()" title="Ctrl+Z">⌃Z</button>
-            <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlS(); focusTerminal()" title="Ctrl+S">⌃S</button>
-          </div>
-          <!-- Group: Navigation -->
-          <div class="key-group">
-            <button class="toolbar-btn btn-nav" @click="terminalKeys.sendHome(); focusTerminal()" title="Home">Home</button>
-            <button class="toolbar-btn btn-nav" @click="terminalKeys.sendEnd(); focusTerminal()" title="End">End</button>
-            <button v-if="!gestures.enabled.value" class="toolbar-btn btn-nav" @click="terminalKeys.sendPageUp(); focusTerminal()" title="Page Up">PgUp</button>
-            <button v-if="!gestures.enabled.value" class="toolbar-btn btn-nav" @click="terminalKeys.sendPageDown(); focusTerminal()" title="Page Down">PgDn</button>
-          </div>
-          <!-- Group: Arrow keys -->
-          <div v-show="!gestures.enabled.value" class="key-group">
-            <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowUp(); focusTerminal()" title="↑">↑</button>
-            <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowDown(); focusTerminal()" title="↓">↓</button>
-            <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowLeft(); focusTerminal()" title="←">←</button>
-            <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowRight(); focusTerminal()" title="→">→</button>
-          </div>
-          <!-- Group: Actions -->
+          <button
+            v-for="def in visibleKeys"
+            :key="def.id"
+            class="toolbar-btn"
+            :class="toolbarBtnClass(def)"
+            @click="handleToolbarKeyClick(def)"
+            @contextmenu.prevent
+            :title="def.label"
+          >
+            <template v-if="def.id === 'shift_tab'"><span class="shift-tab-label">Shift</span><span class="shift-tab-label">Tab</span></template>
+            <template v-else>{{ def.label }}</template>
+          </button>
+          <!-- Quick commands button (always present) -->
           <div class="key-group">
             <button ref="cmdBtnRef" class="toolbar-btn btn-action" @click="showCommands = !showCommands" :title="t('terminal.quickCommands')">
               <ZapIcon :size="14" />
+            </button>
+            <!-- Settings button (always present) -->
+            <button class="toolbar-btn btn-action" @click="showKeyConfig = true" :title="t('terminal.keyConfigTitle')">
+              <Settings :size="14" />
             </button>
           </div>
         </div>
@@ -155,6 +142,13 @@
 
     <!-- Quick command edit dialog — only open when terminal tab is active -->
     <QuickCommandDialog :open="props.active && showEditDialog" @close="showEditDialog = false" />
+
+    <!-- Key config drawer — only open when terminal tab is active -->
+    <KeyConfigDrawer
+      :open="props.active && showKeyConfig"
+      @close="showKeyConfig = false"
+      @saved="onKeyConfigSaved"
+    />
   </div>
 </template>
 
@@ -165,14 +159,16 @@ import '@xterm/xterm/css/xterm.css'
 
 import PopupMenu from '@/components/common/PopupMenu.vue'
 import QuickCommandDialog from '@/components/terminal/QuickCommandDialog.vue'
+import KeyConfigDrawer from '@/components/terminal/KeyConfigDrawer.vue'
 import TerminalTabMenu from '@/components/terminal/TerminalTabMenu.vue'
 import { useTerminalTabs, type TerminalTab } from '@/composables/useTerminalTabs'
 import { useTerminalViewport } from '@/composables/useTerminalViewport'
-import { useTerminalKeys } from '@/composables/useTerminalKeys'
+import { useTerminalKeys, type ModifierKey } from '@/composables/useTerminalKeys'
 import { shouldPreventTerminalContextMenu, useTerminalGestures } from '@/composables/useTerminalGestures'
 import { useToast } from '@/composables/useToast'
 import { useQuickCommands } from '@/composables/useQuickCommands'
 import { useAppMode } from '@/composables/useAppMode'
+import { useKeyConfig } from '@/composables/useKeyConfig'
 import { store } from '@/stores/app'
 import { resolveTerminalCwd } from './terminalCwd'
 import {
@@ -182,15 +178,9 @@ import {
   showErrorOverlay as showErrorOverlayUtil,
 } from '@/utils/terminalFontUtils'
 import { localConfig, setLocalConfig, useSettingsConfig } from '@/composables/useSettingsConfig'
-import {
-  ALL_SYMBOLS,
-  loadSymbolFreqs,
-  saveSymbolFreqs,
-  sortSymbolsByFreq as sortSymbolsByFreqUtil,
-  incrementSymbolFreq,
-} from '@/utils/terminalSymbolFreq'
+import type { KeyDef } from '@/utils/terminalKeyDefs'
 
-import { Zap as ZapIcon, Hand as HandIcon, Hash as HashIcon, Plus as PlusIcon, MoreVertical as MoreVerticalIcon, Terminal as TerminalIcon } from 'lucide-vue-next'
+import { Zap as ZapIcon, Hand as HandIcon, Hash as HashIcon, Plus as PlusIcon, MoreVertical as MoreVerticalIcon, Terminal as TerminalIcon, Settings } from 'lucide-vue-next'
 const props = defineProps<{
   requestedCwd?: string | null
   active?: boolean
@@ -281,29 +271,29 @@ const tabMenuTarget = ref<HTMLElement | null>(null)
 const tabMenuTabId = ref<string | null>(null)
 const tabMenuCwd = ref('')
 
-// Symbol bar
-const symbolKeys = ref<string[]>([...ALL_SYMBOLS])
+// Symbol bar — config-driven
+const { selectedKeys, selectedSymbols, fetchConfig: fetchKeyConfig } = useKeyConfig()
+const showKeyConfig = ref(false)
 
-function sortSymbolsByFreq() {
-  const freqs = loadSymbolFreqs()
-  const now = Date.now()
-  symbolKeys.value = sortSymbolsByFreqUtil(freqs, now)
-}
+/** Keys visible in the toolbar, filtered by gesture mode (Tab/PgUp/PgDn/arrows hidden when gestures on) */
+const GESTURE_HIDDEN_KEYS = new Set(['tab', 'pgup', 'pgdn', 'arrow_up', 'arrow_down', 'arrow_left', 'arrow_right'])
+const visibleKeys = computed(() => {
+  if (!gestures.enabled.value) return selectedKeys.value
+  return selectedKeys.value.filter(def => !GESTURE_HIDDEN_KEYS.has(def.id))
+})
 
 function handleSymbolClick(sym: string) {
-  const freqs = loadSymbolFreqs()
-  const now = Date.now()
-  const updated = incrementSymbolFreq(freqs, sym, now)
-  saveSymbolFreqs(updated)
-  const active = tabManager.activeTab.value
-  if (active) active.session.sendInput(sym)
+  activeTab.value?.session.sendInput(sym)
   focusTerminal()
 }
 
 function toggleSymbolBar() {
   showSymbolBar.value = !showSymbolBar.value
-  if (showSymbolBar.value) sortSymbolsByFreq()
   focusTerminal()
+}
+
+function onKeyConfigSaved() {
+  showKeyConfig.value = false
 }
 
 function handleGestureToggle() {
@@ -685,8 +675,34 @@ function openEditDialog() {
   showEditDialog.value = true
 }
 
-function handleModifier(key: 'ctrl' | 'alt' | 'shift') {
-  terminalKeys.toggleModifier(key, false)
+/** Map KeyDef properties to toolbar CSS classes */
+function toolbarBtnClass(def: KeyDef): Record<string, boolean> {
+  if (def.isModifier) {
+    const key = def.id as ModifierKey
+    const state = terminalKeys.activeModifiers.value[key]
+    return {
+      'btn-modifier': true,
+      'modifier': true,
+      'active': state !== 'inactive',
+      'locked': state === 'locked',
+    }
+  }
+  if (def.id === 'shift_tab') return { 'btn-modifier': true, 'btn-shift-tab': true }
+  if (def.group === 'shortcut') return { 'btn-modifier': true, 'shortcut': true }
+  if (def.group === 'navigation') return { 'btn-nav': true }
+  if (def.group === 'arrow') return { 'btn-arrow': true }
+  if (def.group === 'editing') return { 'btn-nav': true }
+  if (def.group === 'function') return { 'btn-modifier': true, 'shortcut': true }
+  return {}
+}
+
+/** Handle click on a config-driven toolbar key */
+function handleToolbarKeyClick(def: KeyDef) {
+  if (def.isModifier) {
+    terminalKeys.toggleModifier(def.id as ModifierKey, false)
+  } else {
+    terminalKeys.send(def.id)
+  }
   focusTerminal()
 }
 
@@ -725,6 +741,7 @@ watch(() => props.active, async (isActive) => {
     terminalKeys.reset()
     showCommands.value = false
     showTabMenu.value = false
+    showKeyConfig.value = false
     viewport.stopWatching()
     gestures.detach()
   }
@@ -761,6 +778,9 @@ onMounted(async () => {
 
   // Fetch quick commands in the background — don't block terminal setup
   fetchCommands().catch(() => { /* ignore */ })
+
+  // Fetch key config in the background
+  fetchKeyConfig().catch(() => { /* ignore */ })
 
   // Initialize scroll fade state
   nextTick(refreshToolbarFade)
@@ -1269,7 +1289,8 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
 .toolbar-btn.gesture-toggle { min-width: 32px; border-radius: 9px; }
 
 .btn-shift-tab {
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   gap: 0;
   line-height: 1;
   padding: 3px 5px;

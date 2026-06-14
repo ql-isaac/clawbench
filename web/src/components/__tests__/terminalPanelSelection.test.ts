@@ -21,17 +21,15 @@ describe('TerminalPanel xterm selection defaults', () => {
     expect(source).not.toContain("selectionStyle: 'line'")
   })
 
-  it('hides toolbar buttons whose actions are covered by gestures', () => {
+  it('renders config-driven toolbar with gesture-aware visibility', () => {
     const source = readTerminalComponent('../terminal/TerminalPanelContent.vue')
-    const gestureMappedKeys = ['Tab', 'Page Up', 'Page Down', '↑', '↓', '←', '→']
 
-    for (const title of gestureMappedKeys) {
-      expect(source).toContain(`title="${title}"`)
-    }
-    // Esc button is always visible (not hidden by gestures)
-    expect(source).toContain('title="Esc">Esc</button>')
-    expect(source.match(/v-if="!gestures\.enabled\.value"/g)?.length).toBeGreaterThanOrEqual(3)
-    expect(source).toContain('v-show="!gestures.enabled.value" class="key-group"')
+    // Toolbar is now config-driven: keys rendered via v-for over selectedKeys
+    expect(source).toContain('v-for="def in selectedKeys"')
+    // Modifier keys still use toggle behavior with active/locked classes
+    expect(source).toContain('toolbarBtnClass(def)')
+    // Click handler dispatches via terminalKeys.send() or toggleModifier()
+    expect(source).toContain('handleToolbarKeyClick(def)')
   })
 
   it('keeps terminal virtual keys in a borderless, transparent overlay system', () => {

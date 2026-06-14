@@ -184,6 +184,15 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
+		CREATE TABLE IF NOT EXISTS terminal_key_config (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			type TEXT NOT NULL,
+			key_id TEXT NOT NULL,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(type, key_id)
+		);
 		CREATE TABLE IF NOT EXISTS chat_metadata (
 			message_id INTEGER PRIMARY KEY,
 			mode TEXT DEFAULT '',
