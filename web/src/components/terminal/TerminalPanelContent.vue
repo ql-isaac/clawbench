@@ -71,21 +71,28 @@
     <!-- Virtual key toolbar -->
     <div class="terminal-toolbar">
       <!-- Symbol bar (toggleable, above main toolbar) -->
-      <div v-if="showSymbolBar" class="symbol-bar">
-        <div ref="symbolBarScrollRef" class="symbol-bar-scroll" :class="{ 'scroll-fade-left': symbolBarScrollFade.left, 'scroll-fade-right': symbolBarScrollFade.right }" @scroll="updateSymbolBarScrollFade">
-          <button v-for="sym in symbolKeys" :key="sym" class="toolbar-btn btn-symbol" @click="handleSymbolClick(sym)">{{ sym }}</button>
+      <Transition name="symbol-bar">
+        <div v-if="showSymbolBar" class="symbol-bar">
+          <div class="scroll-wrapper" :class="{ 'scroll-fade-left': symbolBarScrollFade.left, 'scroll-fade-right': symbolBarScrollFade.right }">
+            <div ref="symbolBarScrollRef" class="symbol-bar-scroll" @scroll="updateSymbolBarScrollFade">
+              <button v-for="sym in symbolKeys" :key="sym" class="toolbar-btn btn-symbol" @click="handleSymbolClick(sym)">{{ sym }}</button>
+            </div>
+          </div>
         </div>
-      </div>
+      </Transition>
 
       <!-- Main toolbar row -->
       <div class="main-toolbar-row">
-        <button class="toolbar-btn modifier gesture-toggle" :class="{ active: gestures.enabled.value }" @click="gestures.toggle(); focusTerminal()" @contextmenu.prevent :title="t('terminal.gestures')">
-          <HandIcon :size="14" />
-        </button>
-        <button class="toolbar-btn modifier gesture-toggle" :class="{ active: showSymbolBar }" @click="toggleSymbolBar()" @contextmenu.prevent :title="t('terminal.symbols')">
-          <HashIcon :size="14" />
-        </button>
-        <div ref="toolbarScrollRef" class="toolbar-scroll" :class="{ 'scroll-fade-left': toolbarScrollFade.left, 'scroll-fade-right': toolbarScrollFade.right }" @scroll="updateToolbarScrollFade">
+        <div class="toolbar-left-controls">
+          <button class="toolbar-btn modifier gesture-toggle" :class="{ active: gestures.enabled.value }" @click="gestures.toggle(); focusTerminal()" @contextmenu.prevent :title="t('terminal.gestures')">
+            <HandIcon :size="14" />
+          </button>
+          <button class="toolbar-btn modifier gesture-toggle symbol-toggle" :class="{ active: showSymbolBar }" @click="toggleSymbolBar()" @contextmenu.prevent :title="t('terminal.symbols')">
+            <HashIcon :size="14" />
+          </button>
+        </div>
+        <div class="scroll-wrapper" :class="{ 'scroll-fade-left': toolbarScrollFade.left, 'scroll-fade-right': toolbarScrollFade.right }">
+          <div ref="toolbarScrollRef" class="toolbar-scroll" @scroll="updateToolbarScrollFade">
           <!-- Group: Modifiers -->
           <div class="key-group">
             <button class="toolbar-btn btn-modifier" @click="terminalKeys.sendEscape(); focusTerminal()" title="Esc">Esc</button>
@@ -127,6 +134,7 @@
               <RefreshCwIcon :size="14" />
             </button>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -1018,6 +1026,26 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
   50% { opacity: 0.3; }
 }
 
+/* Symbol bar transition */
+.symbol-bar-enter-active {
+  transition: all 0.15s ease-out;
+}
+.symbol-bar-leave-active {
+  transition: all 0.12s ease-in;
+}
+.symbol-bar-enter-from,
+.symbol-bar-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  margin-top: 0;
+  overflow: hidden;
+}
+.symbol-bar-enter-to,
+.symbol-bar-leave-from {
+  max-height: 44px;
+}
+
 /* Terminal viewport container */
 .terminal-viewport {
   flex: 1;
@@ -1172,6 +1200,8 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
 
 .symbol-bar {
   padding: 3px 6px 0;
+  margin-left: 6px;
+  margin-right: 6px;
   background: color-mix(in srgb, var(--text-primary) 3%, transparent);
   border-radius: 6px 6px 0 0;
 }
@@ -1183,33 +1213,44 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  position: relative;
 }
 .symbol-bar-scroll::-webkit-scrollbar { display: none; }
-.symbol-bar-scroll::before,
-.symbol-bar-scroll::after {
+
+.scroll-wrapper {
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+.scroll-wrapper::before,
+.scroll-wrapper::after {
   content: '';
-  position: sticky;
+  position: absolute;
   top: 0;
   bottom: 0;
-  min-width: 0;
-  flex-shrink: 0;
+  width: 0;
   pointer-events: none;
   z-index: 1;
-  transition: min-width 200ms ease;
+  transition: width 200ms ease;
 }
-.symbol-bar-scroll::before {
+.scroll-wrapper::before {
   left: 0;
-  min-width: 0;
-  background: linear-gradient(to right, var(--bg-secondary), transparent);
+  background: linear-gradient(to right, var(--bg-secondary) 25%, transparent);
 }
-.symbol-bar-scroll::after {
+.scroll-wrapper::after {
   right: 0;
-  min-width: 0;
-  background: linear-gradient(to left, var(--bg-secondary), transparent);
+  background: linear-gradient(to left, var(--bg-secondary) 25%, transparent);
 }
-.symbol-bar-scroll.scroll-fade-left::before { min-width: 16px; }
-.symbol-bar-scroll.scroll-fade-right::after { min-width: 16px; }
+.scroll-wrapper.scroll-fade-left::before { width: 36px; }
+.scroll-wrapper.scroll-fade-right::after { width: 36px; }
+
+/* Symbol bar scroll-wrapper uses a slightly different background for its gradient */
+.symbol-bar .scroll-wrapper::before {
+  background: linear-gradient(to right, color-mix(in srgb, var(--text-primary) 3%, var(--bg-secondary)) 25%, transparent);
+}
+.symbol-bar .scroll-wrapper::after {
+  background: linear-gradient(to left, color-mix(in srgb, var(--text-primary) 3%, var(--bg-secondary)) 25%, transparent);
+}
 
 .main-toolbar-row {
   display: flex;
@@ -1218,7 +1259,21 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
   gap: 2px;
 }
 
-.gesture-toggle { flex-shrink: 0; margin-right: 2px; }
+.toolbar-left-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.gesture-toggle { flex-shrink: 0; }
+
+.symbol-toggle.active {
+  /* When symbol bar is open, blend the # button with the symbol bar
+     so they appear as one connected panel */
+  border-radius: 0 0 6px 6px;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
 
 .toolbar-scroll {
   display: flex;
@@ -1226,36 +1281,10 @@ defineExpose({ activate: () => {}, deactivate: () => {}, keyboardHeight: viewpor
   gap: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   scrollbar-width: none;
-  position: relative;
 }
 .toolbar-scroll::-webkit-scrollbar { display: none; }
-.toolbar-scroll::before,
-.toolbar-scroll::after {
-  content: '';
-  position: sticky;
-  top: 0;
-  bottom: 0;
-  min-width: 0;
-  flex-shrink: 0;
-  pointer-events: none;
-  z-index: 1;
-  transition: min-width 200ms ease;
-}
-.toolbar-scroll::before {
-  left: 0;
-  min-width: 0;
-  background: linear-gradient(to right, var(--bg-secondary), transparent);
-}
-.toolbar-scroll::after {
-  right: 0;
-  min-width: 0;
-  background: linear-gradient(to left, var(--bg-secondary), transparent);
-}
-.toolbar-scroll.scroll-fade-left::before { min-width: 16px; }
-.toolbar-scroll.scroll-fade-right::after { min-width: 16px; }
 
 .key-group { display: flex; align-items: center; gap: 3px; }
 .key-group + .key-group { position: relative; margin-left: 6px; }
