@@ -236,24 +236,12 @@ func (r *ProxyRegistry) UpdatePort(localPort int, port int, host string, name st
 	}
 
 	// If target port changed, may need to re-allocate local port
-	newLocalPort := localPort
-	if port != existing.Port {
-		if localPort == existing.Port {
-			if _, taken := r.ports[port]; !taken {
-				newLocalPort = port
-			}
-		}
-	}
+	newLocalPort := r.reallocateLocalPort(localPort, port, existing.Port)
 
 	// Determine if reverse proxy needs to be restarted:
 	// host, port, or protocol changed for a non-localhost target,
 	// or the target switched between localhost and non-localhost.
-	hostChanged := host != existing.Host
-	portChanged := port != existing.Port
-	protocolChanged := protocol != existing.Protocol
-	wasNonLocalhost := isNonLocalhostTarget(existing.Host)
-	isNonLocalhost := isNonLocalhostTarget(host)
-	needProxyRestart := (hostChanged || portChanged || protocolChanged) && (wasNonLocalhost || isNonLocalhost)
+	needProxyRestart := r.needsProxyRestart(existing, host, port, protocol)
 
 	if needProxyRestart {
 		r.stopReverseProxy(localPort)
@@ -276,7 +264,7 @@ func (r *ProxyRegistry) UpdatePort(localPort int, port int, host string, name st
 	}
 
 	// Start reverse proxy if needed for the new target
-	if needProxyRestart && isNonLocalhost {
+	if needProxyRestart && isNonLocalhostTarget(host) {
 		if err := r.startReverseProxy(newLocalPort, port, host, protocol); err != nil {
 			slog.Warn(
 				"failed to restart reverse proxy after UpdatePort",
@@ -300,6 +288,33 @@ func (r *ProxyRegistry) UpdatePort(localPort int, port int, host string, name st
 	)
 
 	return nil
+}
+
+// reallocateLocalPort determines the new local port if the target port changed.
+// If the old local port matched the old target port and the new target port is available,
+// reassign to the new target port; otherwise keep the current local port.
+func (r *ProxyRegistry) reallocateLocalPort(localPort, newTargetPort, oldTargetPort int) int {
+	if newTargetPort == oldTargetPort {
+		return localPort
+	}
+	if localPort == oldTargetPort {
+		if _, taken := r.ports[newTargetPort]; !taken {
+			return newTargetPort
+		}
+	}
+	return localPort
+}
+
+// needsProxyRestart returns true if the reverse proxy must be restarted after a port update.
+// This happens when host/port/protocol changed for a non-localhost target,
+// or when the target switches between localhost and non-localhost.
+func (r *ProxyRegistry) needsProxyRestart(existing *model.ForwardedPort, host string, port int, protocol string) bool {
+	hostChanged := host != existing.Host
+	portChanged := port != existing.Port
+	protocolChanged := protocol != existing.Protocol
+	wasNonLocalhost := isNonLocalhostTarget(existing.Host)
+	isNonLocalhost := isNonLocalhostTarget(host)
+	return (hostChanged || portChanged || protocolChanged) && (wasNonLocalhost || isNonLocalhost)
 }
 
 // UnregisterPort removes a port from the forwarding registry by local port.

@@ -64,7 +64,7 @@ func ServeRecentProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeProjectSet handles GET (current project) and POST (set project).
-func ServeProjectSet(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,gocyclo // multi-method project handler
+func ServeProjectSet(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-method project handler
 	switch r.Method {
 	case http.MethodGet:
 		projectPath, _ := service.GetDefaultProject()
