@@ -887,7 +887,7 @@ func TestServeAgentsGet_PrefetchACPStateForUncachedAgent(t *testing.T) {
 			// Remove the injected spec
 			for i, s := range model.GetBackendRegistry() {
 				if s.Backend == "acp-prefetch" {
-					model.BackendRegistry = append(model.GetBackendRegistry()[:i], model.GetBackendRegistry()[i+1:]...)
+					model.BackendRegistry = append(model.BackendRegistry[:i], model.BackendRegistry[i+1:]...)
 					break
 				}
 			}

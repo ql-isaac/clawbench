@@ -157,67 +157,80 @@ var acpKindToCanonical = map[acp.ToolKind]string{
 // then shared title prefix/alias matching, then kind-to-canonical,
 // then fall back to the title itself.
 func extractToolName(title string, kind acp.ToolKind, backendID string, toolCallID ...string) string {
-	// Backend-specific toolCallId prefix lookup (e.g. Kimi ACP uses "read_file-<ts>-<n>").
-	if len(toolCallID) > 0 && toolCallID[0] != "" && backendID != "" && LookupACPToolCallIDPrefixesFn != nil {
-		tid := toolCallID[0]
-		if dashIdx := strings.Index(tid, "-"); dashIdx > 0 {
-			prefix := tid[:dashIdx]
-			if prefixes := LookupACPToolCallIDPrefixesFn(backendID); prefixes != nil {
-				if canonical, ok := prefixes[prefix]; ok {
-					return canonical
-				}
-			}
-		}
-	}
-
-	// Legacy fallback: try the global acpToolCallIDPrefix map if backend-specific lookup failed.
-	if len(toolCallID) > 0 && toolCallID[0] != "" {
-		tid := toolCallID[0]
-		if dashIdx := strings.Index(tid, "-"); dashIdx > 0 {
-			prefix := tid[:dashIdx]
-			if canonical, ok := acpToolCallIDPrefix[prefix]; ok {
-				return canonical
-			}
-		}
+	// Try toolCallID prefix lookup first (backend-specific then legacy global)
+	if name := lookupByToolCallID(toolCallID, backendID); name != "" {
+		return name
 	}
 
 	if title != "" {
-		// Fast path: case-insensitive alias lookup for single-word titles.
-		// Some ACP agents send lowercase names (e.g. "bash", "terminal")
-		// while the frontend expects PascalCase ("Bash").
-		if !strings.Contains(title, " ") {
-			if canonical, ok := acpLowerAlias[strings.ToLower(title)]; ok {
-				return canonical
-			}
-		}
-		// Try matching title against known canonical tool name prefixes.
-		// Longer/more-specific prefixes must appear before shorter ones
-		// (e.g. "MultiEdit" before "Edit", "WebSearch" before "Web").
-		for _, p := range acpToolNamePatterns {
-			if strings.HasPrefix(title, p.prefix) {
-				return p.canonical
-			}
-		}
-		// If title is a single word (no spaces), use it directly — it may already be canonical.
-		// But file paths with dots/slashes (e.g., "README.md", "cmd/server") are not canonical
-		// tool names — fall through to kind mapping instead.
-		// Exception: known Agent sub-type names (e.g., "Explore", "Plan") are not standalone
-		// tools — they are always Agent calls with a subagent_type field. Map them to "Agent"
-		// so the frontend uses the correct icon/category.
-		if !strings.Contains(title, " ") && !strings.Contains(title, ".") && !strings.Contains(title, "/") {
-			if acpIsAgentSubtype(title) {
-				return "Agent"
-			}
-			return title
+		if name := lookupByTitle(title); name != "" {
+			return name
 		}
 	}
+
 	// Map ACP ToolKind to canonical PascalCase names expected by the frontend.
-	// Without this, string(kind) returns lowercase ("read", "execute", "search")
-	// which won't match TOOL_ICONS in the frontend.
 	if canonical, ok := acpKindToCanonical[kind]; ok {
 		return canonical
 	}
 	return string(kind)
+}
+
+// lookupByToolCallID tries to resolve a tool name from the toolCallID prefix.
+// Checks backend-specific prefix map first, then falls back to the global map.
+func lookupByToolCallID(toolCallID []string, backendID string) string {
+	if len(toolCallID) == 0 || toolCallID[0] == "" {
+		return ""
+	}
+	tid := toolCallID[0]
+	dashIdx := strings.Index(tid, "-")
+	if dashIdx <= 0 {
+		return ""
+	}
+	prefix := tid[:dashIdx]
+
+	// Backend-specific lookup
+	if backendID != "" && LookupACPToolCallIDPrefixesFn != nil {
+		if prefixes := LookupACPToolCallIDPrefixesFn(backendID); prefixes != nil {
+			if canonical, ok := prefixes[prefix]; ok {
+				return canonical
+			}
+		}
+	}
+
+	// Legacy global fallback
+	if canonical, ok := acpToolCallIDPrefix[prefix]; ok {
+		return canonical
+	}
+	return ""
+}
+
+// lookupByTitle resolves a tool name from the title string using alias matching,
+// prefix patterns, or single-word passthrough (with agent subtype detection).
+func lookupByTitle(title string) string {
+	// Fast path: case-insensitive alias lookup for single-word titles.
+	if !strings.Contains(title, " ") {
+		if canonical, ok := acpLowerAlias[strings.ToLower(title)]; ok {
+			return canonical
+		}
+	}
+
+	// Try matching title against known canonical tool name prefixes.
+	for _, p := range acpToolNamePatterns {
+		if strings.HasPrefix(title, p.prefix) {
+			return p.canonical
+		}
+	}
+
+	// Single word without dots/slashes may be canonical already,
+	// but Agent subtypes (Explore, Plan, etc.) should map to "Agent".
+	if !strings.Contains(title, " ") && !strings.Contains(title, ".") && !strings.Contains(title, "/") {
+		if acpIsAgentSubtype(title) {
+			return "Agent"
+		}
+		return title
+	}
+
+	return ""
 }
 
 // ExtractToolNameForTest exports extractToolName for use in integration tests.

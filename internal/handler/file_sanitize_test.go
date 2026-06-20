@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -18,7 +19,7 @@ func TestSanitizeTextContent_Empty(t *testing.T) {
 func TestSanitizeTextContent_PureText(t *testing.T) {
 	input := []byte("hello world\nline 2\nline 3")
 	data, truncated := sanitizeTextContent(input)
-	if string(data) != string(input) {
+	if !bytes.Equal(data, input) {
 		t.Errorf("expected unchanged text, got %q", string(data))
 	}
 	if truncated {

@@ -205,20 +205,7 @@ func GetFile(w http.ResponseWriter, r *http.Request) {
 
 	info, err := os.Stat(absPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			// os.Stat fails on dangling symlinks. Check with Lstat —
-			// if it's a symlink, include the target in the error message
-			// so the user knows the link is broken (not just "file not found").
-			linfo, lerr := os.Lstat(absPath)
-			if lerr == nil && linfo.Mode()&os.ModeSymlink != 0 {
-				target, _ := os.Readlink(absPath)
-				writeLocalizedErrorf(w, r, http.StatusNotFound, "BrokenSymlink", map[string]any{"Target": target})
-				return
-			}
-			writeLocalizedError(w, r, model.NotFound(nil, "FileNotFoundShort"))
-		} else {
-			model.WriteError(w, model.Internal(fmt.Errorf("cannot access file")))
-		}
+		handleStatError(w, r, absPath, err)
 		return
 	}
 	if info.IsDir() {
@@ -240,30 +227,13 @@ func GetFile(w http.ResponseWriter, r *http.Request) {
 	forceText := r.URL.Query().Get("forceText") == "1"
 
 	if !isText && !forceText {
-		// Sniff content to detect binary — read first 8KB
-		sniffBuf := make([]byte, binarySniffSize)
-		f, err := os.Open(absPath)
-		if err != nil {
+		isBinary, sniffErr := sniffBinaryContent(absPath)
+		if sniffErr != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("cannot open file")))
 			return
 		}
-		n, _ := f.Read(sniffBuf)
-		_ = f.Close()
-
-		isBinary := false
-		for i := 0; i < n; i++ {
-			if sniffBuf[i] == 0 {
-				isBinary = true
-				break
-			}
-		}
-
 		if isBinary {
-			respPath := absPath
-			if !isExternal {
-				relPath, _ := filepath.Rel(projectPath, absPath)
-				respPath = filepath.ToSlash(relPath)
-			}
+			respPath := responsePath(absPath, projectPath, isExternal)
 			writeJSON(w, http.StatusOK, FileContent{
 				Content:   "",
 				Name:      info.Name(),
@@ -289,11 +259,7 @@ func GetFile(w http.ResponseWriter, r *http.Request) {
 		content, truncated = sanitizeTextContent(content)
 	}
 
-	respPath := absPath
-	if !isExternal {
-		relPath, _ := filepath.Rel(projectPath, absPath)
-		respPath = filepath.ToSlash(relPath)
-	}
+	respPath := responsePath(absPath, projectPath, isExternal)
 	writeJSON(w, http.StatusOK, FileContent{
 		Content:   string(content),
 		Name:      info.Name(),
@@ -302,6 +268,54 @@ func GetFile(w http.ResponseWriter, r *http.Request) {
 		Size:      info.Size(),
 		Truncated: truncated,
 	})
+}
+
+// handleStatError writes an appropriate error response for os.Stat failures,
+// including broken symlink detection.
+func handleStatError(w http.ResponseWriter, r *http.Request, absPath string, err error) {
+	if !os.IsNotExist(err) {
+		model.WriteError(w, model.Internal(fmt.Errorf("cannot access file")))
+		return
+	}
+	// os.Stat fails on dangling symlinks. Check with Lstat —
+	// if it's a symlink, include the target in the error message
+	// so the user knows the link is broken (not just "file not found").
+	linfo, lerr := os.Lstat(absPath)
+	if lerr == nil && linfo.Mode()&os.ModeSymlink != 0 {
+		target, _ := os.Readlink(absPath)
+		writeLocalizedErrorf(w, r, http.StatusNotFound, "BrokenSymlink", map[string]any{"Target": target})
+		return
+	}
+	writeLocalizedError(w, r, model.NotFound(nil, "FileNotFoundShort"))
+}
+
+// sniffBinaryContent reads the beginning of a file and returns true if it
+// contains null bytes (indicating binary content).
+func sniffBinaryContent(absPath string) (bool, error) {
+	sniffBuf := make([]byte, binarySniffSize)
+	f, err := os.Open(absPath)
+	if err != nil {
+		return false, err
+	}
+	n, _ := f.Read(sniffBuf)
+	_ = f.Close()
+
+	for i := range n {
+		if sniffBuf[i] == 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// responsePath returns the path to include in API responses: relative for
+// project files, absolute for external files.
+func responsePath(absPath, projectPath string, isExternal bool) string {
+	if isExternal {
+		return absPath
+	}
+	relPath, _ := filepath.Rel(projectPath, absPath)
+	return filepath.ToSlash(relPath)
 }
 
 // ServeLocalFile serves a file directly (for images, PDFs, etc.).
@@ -747,46 +761,56 @@ func sanitizeTextContent(data []byte) ([]byte, bool) {
 		return data, false
 	}
 
-	// Sniff for binary content: check first 8KB for null bytes
+	if hasBinaryContent(data) {
+		return sanitizeBinaryContent(data)
+	}
+
+	if len(data) > maxForceTextSize {
+		return truncateAtUTF8Boundary(data), true
+	}
+
+	return data, false
+}
+
+// hasBinaryContent checks the first 8KB for null bytes to detect binary content.
+func hasBinaryContent(data []byte) bool {
 	sniffEnd := len(data)
 	if sniffEnd > binarySniffSize {
 		sniffEnd = binarySniffSize
 	}
-	isBinary := false
-	for i := 0; i < sniffEnd; i++ {
+	for i := range sniffEnd {
 		if data[i] == 0 {
-			isBinary = true
-			break
+			return true
 		}
 	}
+	return false
+}
 
+// sanitizeBinaryContent truncates binary content and replaces non-printable
+// characters with '.', keeping \n, \r, \t, printable ASCII, and high bytes.
+func sanitizeBinaryContent(data []byte) ([]byte, bool) {
 	truncated := false
-
-	if isBinary {
-		// Truncate binary content aggressively
-		if len(data) > maxBinaryTextSize {
-			data = data[:maxBinaryTextSize]
-			truncated = true
-		}
-		// Replace non-printable characters (keep \n, \r, \t)
-		out := make([]byte, len(data))
-		for i, b := range data {
-			if b == '\n' || b == '\r' || b == '\t' || (b >= 0x20 && b < 0x7F) || b >= 0x80 {
-				out[i] = b
-			} else {
-				out[i] = '.'
-			}
-		}
-		data = out
-	} else if len(data) > maxForceTextSize {
-		// Text file: truncate at UTF-8 boundary to avoid splitting multi-byte chars
-		cut := maxForceTextSize
-		for cut > 0 && cut < len(data) && !utf8.RuneStart(data[cut]) {
-			cut--
-		}
-		data = data[:cut]
+	if len(data) > maxBinaryTextSize {
+		data = data[:maxBinaryTextSize]
 		truncated = true
 	}
+	out := make([]byte, len(data))
+	for i, b := range data {
+		if b == '\n' || b == '\r' || b == '\t' || (b >= 0x20 && b < 0x7F) || b >= 0x80 {
+			out[i] = b
+		} else {
+			out[i] = '.'
+		}
+	}
+	return out, truncated
+}
 
-	return data, truncated
+// truncateAtUTF8Boundary truncates data at maxForceTextSize, stepping back to
+// avoid splitting a multi-byte UTF-8 character.
+func truncateAtUTF8Boundary(data []byte) []byte {
+	cut := maxForceTextSize
+	for cut > 0 && cut < len(data) && !utf8.RuneStart(data[cut]) {
+		cut--
+	}
+	return data[:cut]
 }

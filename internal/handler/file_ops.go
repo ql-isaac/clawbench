@@ -91,18 +91,18 @@ func ServeFileWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpPath := tmpFile.Name()
 	if _, err := tmpFile.WriteString(req.Content); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		model.WriteError(w, model.Internal(fmt.Errorf("cannot write file")))
 		return
 	}
 	if err := tmpFile.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		model.WriteError(w, model.Internal(fmt.Errorf("cannot close temp file")))
 		return
 	}
 	if err := os.Rename(tmpPath, absPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		model.WriteError(w, model.Internal(fmt.Errorf("cannot rename temp file")))
 		return
 	}
