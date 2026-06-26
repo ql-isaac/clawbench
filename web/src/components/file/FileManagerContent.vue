@@ -98,6 +98,7 @@
     <div v-if="viewMode === 'list'" class="file-list" id="fileList"
       @click="handleItemClick"
       @contextmenu.prevent="handleCtxMenu"
+      v-long-press="onContainerLongPress"
     >
       <Transition name="loading-fade">
         <div v-if="dirLoading" class="loading-mask">
@@ -116,7 +117,8 @@
           class="file-item dir-item"
           :class="{
             'ms-selected': multiSelect.active && multiSelect.selected.has(itemPath(entry.name)),
-            'ctx-highlight': ctxMenu.visible && ctxMenu.entry?.path === itemPath(entry.name)
+            'ctx-highlight': ctxMenu.visible && ctxMenu.entry?.path === itemPath(entry.name),
+            'cut-item': isCutItem(itemPath(entry.name))
           }"
           :data-action="'dir'"
           :data-path="itemPath(entry.name)"
@@ -139,7 +141,8 @@
           :class="{
             active: !multiSelect.active && currentFile?.path === itemPath(entry.name),
             'ms-selected': multiSelect.active && multiSelect.selected.has(itemPath(entry.name)),
-            'ctx-highlight': ctxMenu.visible && ctxMenu.entry?.path === itemPath(entry.name)
+            'ctx-highlight': ctxMenu.visible && ctxMenu.entry?.path === itemPath(entry.name),
+            'cut-item': isCutItem(itemPath(entry.name))
           }"
           :data-action="'file'"
           :data-path="itemPath(entry.name)"
@@ -167,6 +170,7 @@
     <div v-else class="file-grid" id="fileList"
       @click="handleItemClick"
       @contextmenu.prevent="handleCtxMenu"
+      v-long-press="onContainerLongPress"
     >
       <Transition name="loading-fade">
         <div v-if="dirLoading" class="loading-mask">
@@ -185,7 +189,8 @@
           'grid-dir': entry.type === 'dir',
           'grid-active': !multiSelect.active && entry.type !== 'dir' && currentFile?.path === itemPath(entry.name),
           'ms-selected': multiSelect.active && multiSelect.selected.has(itemPath(entry.name)),
-          'ctx-highlight': ctxMenu.visible && ctxMenu.entry?.path === itemPath(entry.name)
+          'ctx-highlight': ctxMenu.visible && ctxMenu.entry?.path === itemPath(entry.name),
+          'cut-item': isCutItem(itemPath(entry.name))
         }"
         :data-action="entry.type === 'dir' ? 'dir' : 'file'"
         :data-path="itemPath(entry.name)"
@@ -243,6 +248,18 @@
           <ClipboardPaste :size="14" />
           {{ t('file.context.paste') }}
         </div>
+        <!-- New file/folder when no entry selected (empty area) -->
+        <template v-if="!ctxMenu.entry">
+          <div class="context-menu-divider" />
+          <div class="context-menu-item" @click.stop="doNewFile">
+            <FilePlus :size="14" />
+            {{ t('file.context.newFile') }}
+          </div>
+          <div class="context-menu-item" @click.stop="doNewFolder">
+            <FolderPlus :size="14" />
+            {{ t('file.context.newFolder') }}
+          </div>
+        </template>
         <!-- Group 2: Entry actions -->
         <template v-if="ctxMenu.entry">
           <div class="context-menu-divider" />
@@ -420,8 +437,14 @@ function closeDropdowns(e) {
   }
 }
 
-onMounted(() => document.addEventListener('click', closeDropdowns))
-onUnmounted(() => document.removeEventListener('click', closeDropdowns))
+onMounted(() => {
+  document.addEventListener('click', closeDropdowns)
+  document.addEventListener('keydown', handleKeydown)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', closeDropdowns)
+  document.removeEventListener('keydown', handleKeydown)
+})
 
 // Helper: build item path from entry name
 function itemPath(name) {
@@ -482,14 +505,31 @@ function onLongPress(entry, e) {
     nextTick(() => clampCtxMenu())
 }
 
+function onContainerLongPress(e) {
+    // Ignore if touch originated on a file/dir item — child v-long-press handles it
+    if (e.target?.closest('.file-item, .grid-item')) return
+    // Long-press on empty area — show menu without entry (paste, new file/folder, terminal)
+    const touch = e.touches[0]
+    ctxMenu.x = touch.clientX
+    ctxMenu.y = touch.clientY + 10
+    ctxMenu.entry = null
+    ctxMenu.visible = true
+    nextTick(() => clampCtxMenu())
+}
+
 function handleCtxMenu(e) {
     const item = e.target?.closest('.file-item, .grid-item')
-    if (!item) return
+    ctxMenu.x = e.clientX
+    ctxMenu.y = e.clientY
+    if (!item) {
+        ctxMenu.entry = null
+        ctxMenu.visible = true
+        nextTick(() => clampCtxMenu())
+        return
+    }
     const action = item.dataset.action
     const path = item.dataset.path
     const name = item.querySelector('.file-name, .grid-name')?.textContent || ''
-    ctxMenu.x = e.clientX
-    ctxMenu.y = e.clientY
     ctxMenu.entry = { type: action === 'dir' ? 'dir' : 'file', name, path }
     ctxMenu.visible = true
     nextTick(() => clampCtxMenu())
@@ -498,8 +538,17 @@ function handleCtxMenu(e) {
 // Clipboard now supports multiple entries
 const { clipboard, clear: clearClipboard } = _createClipboard()
 
+// Check if a given path is in clipboard as cut (for visual half-transparent effect)
+const cutPaths = computed(() => {
+  if (!clipboard.isCut || !clipboard.entries.length) return null
+  return new Set(clipboard.entries.map(e => e.path))
+})
+function isCutItem(path) {
+  return cutPaths.value?.has(path) ?? false
+}
+
 function getDestDir(entry) {
-    if (!entry) return props.currentDir === '/' ? '' : props.currentDir
+    if (!entry) return props.currentDir.replace(/^\/+/, '')
     if (entry.type === 'dir') return entry.path
     const idx = entry.path.lastIndexOf('/')
     return idx > 0 ? entry.path.slice(0, idx) : ''
@@ -532,6 +581,11 @@ async function doPaste() {
     for (const srcEntry of clipboard.entries) {
         try {
             let destPath = (destDir ? destDir + '/' : '') + srcEntry.name
+            // Cut to same location is a no-op — skip the API call
+            if (clipboard.isCut && srcEntry.path === destPath) {
+                appLog.d(TAG, '[doPaste] same-path no-op, skipping:', srcEntry.path)
+                continue
+            }
             appLog.d(TAG, '[doPaste] moving:', srcEntry.path, '→', destPath)
             let resp = await fetch(api, {
                 method: 'POST',
@@ -558,7 +612,8 @@ async function doPaste() {
             allOk = false
         }
     }
-    if (clipboard.isCut) {
+    // Only clear clipboard on successful cut-paste; on failure keep entries so user can retry
+    if (clipboard.isCut && allOk) {
         // If the currently viewed file was moved, clear it to avoid
         // refreshCurrentFile hitting 404 and showing "file not found"
         const currentFilePath = store.state.currentFile?.path
@@ -915,6 +970,91 @@ function doDelete() {
     emit('delete', path)
 }
 
+// ── PC keyboard shortcuts (Ctrl+C/X/V, Delete) ──
+function handleKeydown(e) {
+    // Only active when browse tab is focused
+    if (activeTab.value !== 'browse') return
+    // Skip in Android app mode
+    if (isAppMode.value) return
+    // Skip if a dialog/prompt is open (don't interfere with input fields)
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+
+    const isCtrl = e.ctrlKey || e.metaKey
+
+    // Ctrl+C — copy
+    if (isCtrl && e.key === 'c') {
+        if (multiSelect.active && multiSelect.selected.size > 0) {
+            e.preventDefault()
+            doBatchCopy()
+        } else if (currentFileForClipboard()) {
+            e.preventDefault()
+            clipboard.entries = [currentFileForClipboard()]
+            clipboard.isCut = false
+            if (toast) toast.show(t('common.copied'), { icon: '📋', type: 'success', duration: 1500 })
+        }
+        return
+    }
+
+    // Ctrl+X — cut
+    if (isCtrl && e.key === 'x') {
+        if (multiSelect.active && multiSelect.selected.size > 0) {
+            e.preventDefault()
+            doBatchCut()
+        } else if (currentFileForClipboard()) {
+            e.preventDefault()
+            clipboard.entries = [currentFileForClipboard()]
+            clipboard.isCut = true
+            if (toast) toast.show(t('file.toast.cutDone'), { icon: '✂️', type: 'success', duration: 1500 })
+        }
+        return
+    }
+
+    // Ctrl+V — paste
+    if (isCtrl && e.key === 'v') {
+        if (clipboard.entries.length) {
+            e.preventDefault()
+            // Paste into current directory
+            const fakeEntry = { type: 'dir', name: '', path: props.currentDir }
+            const savedEntry = ctxMenu.entry
+            ctxMenu.entry = fakeEntry
+            doPaste().then(() => { ctxMenu.entry = savedEntry })
+        }
+        return
+    }
+
+    // Delete — delete
+    if (e.key === 'Delete') {
+        if (multiSelect.active && multiSelect.selected.size > 0) {
+            e.preventDefault()
+            doBatchDelete()
+        } else if (props.currentFile) {
+            e.preventDefault()
+            appLog.d(TAG, '[kbd:Delete] emitting delete for:', props.currentFile.path)
+            emit('delete', props.currentFile.path)
+        }
+        return
+    }
+
+    // Ctrl+A — select all
+    if (isCtrl && e.key === 'a') {
+        if (!multiSelect.active) {
+            e.preventDefault()
+            enterMultiSelect()
+        }
+        toggleSelectAll()
+        return
+    }
+}
+
+// Build a clipboard entry from the currently viewed/selected file
+function currentFileForClipboard() {
+    if (!props.currentFile) return null
+    const path = props.currentFile.path
+    const name = path.split('/').pop() || ''
+    const entry = props.entries.find(e => e.name === name)
+    return { type: entry?.type || 'file', name, path }
+}
+
 </script>
 
 <style scoped>
@@ -1061,6 +1201,12 @@ function doDelete() {
 
 .file-item.ctx-highlight {
     background: color-mix(in srgb, var(--accent-color, #4a90d9) 12%, transparent);
+}
+
+/* ── Cut item half-transparent effect ── */
+.file-item.cut-item,
+.grid-item.cut-item {
+    opacity: 0.5;
 }
 
 /* ── Multi-select bottom action bar ── */
