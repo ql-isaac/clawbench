@@ -11,6 +11,8 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+
+	"clawbench/internal/model"
 )
 
 // ---------------------------------------------------------------------------
@@ -263,7 +265,8 @@ func (c *ACPConn) killProcessLocked() {
 		c.stdoutFilter = nil
 	}
 
-	_ = c.cmd.Process.Kill()
+	// Kill the entire process group (see killProcessGroup for rationale).
+	killProcessGroup(c.cmd.Process)
 	oldCmd := c.cmd
 	c.mu.Unlock()
 	_ = oldCmd.Wait()
@@ -278,6 +281,8 @@ func (c *ACPConn) killProcessLocked() {
 }
 
 // spawnLocked spawns the agent process and initializes the connection (must hold c.mu).
+//
+//nolint:gocyclo // complex spawn logic with multiple sequential setup steps
 func (c *ACPConn) spawnLocked(ctx context.Context) error {
 	// Kill any existing process first
 	if c.cmd != nil && c.cmd.Process != nil {
@@ -290,8 +295,10 @@ func (c *ACPConn) spawnLocked(ctx context.Context) error {
 		// Close the old stdout filter to unblock pending reads before killing
 		if c.stdoutFilter != nil {
 			c.stdoutFilter.Close()
+			c.stdoutFilter = nil
 		}
-		_ = c.cmd.Process.Kill()
+		// Kill the entire process group (npx + child processes).
+		killProcessGroup(c.cmd.Process)
 		oldCmd := c.cmd
 		c.mu.Unlock()
 		_ = oldCmd.Wait()
@@ -313,10 +320,24 @@ func (c *ACPConn) spawnLocked(ctx context.Context) error {
 	cmdName := cmdParts[0]
 	cmdArgs := cmdParts[1:]
 
+	// Resolve embedded binary path for bare command names (e.g. "opencode acp" → use embedded opencode binary).
+	if !strings.Contains(cmdName, "/") {
+		if spec := model.FindBackendSpecByDefaultCmd(cmdName); spec != nil && spec.EmbeddedSubDir != "" {
+			if p := model.EmbeddedBinaryPath(spec.EmbeddedSubDir); p != "" {
+				cmdName = p
+			}
+		}
+	}
+
 	cmd := exec.CommandContext(context.Background(), cmdName, cmdArgs...)
 	cmd.Dir = c.cwd // project working directory for this ACP session
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, OrphanChildEnvVar)
+	// Put the ACP process in its own process group so we can kill the
+	// entire tree (npx + child claude process) when closing the connection.
+	// Without this, killing npx leaves the claude child alive, which holds
+	// the stdout/stderr pipes open and causes cmd.Wait() to hang.
+	setProcessGroup(cmd)
 
 	if nodeOpts := os.Getenv("NODE_OPTIONS"); nodeOpts != "" {
 		cmd.Env = append(cmd.Env, "NODE_OPTIONS="+nodeOpts+" --report-on-fatalerror --report-on-signal --report-directory=/tmp/node-reports")

@@ -65,6 +65,12 @@ func TestBackendRegistry_SpecificValues(t *testing.T) {
 	assert.Equal(t, "codewhale", specs["deepseek"].DefaultCmd)
 	assert.Equal(t, "deepseek", specs["deepseek"].AltCmd)
 	assert.Equal(t, "pi", specs["pi"].DefaultCmd)
+
+	// Verify embedded agent metadata on opencode BackendSpec
+	assert.Equal(t, "opencode", specs["opencode"].EmbeddedSubDir, "opencode should have EmbeddedSubDir set")
+	assert.Equal(t, "VERSION", specs["opencode"].EmbeddedVersionFile, "opencode should have EmbeddedVersionFile set")
+	assert.Equal(t, "anomalyco/opencode", specs["opencode"].EmbeddedGitHubRepo, "opencode should have EmbeddedGitHubRepo set")
+	assert.Equal(t, "amd64=x64", specs["opencode"].EmbeddedArchMapping, "opencode should have EmbeddedArchMapping set")
 }
 
 // --- Test 2: checkCLIExists ---
@@ -250,6 +256,25 @@ func TestDiscoverModels_RegistryPath(t *testing.T) {
 	require.Len(t, models, 1)
 	assert.Equal(t, "registry-model", models[0].ID)
 	assert.True(t, called, "registry function should have been called")
+}
+
+// --- Test 9: FindBackendSpecByDefaultCmd ---
+
+func TestFindBackendSpecByDefaultCmd_Found(t *testing.T) {
+	spec := model.FindBackendSpecByDefaultCmd("opencode")
+	require.NotNil(t, spec)
+	assert.Equal(t, "opencode", spec.ID)
+	assert.Equal(t, "opencode", spec.DefaultCmd)
+}
+
+func TestFindBackendSpecByDefaultCmd_NotFound(t *testing.T) {
+	spec := model.FindBackendSpecByDefaultCmd("nonexistent_cmd_xyz")
+	assert.Nil(t, spec)
+}
+
+func TestFindBackendSpecByDefaultCmd_Empty(t *testing.T) {
+	spec := model.FindBackendSpecByDefaultCmd("")
+	assert.Nil(t, spec)
 }
 
 // --- Test 10: AsyncRefreshModelCache ---

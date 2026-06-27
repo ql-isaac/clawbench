@@ -55,6 +55,8 @@ type BackendSpec struct {
 	AcpCommand           string   // ACP spawn command for acp-stdio transport, e.g. "kimi --acp"; empty = no ACP support
 	EmbeddedSubDir       string   // subdirectory under .clawbench/ for embedded binary, e.g. "pi"; empty = no embedded binary
 	EmbeddedVersionFile  string   // filename for fast version lookup under EmbeddedSubDir, e.g. "VERSION"; empty = no version file
+	EmbeddedGitHubRepo   string   // GitHub repo for release downloads, e.g. "anomalyco/opencode"; empty = no auto-download
+	EmbeddedArchMapping  string   // arch name mapping in archive names, e.g. "amd64=x64"; empty = no mapping
 	SortOrder            int      // display/registration order for deterministic BackendRegistry ordering
 }
 
@@ -94,7 +96,7 @@ func CheckCLIExists(cmd string) bool {
 	}
 
 	// Check for embedded binary (e.g. .clawbench/pi/pi)
-	if spec := findSpecByDefaultCmd(cmd); spec != nil && spec.EmbeddedSubDir != "" {
+	if spec := FindBackendSpecByDefaultCmd(cmd); spec != nil && spec.EmbeddedSubDir != "" {
 		if EmbeddedBinaryPath(spec.EmbeddedSubDir) != "" {
 			return true
 		}
@@ -131,7 +133,7 @@ func CheckCLIExistsErr(cmd string) error {
 	}
 
 	// Check for embedded binary
-	if spec := findSpecByDefaultCmd(cmd); spec != nil && spec.EmbeddedSubDir != "" {
+	if spec := FindBackendSpecByDefaultCmd(cmd); spec != nil && spec.EmbeddedSubDir != "" {
 		if EmbeddedBinaryPath(spec.EmbeddedSubDir) != "" {
 			return nil
 		}
@@ -182,8 +184,8 @@ func FindSpecByBackend(backend string) *BackendSpec {
 	return nil
 }
 
-// findSpecByDefaultCmd returns the BackendSpec whose DefaultCmd matches, or nil.
-func findSpecByDefaultCmd(cmd string) *BackendSpec {
+// FindBackendSpecByDefaultCmd returns the BackendSpec whose DefaultCmd matches, or nil.
+func FindBackendSpecByDefaultCmd(cmd string) *BackendSpec {
 	registry := GetBackendRegistry()
 	for i := range registry {
 		if registry[i].DefaultCmd == cmd {
