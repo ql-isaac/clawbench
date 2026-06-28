@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { apiGet, apiPatch } from '@/utils/api'
+import { apiGet, apiPatch, apiPost, apiDelete } from '@/utils/api'
 import { gt } from '@/composables/useLocale'
 import { updatePlanEntries } from '@/composables/usePlanProgress'
 import { appLog } from '@/utils/appLog'
@@ -334,6 +334,24 @@ export async function populateACPStateFromCache(agentId: string): Promise<void> 
     }
 }
 
+/** Duplicate an agent by cloning its configuration with a new name. */
+async function duplicateAgent(sourceId: string, newName: string): Promise<void> {
+    await apiPost('/api/agents', { source_id: sourceId, name: newName })
+    await loadAgents(true)
+}
+
+/** Delete an agent by ID. */
+async function deleteAgent(agentId: string): Promise<void> {
+    await apiDelete('/api/agents', { body: { id: agentId } })
+    await loadAgents(true)
+}
+
+/** Rescan all agents (re-run CLI discovery pipeline). */
+async function rescanAgents(): Promise<void> {
+    await apiPost('/api/agents/rescan', {})
+    await loadAgents(true)
+}
+
 export function useAgents() {
     return {
         agents,
@@ -363,5 +381,8 @@ export function useAgents() {
         updateACPModelList,
         restoreOriginalModels,
         populateACPStateFromCache,
+        duplicateAgent,
+        deleteAgent,
+        rescanAgents,
     }
 }

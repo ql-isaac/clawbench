@@ -284,7 +284,7 @@ func TestAgentPatch_NoID(t *testing.T) {
 func TestAgentPatch_MethodNotAllowed(t *testing.T) {
 	defer setupAgentTestEnv(t)()
 
-	req := newRequest(t, http.MethodDelete, "/api/agents", nil)
+	req := newRequest(t, http.MethodPut, "/api/agents", nil)
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeAgents, req)
 
@@ -688,7 +688,7 @@ func TestAgentPatch_TransportInvalid(t *testing.T) {
 func TestServeAgents_MethodNotAllowed(t *testing.T) {
 	defer setupAgentTestEnv(t)()
 
-	req := newRequest(t, http.MethodDelete, "/api/agents", nil)
+	req := newRequest(t, http.MethodPut, "/api/agents", nil)
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeAgents, req)
 
@@ -1100,4 +1100,144 @@ func TestServeAgentsGet_ACPModelListOverridesModels(t *testing.T) {
 			assert.Equal(t, "acp-model-2", m1["id"])
 		}
 	}
+}
+
+// ── Duplicate agent tests ──
+
+func TestAgentDuplicate_Success(t *testing.T) {
+	defer setupAgentTestEnv(t)()
+
+	body := map[string]any{"source_id": "claude", "name": "My Custom Claude"}
+	req := newRequest(t, http.MethodPost, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	assert.Contains(t, resp, "id")
+	assert.Equal(t, "My Custom Claude", resp["name"])
+	assert.Equal(t, "🧠", resp["icon"])
+	assert.Equal(t, "claude", resp["backend"])
+	assert.Equal(t, "manual", resp["source"])
+
+	// Verify the new agent was added to in-memory maps
+	newID, _ := resp["id"].(string)
+	assert.Contains(t, model.Agents, newID)
+}
+
+func TestAgentDuplicate_SourceNotFound(t *testing.T) {
+	defer setupAgentTestEnv(t)()
+
+	body := map[string]any{"source_id": "nonexistent", "name": "Test"}
+	req := newRequest(t, http.MethodPost, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAgentDuplicate_EmptyName(t *testing.T) {
+	defer setupAgentTestEnv(t)()
+
+	body := map[string]any{"source_id": "claude", "name": ""}
+	req := newRequest(t, http.MethodPost, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAgentDuplicate_EmptySourceID(t *testing.T) {
+	defer setupAgentTestEnv(t)()
+
+	body := map[string]any{"source_id": "", "name": "Test"}
+	req := newRequest(t, http.MethodPost, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// ── Rescan agent tests ──
+
+func TestAgentRescan_Success(t *testing.T) {
+	defer setupAgentTestEnv(t)()
+
+	req := newRequest(t, http.MethodPost, "/api/agents/rescan", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentSubRoutes, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	agents, ok := resp["agents"].([]any)
+	require.True(t, ok)
+	assert.GreaterOrEqual(t, len(agents), 2) // codebuddy + claude
+}
+
+// ── Delete agent tests ──
+
+func TestAgentDelete_Success(t *testing.T) {
+	defer setupAgentTestEnv(t)()
+
+	// Make sure the agent to delete is NOT the default agent
+	// (default is typically the first agent, which is "codebuddy")
+	model.DefaultAgentID = "codebuddy"
+
+	body := map[string]any{"id": "claude"}
+	req := newRequest(t, http.MethodDelete, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+	assert.Equal(t, "claude", resp["deleted"])
+
+	// Verify removed from in-memory maps
+	assert.NotContains(t, model.Agents, "claude")
+}
+
+func TestAgentDelete_NotFound(t *testing.T) {
+	defer setupAgentTestEnv(t)()
+
+	body := map[string]any{"id": "nonexistent"}
+	req := newRequest(t, http.MethodDelete, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAgentDelete_DefaultAgent(t *testing.T) {
+	defer setupAgentTestEnv(t)()
+
+	model.DefaultAgentID = "claude"
+
+	body := map[string]any{"id": "claude"}
+	req := newRequest(t, http.MethodDelete, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAgentDelete_EmptyID(t *testing.T) {
+	defer setupAgentTestEnv(t)()
+
+	body := map[string]any{"id": ""}
+	req := newRequest(t, http.MethodDelete, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

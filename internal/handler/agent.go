@@ -30,6 +30,10 @@ func ServeAgentSubRoutes(w http.ResponseWriter, r *http.Request) {
 		ServeACPSessions(w, r)
 		return
 	}
+	if strings.HasSuffix(path, "/rescan") && r.Method == http.MethodPost {
+		serveAgentsRescan(w, r)
+		return
+	}
 	writeLocalizedErrorf(w, r, http.StatusNotFound, "NotFound")
 }
 
@@ -51,6 +55,14 @@ func ServeAgents(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodPatch {
 		serveAgentsPatch(w, r)
+		return
+	}
+	if r.Method == http.MethodPost {
+		serveAgentsDuplicate(w, r)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		serveAgentsDelete(w, r)
 		return
 	}
 	writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
@@ -129,6 +141,136 @@ func serveAgentsGet(w http.ResponseWriter, _ *http.Request) {
 		"defaultAgent": defaultAgent,
 		"acpStates":    states,
 	})
+}
+
+// serveAgentsDuplicate handles POST /api/agents — duplicates an existing agent.
+// Expects: {"source_id": "claude", "name": "My Custom Claude"}
+// Returns the newly created agent.
+func serveAgentsDuplicate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SourceID string `json:"source_id"`
+		Name     string `json:"name"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	if req.SourceID == "" {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
+		return
+	}
+	if req.Name == "" || utf8.RuneCountInString(req.Name) > 64 {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidAgentName")
+		return
+	}
+
+	configMutex.Lock()
+	defer configMutex.Unlock()
+
+	clone, err := service.DuplicateAgent(service.DB, req.SourceID, req.Name)
+	if err != nil {
+		slog.Error("failed to duplicate agent", "source", req.SourceID, "error", err)
+		if strings.Contains(err.Error(), "not found") {
+			writeLocalizedErrorf(w, r, http.StatusNotFound, "AgentNotFound")
+			return
+		}
+		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
+		return
+	}
+
+	// Add to in-memory maps for immediate reflection
+	model.Agents[clone.ID] = clone
+	model.AgentList = append(model.AgentList, clone)
+
+	// Populate runtime-only fields
+	if spec := model.FindSpecByBackend(clone.Backend); spec != nil {
+		if model.CanDiscoverModels(*spec) {
+			clone.CanRefreshModels = true
+		}
+		if len(clone.ThinkingEffortLevels) == 0 && len(spec.ThinkingEffortLevels) > 0 {
+			clone.ThinkingEffortLevels = spec.ThinkingEffortLevels
+		}
+	}
+
+	writeJSON(w, http.StatusOK, clone)
+}
+
+// serveAgentsRescan handles POST /api/agents/rescan — re-runs the full agent
+// discovery pipeline (detect CLIs → discover models → merge → reload memory).
+// This brings back any auto-detected agents that were accidentally deleted.
+func serveAgentsRescan(w http.ResponseWriter, _ *http.Request) {
+	configMutex.Lock()
+	defer configMutex.Unlock()
+
+	present := model.SyncDiscoverAgentsDB(service.DB)
+	discoveredModels := model.SyncDiscoverModels()
+	model.MergeDiscoveredDataDB(service.DB, discoveredModels, present)
+
+	// Return the current agent list (same shape as GET /api/agents)
+	agents := make([]*model.Agent, len(model.AgentList))
+	copy(agents, model.AgentList)
+	defaultAgent := model.GetDefaultAgentID()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"agents":       agents,
+		"defaultAgent": defaultAgent,
+	})
+}
+
+// serveAgentsDelete handles DELETE /api/agents — deletes a single agent.
+// Expects: {"id": "claude"}. Cannot delete the default agent.
+func serveAgentsDelete(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID string `json:"id"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	if req.ID == "" {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
+		return
+	}
+
+	configMutex.Lock()
+	defer configMutex.Unlock()
+
+	// Cannot delete the default agent
+	if req.ID == model.GetDefaultAgentID() {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "CannotDeleteDefaultAgent")
+		return
+	}
+
+	agent, ok := model.Agents[req.ID]
+	if !ok {
+		writeLocalizedErrorf(w, r, http.StatusNotFound, "AgentNotFound")
+		return
+	}
+
+	// Close ACP connections for this agent before deleting
+	if agent.SupportsACP() {
+		mgr := ai.GetACPConnManager()
+		mgr.CloseConnsByAgentID(req.ID)
+		slog.Info("closed ACP connections before agent delete", "agent", req.ID)
+	}
+
+	if err := service.DeleteAgent(service.DB, req.ID); err != nil {
+		slog.Error("failed to delete agent", "agent", req.ID, "error", err)
+		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
+		return
+	}
+
+	// Remove from in-memory maps
+	delete(model.Agents, req.ID)
+	newAgentList := make([]*model.Agent, 0, len(model.AgentList)-1)
+	for _, a := range model.AgentList {
+		if a.ID != req.ID {
+			newAgentList = append(newAgentList, a)
+		}
+	}
+	model.AgentList = newAgentList
+
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": req.ID})
 }
 
 // serveAgentsPatch handles PATCH /api/agents — updates an agent's configurable fields.
