@@ -54,8 +54,12 @@
         <span v-if="msg.metadata?.wallMs" class="chat-meta-duration">{{ formatDuration(msg.metadata.wallMs) }}</span>
       </span>
       <div class="chat-meta-actions">
+        <button v-if="hasFileChanges" class="chat-action-btn chat-action-btn--wide" @click="fileChangesOpen = true" :title="t('chat.fileChanges.title')">
+          <FileDiff :size="14" />
+          <span>{{ t('chat.fileChanges.title') }}</span>
+        </button>
         <SummaryToggle v-if="msg.summary && !msg.streaming" mode="button" :showing-summary="msg.showingSummary" i18n-prefix="chat.message" @toggle="$emit('toggle-summary', msg.id)" />
-        <button v-if="msgText" ref="speakBtnRef" class="chat-info-btn chat-speak-btn" :class="{ active: autoSpeech.isActive(msg.id), loading: autoSpeech.isGeneratingText(msg.id) }" @click.stop="handleSpeak">
+        <button v-if="msgText" ref="speakBtnRef" class="chat-action-btn chat-action-btn--wide" :class="{ active: autoSpeech.isActive(msg.id), loading: autoSpeech.isGeneratingText(msg.id) }" @click.stop="handleSpeak">
           <!-- Generating states: summarizing / synthesizing -->
           <template v-if="autoSpeech.isGeneratingText(msg.id)">
             <Clock :size="14" class="speak-spinner" />
@@ -72,16 +76,25 @@
             <span>{{ t('chat.message.readAloud') }}</span>
           </template>
         </button>
-        <button v-if="!msg.streaming" class="chat-info-btn" @click="$emit('show-metadata', msg)" :title="t('chat.message.viewDetails')">
+        <button v-if="!msg.streaming" class="chat-action-btn" @click="$emit('show-metadata', msg)" :title="t('chat.message.viewDetails')">
           <Info :size="14" />
         </button>
       </div>
     </div>
+
+    <!-- File changes sheet -->
+    <FileChangesSheet
+      :open="fileChangesDrawer.effectiveOpen.value"
+      :created="fileChanges.created"
+      :modified="fileChanges.modified"
+      @close="fileChangesOpen = false"
+      @open-file="handleOpenFile"
+    />
     <!-- Bottom bar for user messages -->
     <div v-if="msg.role === 'user' && !msg.pending" class="chat-meta-bar chat-meta-bar-user">
       <span class="chat-meta-info">
       </span>
-      <button class="chat-info-btn chat-info-btn-user" @click="$emit('show-metadata', msg)" :title="t('chat.message.viewDetails')">
+      <button class="chat-action-btn chat-info-btn-user" @click="$emit('show-metadata', msg)" :title="t('chat.message.viewDetails')">
         <Info :size="14" />
       </button>
     </div>
@@ -92,11 +105,16 @@
 <script setup>
 import { ref, inject, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Clock, Pause, Volume2, Info } from 'lucide-vue-next'
+import { Clock, Pause, Volume2, Info, FileDiff } from 'lucide-vue-next'
 import { formatDuration } from '@/utils/format.ts'
 import { extractSpeakableText } from '@/composables/useAutoSpeech.ts'
+import { extractFileChanges } from '@/utils/chatStreamUtils.ts'
+import { openFilePath } from '@/composables/useFilePathAnnotation.ts'
+import { store } from '@/stores/app.ts'
 import ContentBlocks from './ContentBlocks.vue'
 import FileAttachmentList from './FileAttachmentList.vue'
+import FileChangesSheet from './FileChangesSheet.vue'
+import { useTabDrawer } from '@/composables/useTabDrawer'
 import SummaryToggle from '@/components/common/SummaryToggle.vue'
 
 
@@ -141,6 +159,24 @@ const chatSession = inject('chatSession', {})
 
 const { renderTextBlock, toolCallSummary, formatToolInput, humanizeCron, repeatLabel, truncate, hasImagesInContent } = chatRender
 const { getAgentIcon, getAgentName } = chatSession
+
+// File changes extraction (Write → created, Edit → modified)
+const fileChanges = computed(() => {
+  if (props.msg?.role !== 'assistant' || props.msg.streaming) return { created: [], modified: [] }
+  return extractFileChanges(props.msg?.blocks || [])
+})
+const hasFileChanges = computed(() => fileChanges.value.created.length > 0 || fileChanges.value.modified.length > 0)
+
+const fileChangesOpen = ref(false)
+const fileChangesDrawer = useTabDrawer('chat', fileChangesOpen)
+
+function handleOpenFile(path) {
+  // AI may return absolute paths (e.g. /home/user/project/src/foo.ts).
+  // Strip projectRoot prefix so openFilePath doesn't treat them as external.
+  const root = store.state.projectRoot
+  const relPath = root && path.startsWith(root + '/') ? path.slice(root.length + 1) : path
+  openFilePath(relPath)
+}
 </script>
 
 <style scoped>
@@ -210,53 +246,13 @@ const { getAgentIcon, getAgentName } = chatSession
     font-variant-numeric: tabular-nums;
 }
 
-/* Chat Info Button */
-.chat-info-btn {
-    flex-shrink: 0;
-    min-width: 22px;
-    height: 22px;
-    padding: 0 6px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    opacity: 0.5;
-    transition: opacity 0.2s, background 0.2s;
-    font-size: 11px;
-}
-
-.chat-info-btn:hover {
-    opacity: 1;
-    background: var(--bg-tertiary);
-}
-
-.chat-info-btn svg {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-}
-
-.chat-info-btn span {
-    white-space: nowrap;
-}
-
-/* Speak button specific styles */
-.chat-speak-btn {
-    min-width: auto;
-    padding: 0 8px;
-}
-
-.chat-speak-btn.active {
+/* Speak button active state */
+.chat-action-btn.active {
     opacity: 1;
     color: var(--accent-color, #0066cc);
 }
 
-.chat-speak-btn.active:hover {
+.chat-action-btn.active:hover {
     background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
 }
 
@@ -762,48 +758,5 @@ const { getAgentIcon, getAgentName } = chatSession
   max-width: 100%;
   max-height: 184px;
   height: auto;
-}
-
-/* ── Localhost URL open button (🌐, same pattern as file-open button) ── */
-.content-blocks .chat-url-open-btn {
-  background: none;
-  border: none;
-  padding: 2px;
-  cursor: pointer;
-  color: var(--text-muted, #999);
-  border-radius: 3px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s, background 0.15s;
-  font-size: 12px;
-  line-height: 1;
-  vertical-align: baseline;
-}
-
-.content-blocks .chat-url-open-btn:hover {
-  color: var(--accent-color, #4a90d9);
-  background: var(--bg-tertiary, #f0f0f0);
-}
-
-.content-blocks .chat-url-open-btn.loading {
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-.content-blocks .chat-url-open-btn.loading::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border: 1.5px solid var(--border-color);
-  border-top-color: var(--accent-color);
-  border-radius: 50%;
-  animation: url-btn-spin 0.6s linear infinite;
-  margin-left: 2px;
-  display: inline-block;
-}
-
-@keyframes url-btn-spin {
-  to { transform: rotate(360deg); }
 }
 </style>
