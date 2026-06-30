@@ -130,7 +130,7 @@
   />
 
   <!-- Tool Detail Overlay -->
-  <ToolDetailOverlay
+  <ToolDetailDrawer
     :show="toolDetailDrawer.effectiveOpen.value"
     :toolName="toolDetailOverlay.name"
     :toolSubagentType="toolDetailOverlay.subagentType"
@@ -146,7 +146,7 @@
     @click="handleOverlayRetryClick"
   />
   <!-- RAG search result detail drawer -->
-  <RagDetailSheet :item="ragDetailDrawer.effectiveOpen.value ? ragDetailItem : null" @close="ragDetailShow = false; ragDetailItem.value = null" @resume="handleResumeFromDetail" />
+  <RagDetailDrawer :item="ragDetailDrawer.effectiveOpen.value ? ragDetailItem : null" @close="ragDetailShow = false; ragDetailItem.value = null" @resume="handleResumeFromDetail" />
 </template>
 
 <script setup>
@@ -156,9 +156,9 @@ import { appLog } from '@/utils/appLog'
 import { gt } from '@/composables/useLocale'
 import { useTabDrawer } from '@/composables/useTabDrawer'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'
-import RagDetailSheet from './RagDetailSheet.vue'
+import RagDetailDrawer from './RagDetailDrawer.vue'
 import ChatMetadataModal from './ChatMetadataModal.vue'
-import ToolDetailOverlay from './ToolDetailOverlay.vue'
+import ToolDetailDrawer from './ToolDetailDrawer.vue'
 import ChatInputBar from './ChatInputBar.vue'
 import ChatMessageList from './ChatMessageList.vue'
 import PlanPanel from './PlanPanel.vue'
@@ -187,7 +187,7 @@ import { renderMarkdown } from '@/composables/useMarkdownRenderer.ts'
 import { useDialog } from '@/composables/useDialog'
 
 import '@/assets/loading-mask.css'
-import { useToolDetailOverlay } from '@/composables/useToolDetailOverlay.ts'
+import { useToolDetailDrawer } from '@/composables/useToolDetailDrawer.ts'
 
 const { t } = useI18n()
 const TAG = 'ChatPanel'
@@ -287,7 +287,7 @@ const {
   fetchToolCallDetail,
   handleFileOpenInOverlay,
   closeOverlay,
-} = useToolDetailOverlay({
+} = useToolDetailDrawer({
   chatRender: render,
   onFileOpen: async (path, lineStart, lineEnd) => {
     const ok = await openFilePath(path, lineStart, lineEnd)
@@ -489,16 +489,12 @@ provide('chatUI', { navigateToFileViewer: () => switchTab('browse') })
 provide('autoSpeech', autoSpeech)
 provide('layoutRefreshKey', layoutRefreshKey)
 
-// 子抽屉跟随聊天面板关闭；面板打开时刷新渲染（修复 display:none 期间的过时布局状态）
+// 面板打开时刷新渲染（修复 display:none 期间的过时布局状态）
 // immediate: true 确保首次挂载时（active 已为 true）也会加载历史记录
+// 子抽屉不再在此关闭 — useTabDrawer 的 effectiveOpen computed 已在 tab 不活跃时自动隐藏抽屉，
+// 切回 tab 时 openRef 保留原值，抽屉自动恢复。
 watch(() => props.active, async (val) => {
-  if (!val) {
-    identity.sessionDrawerOpen.value = false
-    toolDetailShow.value = false
-    messageListRef.value?.closeUserMsgIndex()
-    ragDetailItem.value = null
-    ragDetailShow.value = false
-  } else {
+  if (val) {
     // Open/Re-open: load history (with overlay, skip if unchanged) and fix stale layout state from v-show display:none
     // skipIfUnchanged=true preserves scroll position when no new messages arrived while tab was hidden
     await session.loadHistory(false, true, true)
@@ -940,7 +936,32 @@ function handleSummaryUpdate(e) {
 function handleToggleSummary(msgId) {
     const msg = messages.value.find(m => m.id === msgId)
     if (!msg) return
+    // Pin the toggle button's viewport position so it doesn't jump when
+    // the message content height changes (summary → original or vice versa).
+    const scrollEl = messageListRef.value?.messagesRef
+    let btnTop = null
+    if (scrollEl) {
+        // Find the SummaryToggle button inside this message's meta bar
+        const msgKey = msg.id ? 'db-' + msg.id : null
+        if (msgKey) {
+            const msgEl = scrollEl.querySelector(`[data-msg-key="${msgKey}"] .chat-meta-bar`)
+            if (msgEl) btnTop = msgEl.getBoundingClientRect().top
+        }
+    }
     msg.showingSummary = !msg.showingSummary
+    if (btnTop !== null && scrollEl) {
+        nextTick(() => {
+            const msgKey = msg.id ? 'db-' + msg.id : null
+            if (!msgKey) return
+            const msgEl = scrollEl.querySelector(`[data-msg-key="${msgKey}"] .chat-meta-bar`)
+            if (!msgEl) return
+            const newTop = msgEl.getBoundingClientRect().top
+            const delta = newTop - btnTop
+            if (Math.abs(delta) > 1) {
+                scrollEl.scrollTop += delta
+            }
+        })
+    }
 }
 
 // RAG detail drawer

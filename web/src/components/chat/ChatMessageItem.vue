@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-message" :class="[msg.role, { 'has-metadata': msg.role === 'assistant' && msg.metadata, pending: msg.pending }]">
+  <div class="chat-message" :class="[msg.role, { 'has-metadata': msg.role === 'assistant' && msg.metadata, pending: msg.pending }]" :data-msg-key="msg.id ? 'db-' + msg.id : null">
 
     <!-- Collapsible content wrapper -->
     <div ref="wrapperRef" class="msg-content-wrapper">
@@ -83,7 +83,7 @@
     </div>
 
     <!-- File changes sheet -->
-    <FileChangesSheet
+    <FileChangesDrawer
       :open="fileChangesDrawer.effectiveOpen.value"
       :created="fileChanges.created"
       :modified="fileChanges.modified"
@@ -113,7 +113,7 @@ import { openFilePath } from '@/composables/useFilePathAnnotation.ts'
 import { store } from '@/stores/app.ts'
 import ContentBlocks from './ContentBlocks.vue'
 import FileAttachmentList from './FileAttachmentList.vue'
-import FileChangesSheet from './FileChangesSheet.vue'
+import FileChangesDrawer from './FileChangesDrawer.vue'
 import { useTabDrawer } from '@/composables/useTabDrawer'
 import SummaryToggle from '@/components/common/SummaryToggle.vue'
 
@@ -670,6 +670,18 @@ function handleOpenFile(path) {
 .chat-message.assistant pre code {
     white-space: pre;
     word-break: normal;
+}
+
+/* Word-wrap mode: override pre/code white-space from rules above */
+.chat-message.assistant .code-block-wrapper.word-wrap pre {
+    overflow: visible;
+    white-space: pre-wrap;
+}
+
+.chat-message.assistant .code-block-wrapper.word-wrap pre code {
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-wrap: break-word;
 }
 
 .chat-message.assistant code {
