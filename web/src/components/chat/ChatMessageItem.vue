@@ -90,15 +90,6 @@
       @close="fileChangesOpen = false"
       @open-file="handleOpenFile"
     />
-    <!-- Bottom bar for user messages -->
-    <div v-if="msg.role === 'user' && !msg.pending" class="chat-meta-bar chat-meta-bar-user">
-      <span class="chat-meta-info">
-      </span>
-      <button class="chat-action-btn chat-info-btn-user" @click="$emit('show-metadata', msg)" :title="t('chat.message.viewDetails')">
-        <Info :size="14" />
-      </button>
-    </div>
-
   </div>
 </template>
 
@@ -203,12 +194,12 @@ function handleOpenFile(path) {
 }
 
 /* Image thumbnail style */
-.chat-message .chat-img-thumbnail {
+.chat-message .lightbox-img {
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s;
 }
 
-.chat-message .chat-img-thumbnail:hover {
+.chat-message .lightbox-img:hover {
   transform: scale(1.02);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
@@ -351,7 +342,6 @@ function handleOpenFile(path) {
 /* Chat message - non-scoped for v-html penetration */
 .chat-message {
     padding: 8px 12px;
-    border-radius: var(--radius-md);
     font-size: 13px;
     line-height: 1.4;
     min-width: 0;
@@ -394,35 +384,66 @@ function handleOpenFile(path) {
 /* ── File attachment in messages ── */
 .chat-files {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 6px;
   margin: 4px 0;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* Common file tag styles - shared by both current file and uploaded attachments */
-.chat-file-tag,
-.chat-file-attachment {
+.chat-files::-webkit-scrollbar {
+  display: none;
+}
+
+/* File card: filename pill */
+.chat-message .chat-file-tag,
+.chat-message .chat-file-attachment {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border-radius: 8px;
-  padding: 1px 6px;
-  margin-bottom: 4px;
+  border-radius: 6px;
+  height: 40px;
+  padding: 0 10px;
   font-size: 12px;
   text-decoration: none;
   cursor: pointer;
   transition: opacity 0.15s;
-  white-space: nowrap;
-  max-width: 200px;
-}
-
-.chat-file-tag-icon,
-.chat-file-attachment svg {
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
-.chat-file-tag-path,
-.chat-file-name {
+.chat-message .attachment-filename {
+  font-family: monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-message .attachment-filesize {
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Image card: square thumbnail */
+.chat-message .chat-file-attachment.attachment-image-only {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.chat-message .attachment-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.chat-file-tag-path {
   font-family: monospace;
   flex: 1;
   min-width: 0;
@@ -433,8 +454,7 @@ function handleOpenFile(path) {
   -ms-overflow-style: none;
 }
 
-.chat-file-tag-path::-webkit-scrollbar,
-.chat-file-name::-webkit-scrollbar {
+.chat-file-tag-path::-webkit-scrollbar {
   display: none;
 }
 
@@ -445,27 +465,18 @@ function handleOpenFile(path) {
 }
 
 .chat-message.user .chat-file-tag-path,
-.chat-message.user .chat-file-name {
+.chat-message.user .attachment-filename {
   color: rgba(255, 255, 255, 0.95);
 }
 
-.chat-message.user .chat-file-tag-icon,
-.chat-message.user .chat-file-attachment svg {
-  stroke: rgba(255, 255, 255, 0.95);
-}
-
-/* User message: uploaded - solid border */
-.chat-message.user .attachment-upload {
+/* User message: solid border (both upload and ref) */
+.chat-message.user .attachment-upload,
+.chat-message.user .attachment-ref {
   background: rgba(255, 255, 255, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
-/* User message: referenced - dashed border */
-.chat-message.user .attachment-ref {
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px dashed rgba(255, 255, 255, 0.6);
-}
-
+.chat-message.user .attachment-upload:hover,
 .chat-message.user .attachment-ref:hover,
 .chat-message.user .chat-file-tag:hover {
   background: rgba(255, 255, 255, 0.25);
@@ -478,27 +489,18 @@ function handleOpenFile(path) {
 }
 
 .chat-message.assistant .chat-file-tag-path,
-.chat-message.assistant .chat-file-name {
+.chat-message.assistant .attachment-filename {
   color: var(--text-secondary);
 }
 
-.chat-message.assistant .chat-file-tag-icon,
-.chat-message.assistant .chat-file-attachment svg {
-  stroke: var(--text-secondary);
-}
-
-/* Assistant message: uploaded - solid border */
-.chat-message.assistant .attachment-upload {
+/* Assistant message: solid border (both upload and ref) */
+.chat-message.assistant .attachment-upload,
+.chat-message.assistant .attachment-ref {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
 }
 
-/* Assistant message: referenced - dashed border */
-.chat-message.assistant .attachment-ref {
-  background: color-mix(in srgb, var(--text-muted, #999) 8%, transparent);
-  border: 1px dashed var(--text-secondary);
-}
-
+.chat-message.assistant .attachment-upload:hover,
 .chat-message.assistant .attachment-ref:hover,
 .chat-message.assistant .chat-file-tag:hover {
   background: var(--bg-secondary);
@@ -508,7 +510,9 @@ function handleOpenFile(path) {
     background: var(--user-msg-color);
     color: white;
     align-self: flex-end;
-    border-radius: 16px 16px 0 16px;
+    border-radius: 20px 20px 0 20px;
+    margin-right: 10px;
+    max-width: calc(100% - 20px);
     overflow: hidden;
 }
 
@@ -516,7 +520,7 @@ function handleOpenFile(path) {
     background: var(--bg-tertiary);
     color: var(--text-primary);
     align-self: stretch;
-    border-radius: 16px 16px 16px 0;
+    border-radius: 0;
     position: relative;
     min-width: 0;
     overflow: hidden;
@@ -598,6 +602,11 @@ function handleOpenFile(path) {
     border: none;
     border-radius: 6px;
     margin: 0.75em 0;
+}
+
+.chat-message.user .table-block-wrapper .table-wrap {
+    margin: 0;
+    border-radius: 0;
 }
 
 .chat-message.user table {
@@ -732,6 +741,11 @@ function handleOpenFile(path) {
     border: none;
     border-radius: 6px;
     margin: 0.75em 0;
+}
+
+.chat-message.assistant .table-block-wrapper .table-wrap {
+    margin: 0;
+    border-radius: 0;
 }
 
 .chat-message.assistant table {

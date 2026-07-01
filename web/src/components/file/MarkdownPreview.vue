@@ -47,7 +47,7 @@ import { useMarkdownRenderer } from '@/composables/useMarkdownRenderer.ts'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
 import { useQuoteQuestion } from '@/composables/useQuoteQuestion.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
-import { annotateCodeBlockHeaders, handleCodeBlockClick } from '@/composables/useCodeBlockHeader.ts'
+import { annotateCodeBlockHeaders, handleCodeBlockClick, annotateTableBlockHeaders, handleTableBlockClick } from '@/composables/useCodeBlockHeader.ts'
 import { store } from '@/stores/app.ts'
 import { dirName, splitPath, joinPath } from '@/utils/path.ts'
 import { flashRanges, flashType } from '@/composables/useFileRefresh.ts'
@@ -131,6 +131,9 @@ function handleClick(event: MouseEvent) {
     // Code block header buttons (copy/wrap)
     if (handleCodeBlockClick(event)) return
 
+    // Table block header buttons (copy/wrap)
+    if (handleTableBlockClick(event)) return
+
     // Check for diff marker click first
     if (handleDiffMarkerClick(event, '.diff-marker-inline')) return
 
@@ -189,7 +192,7 @@ function handleClick(event: MouseEvent) {
 
 function fixLocalImagePaths(html: string): string {
     const currentDir = props.file?.path ? dirName(props.file.path) : ''
-    return html.replace(/<img\s+([^>]*src=[^>]*)>/gi, (match: string, attrs: string) => {
+    let result = html.replace(/<img\s+([^>]*src=[^>]*)>/gi, (match: string, attrs: string) => {
         const srcMatch = attrs.match(/src="([^"]*)"/)
         if (!srcMatch) return match
         const src = srcMatch[1]
@@ -207,6 +210,12 @@ function fixLocalImagePaths(html: string): string {
         }
         return match.replace(`src="${src}"`, `src="/api/local-file/${normalized.join('/')}?t=${imageTimestamp.value}"`)
     })
+    // Add lightbox-img class to all <img> tags for lightbox activation
+    result = result.replace(/<img(\s+[^>]*?)>/gi, (_match: string, attrs: string) => {
+      const clean = attrs.replace(/\s*class="[^"]*"/i, '')
+      return `<img${clean} class="lightbox-img">`
+    })
+    return result
 }
 
 /**
@@ -267,6 +276,8 @@ async function doRender(f: { content: string; path?: string; error?: boolean }) 
 
     // Add code block headers (language label + copy/wrap buttons)
     html = annotateCodeBlockHeaders(html)
+    // Add table block headers (label + copy/wrap buttons)
+    html = annotateTableBlockHeaders(html)
 
     const currentDir = f?.path ? dirName(f.path) : ''
     const { html: annotatedHtml, detectedPaths } = annotateFilePaths(html, {
