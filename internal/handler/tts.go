@@ -89,7 +89,7 @@ type ttsGenerateRequest struct {
 // TTSGenerate handles POST /api/tts/generate.
 // It validates input, checks cache, and either returns cached audio immediately
 // or starts an async TTS job and returns a jobId for SSE streaming.
-func TTSGenerate(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-mode TTS generation
+func TTSGenerate(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo,gocognit // multi-mode TTS generation
 	projectPath, ok := requireProject(w, r)
 	if !ok {
 		return
@@ -117,6 +117,22 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // m
 		req.Language = "zh"
 	}
 
+	// When messageId is provided, extract the final conclusion from the message's
+	// content blocks instead of using the raw full text from the frontend.
+	// This uses ExtractLastAnswerFromBlocks (same logic as chat summary) to
+	// capture only the AI's final answer, skipping intermediate step commentary.
+	if req.MessageID > 0 {
+		if conclusion := ttsExtractConclusion(req.MessageID); conclusion != "" {
+			slog.Info(
+				"tts using conclusion from message blocks",
+				slog.Int64("message_id", req.MessageID),
+				slog.Int("original_len", len([]rune(req.Text))),
+				slog.Int("conclusion_len", len([]rune(conclusion))),
+			)
+			req.Text = conclusion
+		}
+	}
+
 	if summarize.MaxTextRunes > 0 && len([]rune(req.Text)) > summarize.MaxTextRunes {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "TextTooLong", map[string]any{"MaxChars": summarize.MaxTextRunes})
 		return
@@ -141,6 +157,7 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // m
 	if _, ok := curProvider.(*speech.MossNanoProvider); ok { //nolint:govet // shadowed ok is standard type-assertion idiom
 		audioExt = ".wav"
 	}
+	// Project-relative path (not server DataDir)
 	relAudioPath := filepath.Join(".clawbench", "generated", "tts", cacheKey+audioExt)
 
 	// Validate the output path (defense-in-depth)
@@ -267,6 +284,89 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // m
 	writeJSON(w, http.StatusOK, map[string]any{
 		"jobId": cacheKey,
 	})
+}
+
+// ttsExtractConclusion loads a message by ID, parses its content blocks,
+// and extracts the final conclusion text suitable for TTS.
+// It uses ExtractLastAnswerFromBlocks to get the AI's final answer (skipping
+// intermediate step commentary), then appends AskUserQuestion text so TTS
+// can read the question and options to the user.
+// Returns empty string if the message cannot be loaded or has no speakable text.
+func ttsExtractConclusion(messageID int64) string { //nolint:gocyclo,gocognit // multi-branch AskUserQuestion extraction
+	msg, err := service.GetMessageByID(messageID)
+	if err != nil || msg == nil {
+		return ""
+	}
+
+	var content struct {
+		Blocks []model.ContentBlock `json:"blocks"`
+	}
+	if err := json.Unmarshal([]byte(msg.Content), &content); err != nil || len(content.Blocks) == 0 {
+		return ""
+	}
+
+	blocks := content.Blocks
+
+	// Extract the final answer using the same logic as chat summary
+	conclusion := summarize.ExtractLastAnswerFromBlocks(blocks)
+
+	// Append AskUserQuestion text (questions + options) so TTS reads them
+	var aqParts []string
+	for _, b := range blocks {
+		if b.Type != "tool_use" || b.Name != "AskUserQuestion" {
+			continue
+		}
+		questions, ok := b.Input["questions"]
+		if !ok {
+			continue
+		}
+		qList, ok := questions.([]any)
+		if !ok {
+			continue
+		}
+		for _, q := range qList {
+			qMap, ok := q.(map[string]any)
+			if !ok {
+				continue
+			}
+			s, _ := qMap["question"].(string)
+			if header, ok := qMap["header"].(string); ok && header != "" {
+				s += " (" + header + ")"
+			}
+			opts, _ := qMap["options"].([]any)
+			if len(opts) > 0 {
+				var optStrs []string
+				for _, o := range opts {
+					switch v := o.(type) {
+					case string:
+						optStrs = append(optStrs, v)
+					case map[string]any:
+						label, _ := v["label"].(string)
+						desc, _ := v["description"].(string)
+						if desc != "" && desc != label {
+							optStrs = append(optStrs, label+" — "+desc)
+						} else {
+							optStrs = append(optStrs, label)
+						}
+					}
+				}
+				s += ": " + strings.Join(optStrs, ", ")
+			}
+			if s != "" {
+				aqParts = append(aqParts, s)
+			}
+		}
+	}
+
+	if len(aqParts) > 0 {
+		aqText := strings.Join(aqParts, "\n")
+		if conclusion != "" {
+			return conclusion + "\n" + aqText
+		}
+		return aqText
+	}
+
+	return conclusion
 }
 
 // TTSStream handles GET /api/tts/stream/{jobId}.

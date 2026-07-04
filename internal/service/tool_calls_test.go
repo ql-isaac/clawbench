@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	"clawbench/internal/model"
@@ -14,17 +15,17 @@ func TestUpsertAndGetToolCall(t *testing.T) {
 		t.Fatalf("initTestDB: %v", err)
 	}
 	defer func() {
-		DB.Close()
-		DBRead.Close()
+		db.Close()
+		dbRead.Close()
 	}()
 
 	// Create a session and message first (FK dependency)
 	sessionID := "test-session-001"
-	_, _ = DB.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES (?, ?, ?, ?)",
+	_, _ = db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES (?, ?, ?, ?)",
 		sessionID, "/test", "test", "Test Session")
 
 	var msgID int64
-	res, err := DB.Exec("INSERT INTO chat_history (project_path, role, content, session_id, backend) VALUES (?, ?, ?, ?, ?)",
+	res, err := db.Exec("INSERT INTO chat_history (project_path, role, content, session_id, backend) VALUES (?, ?, ?, ?, ?)",
 		"/test", "assistant", `{"blocks":[]}`, sessionID, "test")
 	if err != nil {
 		t.Fatalf("insert message: %v", err)
@@ -127,8 +128,10 @@ func TestUpsertAndGetToolCall(t *testing.T) {
 // initTestDB creates a test database in the given directory
 func initTestDB(dbDir string) error {
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = dbDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(dbDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
 	return InitDB(false)
 }

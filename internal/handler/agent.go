@@ -2,10 +2,16 @@
 package handler
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/exec"
 	"strings"
+	"sync"
+	"time"
 	"unicode/utf8"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -32,6 +38,10 @@ func ServeAgentSubRoutes(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasSuffix(path, "/rescan") && r.Method == http.MethodPost {
 		serveAgentsRescan(w, r)
+		return
+	}
+	if strings.HasSuffix(path, "/install") && r.Method == http.MethodPost {
+		serveAgentsInstall(w, r)
 		return
 	}
 	writeLocalizedErrorf(w, r, http.StatusNotFound, "NotFound")
@@ -86,6 +96,7 @@ func serveAgentsGet(w http.ResponseWriter, _ *http.Request) {
 		Commands     []ai.AvailableCommandInfo `json:"commands,omitempty"`
 		ModelList    *ai.ModelListState        `json:"modelListState,omitempty"`
 		Plan         *ai.PlanState             `json:"planState,omitempty"`
+		Usage        *ai.UsageState            `json:"usageState,omitempty"`
 		LoadSession  bool                      `json:"loadSession"`
 		ListSessions bool                      `json:"listSessions"`
 	}
@@ -111,11 +122,13 @@ func serveAgentsGet(w http.ResponseWriter, _ *http.Request) {
 			var es *ai.ThinkingEffortState
 			var cmds []ai.AvailableCommandInfo
 			var ml *ai.ModelListState
+			var us *ai.UsageState
 
 			ms = reg.GetModeState(a.ID, "")
 			es = reg.GetThinkingEffortState(a.ID, "")
 			cmds = reg.GetCommands(a.ID)
 			ml = reg.GetModelListState(a.ID, "")
+			us = reg.GetUsageState(a.ID)
 
 			// When ACP provides a model list, override the agent's Models
 			// so the frontend SessionSettingModal shows ACP models instead of CLI-discovered ones.
@@ -123,9 +136,9 @@ func serveAgentsGet(w http.ResponseWriter, _ *http.Request) {
 				a.Models = ml.Models
 			}
 
-			if ms != nil || es != nil || len(cmds) > 0 || ml != nil {
+			if ms != nil || es != nil || len(cmds) > 0 || ml != nil || us != nil {
 				states[a.ID] = &acpState{
-					Mode: ms, Effort: es, Commands: cmds, ModelList: ml,
+					Mode: ms, Effort: es, Commands: cmds, ModelList: ml, Usage: us,
 					LoadSession: reg.GetLoadSession(a.ID), ListSessions: reg.GetListSessions(a.ID),
 				}
 			}
@@ -167,7 +180,7 @@ func serveAgentsDuplicate(w http.ResponseWriter, r *http.Request) {
 	configMutex.Lock()
 	defer configMutex.Unlock()
 
-	clone, err := service.DuplicateAgent(service.DB, req.SourceID, req.Name)
+	clone, err := service.DuplicateAgent(req.SourceID, req.Name)
 	if err != nil {
 		slog.Error("failed to duplicate agent", "source", req.SourceID, "error", err)
 		if strings.Contains(err.Error(), "not found") {
@@ -202,9 +215,9 @@ func serveAgentsRescan(w http.ResponseWriter, _ *http.Request) {
 	configMutex.Lock()
 	defer configMutex.Unlock()
 
-	present := model.SyncDiscoverAgentsDB(service.DB)
+	present := model.SyncDiscoverAgentsDB(service.WriteDB())
 	discoveredModels := model.SyncDiscoverModels()
-	model.MergeDiscoveredDataDB(service.DB, discoveredModels, present)
+	model.MergeDiscoveredDataDB(service.WriteDB(), discoveredModels, present)
 
 	// Return the current agent list (same shape as GET /api/agents)
 	agents := make([]*model.Agent, len(model.AgentList))
@@ -215,6 +228,167 @@ func serveAgentsRescan(w http.ResponseWriter, _ *http.Request) {
 		"agents":       agents,
 		"defaultAgent": defaultAgent,
 	})
+}
+
+// installMu enforces one install at a time.
+var installMu sync.Mutex
+
+// serveAgentsInstall handles POST /api/agents/install — runs InstallCmd for a
+// backend and streams stdout/stderr via SSE. Only one install at a time.
+// Expects: {"backend_id": "opencode"}
+func serveAgentsInstall(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // SSE install streaming has multiple sequential branches
+	var req struct {
+		BackendID string `json:"backend_id"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	// Find the BackendSpec
+	var spec *model.BackendSpec
+	for i := range model.GetBackendRegistry() {
+		s := &model.GetBackendRegistry()[i]
+		if s.ID == req.BackendID {
+			spec = s
+			break
+		}
+	}
+	if spec == nil {
+		writeLocalizedErrorf(w, r, http.StatusNotFound, "BackendNotFound")
+		return
+	}
+	if spec.InstallCmd == "" {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "BackendNotInstallable")
+		return
+	}
+
+	// One install at a time
+	if !installMu.TryLock() {
+		writeLocalizedErrorf(w, r, http.StatusConflict, "InstallInProgress")
+		return
+	}
+	defer installMu.Unlock()
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		slog.Error("response writer does not support flushing for install SSE")
+		return
+	}
+
+	// Emit initial state
+	_, _ = fmt.Fprintf(w, "event: install_start\ndata: {\"backend_id\":%q,\"command\":%q}\n\n", spec.ID, spec.InstallCmd)
+	flusher.Flush()
+
+	// Execute install command (no sudo)
+	// Note: strings.Fields works because all current InstallCmd values are simple
+	// space-separated tokens (no quoting needed). If future commands need quoted
+	// arguments, switch to sh.Split or similar.
+	cmdParts := strings.Fields(spec.InstallCmd)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cmdParts[0], cmdParts[1:]...)
+	cmd.Env = os.Environ()
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "event: install_error\ndata: {\"error\":%q}\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "event: install_error\ndata: {\"error\":%q}\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+	if err := cmd.Start(); err != nil {
+		_, _ = fmt.Fprintf(w, "event: install_error\ndata: {\"error\":%q,\"command\":%q}\n\n", err.Error(), spec.InstallCmd)
+		flusher.Flush()
+		return
+	}
+
+	// Stream stdout and stderr line-by-line as SSE events.
+	// Use a channel to merge both streams.
+	type logLine struct {
+		line   string
+		stream string
+	}
+	logCh := make(chan logLine, 64)
+
+	// Reader goroutine for stdout
+	var readerWg sync.WaitGroup
+	readerWg.Add(2)
+	go func() {
+		defer readerWg.Done()
+		scanner := bufio.NewScanner(stdoutPipe)
+		for scanner.Scan() {
+			logCh <- logLine{line: scanner.Text(), stream: "stdout"}
+		}
+	}()
+
+	// Reader goroutine for stderr
+	go func() {
+		defer readerWg.Done()
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			logCh <- logLine{line: scanner.Text(), stream: "stderr"}
+		}
+	}()
+
+	// Close logCh after both readers finish (pipes close at process exit)
+	go func() {
+		readerWg.Wait()
+		close(logCh)
+	}()
+
+	// Merger goroutine: send exit error when process completes
+	exitErrCh := make(chan error, 1)
+	go func() {
+		exitErrCh <- cmd.Wait()
+	}()
+
+	// Heartbeat ticker
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
+	// Main loop: forward log lines as SSE events, with heartbeats
+	for {
+		select {
+		case ll, ok := <-logCh:
+			if !ok {
+				// Channel closed (readers finished) — wait for exit status
+				logCh = nil
+				continue
+			}
+			_, _ = fmt.Fprintf(w, "event: install_log\ndata: {\"line\":%q,\"stream\":%q}\n\n", ll.line, ll.stream)
+			flusher.Flush()
+		case exitErr := <-exitErrCh:
+			// Drain remaining log lines (channel will be closed by reader goroutines)
+			for ll := range logCh {
+				_, _ = fmt.Fprintf(w, "event: install_log\ndata: {\"line\":%q,\"stream\":%q}\n\n", ll.line, ll.stream)
+				flusher.Flush()
+			}
+			if exitErr != nil {
+				_, _ = fmt.Fprintf(w, "event: install_error\ndata: {\"error\":%q,\"command\":%q}\n\n", exitErr.Error(), spec.InstallCmd)
+			} else {
+				_, _ = fmt.Fprintf(w, "event: install_success\ndata: {\"backend_id\":%q}\n\n", spec.ID)
+			}
+			flusher.Flush()
+			return
+		case <-heartbeat.C:
+			_, _ = fmt.Fprintf(w, ": heartbeat\n\n")
+			flusher.Flush()
+		case <-r.Context().Done():
+			// Client disconnected
+			cancel()
+			return
+		}
+	}
 }
 
 // serveAgentsDelete handles DELETE /api/agents — deletes a single agent.
@@ -254,7 +428,7 @@ func serveAgentsDelete(w http.ResponseWriter, r *http.Request) {
 		slog.Info("closed ACP connections before agent delete", "agent", req.ID)
 	}
 
-	if err := service.DeleteAgent(service.DB, req.ID); err != nil {
+	if err := service.DeleteAgent(req.ID); err != nil {
 		slog.Error("failed to delete agent", "agent", req.ID, "error", err)
 		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
 		return
@@ -299,6 +473,20 @@ func serveAgentsPatch(w http.ResponseWriter, r *http.Request) { //nolint:gocogni
 	}
 
 	ap := service.AgentPatch{}
+
+	// Validate and apply preferred_mode
+	if v, exists := patch["preferred_mode"]; exists {
+		modeID, _ := v.(string)
+		if modeID != "" {
+			// Validate against ACP available modes for this agent
+			reg := ai.GetAgentCapabilityRegistry()
+			if !reg.IsModeAvailable(agentID, modeID) {
+				writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidModeForAgent")
+				return
+			}
+		}
+		ap.PreferredMode = &modeID
+	}
 
 	// Validate and apply preferred_model
 	if v, exists := patch["preferred_model"]; exists {
@@ -429,12 +617,15 @@ func serveAgentsPatch(w http.ResponseWriter, r *http.Request) { //nolint:gocogni
 	}
 
 	// Persist to database
-	if err := service.PatchAgentFields(service.DB, agentID, ap); err != nil {
+	if err := service.PatchAgentFields(agentID, ap); err != nil {
 		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
 		return
 	}
 
 	// Update in-memory agent for immediate reflection
+	if ap.PreferredMode != nil {
+		agent.PreferredMode = *ap.PreferredMode
+	}
 	if ap.PreferredModel != nil {
 		agent.PreferredModel = *ap.PreferredModel
 	}
@@ -537,7 +728,7 @@ func ServeAgentRefreshModels(w http.ResponseWriter, r *http.Request) {
 		canDiscover = true
 		discovered := model.DiscoverModels(*spec)
 
-		// If agent has a provider (from setup wizard), filter to that provider's models.
+		// If agent has a provider (from initial setup), filter to that provider's models.
 		// Pi --list-models returns all providers' models in "provider/model" format.
 		if providerSpec != nil && len(discovered) > 0 {
 			prefix := providerSpec.ID + "/"
@@ -581,7 +772,7 @@ func ServeAgentRefreshModels(w http.ResponseWriter, r *http.Request) {
 	agent.ModelsAutoDetected = true
 
 	// Update database
-	if err := service.SaveAgent(service.DB, agent); err != nil {
+	if err := service.SaveAgent(service.WriteDB(), agent); err != nil {
 		slog.Warn("failed to persist model refresh to DB", "agent", agentID, "error", err)
 	}
 
@@ -593,11 +784,11 @@ func ServeAgentRefreshModels(w http.ResponseWriter, r *http.Request) {
 // findProviderSpecForAgent looks up the provider for an agent from the agent_api_keys table
 // and returns the corresponding ProviderSpec. Used for provider prefix filtering during model refresh.
 func findProviderSpecForAgent(ctx context.Context, agentID string) *model.ProviderSpec {
-	if service.DB == nil {
+	if !service.DBReady() {
 		return nil
 	}
 	var providerID string
-	if err := service.DB.QueryRowContext(ctx, "SELECT provider FROM agent_api_keys WHERE agent_id = ?", agentID).Scan(&providerID); err != nil {
+	if err := service.ReadDB().QueryRowContext(ctx, "SELECT provider FROM agent_api_keys WHERE agent_id = ?", agentID).Scan(&providerID); err != nil {
 		return nil
 	}
 	return model.FindProviderSpec(providerID)
@@ -731,7 +922,7 @@ func findExistingACPSessions(acpSessionIDs []string) map[string]bool {
 	}
 
 	result := make(map[string]bool)
-	rows, err := service.DBRead.Query( //nolint:noctx // background DB query, no request context available in this helper
+	rows, err := service.ReadDB().Query( // background DB query, no request context available in this helper
 		"SELECT source_session_id FROM chat_sessions WHERE source_session_id IN ("+placeholders+")",
 		sourceIDs...,
 	)
@@ -768,7 +959,7 @@ func ServeBackends(w http.ResponseWriter, r *http.Request) {
 		Specialty            string   `json:"specialty"`
 		DefaultCmd           string   `json:"default_cmd"`
 		ThinkingEffortLevels []string `json:"thinking_effort_levels,omitempty"`
-		Embedded             bool     `json:"embedded"`
+		InstallCmd           string   `json:"install_cmd,omitempty"`
 	}
 
 	backends := make([]backendInfo, 0, len(model.GetBackendRegistry()))
@@ -783,7 +974,7 @@ func ServeBackends(w http.ResponseWriter, r *http.Request) {
 			Specialty:            spec.Specialty,
 			DefaultCmd:           spec.DefaultCmd,
 			ThinkingEffortLevels: spec.ThinkingEffortLevels,
-			Embedded:             spec.EmbeddedSubDir != "",
+			InstallCmd:           spec.InstallCmd,
 		})
 	}
 

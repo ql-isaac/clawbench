@@ -17,8 +17,6 @@ import (
 // for testing TTS summary functions.
 func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
-	origDB := DB
-	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -80,11 +78,9 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("failed to create tables: %v", err)
 	}
 
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
+	cleanup := SetDBForTest(db, db)
 	teardown := func() {
-		DB = origDB
-		DBRead = origDBRead
+		cleanup()
 		db.Close()
 	}
 	return db, teardown
@@ -94,8 +90,6 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 // for testing ChatQuickSend CRUD functions.
 func setupTestDBForQuickSend(t *testing.T) func() {
 	t.Helper()
-	origDB := DB
-	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -119,11 +113,9 @@ func setupTestDBForQuickSend(t *testing.T) func() {
 		t.Fatalf("failed to create tables: %v", err)
 	}
 
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
+	cleanup := SetDBForTest(db, db)
 	teardown := func() {
-		DB = origDB
-		DBRead = origDBRead
+		cleanup()
 		_ = db.Close()
 	}
 	return teardown
@@ -134,36 +126,40 @@ func setupTestDBForQuickSend(t *testing.T) func() {
 func TestSchema_SessionTypeColumnExists(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 	defer CloseDB()
 
-	columns := getTableColumns(t, DB, "chat_sessions")
+	columns := getTableColumns(t, UnsafeDBForTest(), "chat_sessions")
 	assert.Contains(t, columns, "session_type", "chat_sessions should have session_type column")
 }
 
 func TestSchema_TaskExecutionsColumns(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 	defer CloseDB()
 
-	columns := getTableColumns(t, DB, "task_executions")
+	columns := getTableColumns(t, UnsafeDBForTest(), "task_executions")
 	assert.Contains(t, columns, "session_id", "task_executions should have session_id column")
 	assert.Contains(t, columns, "status", "task_executions should have status column")
 	assert.NotContains(t, columns, "content", "task_executions should NOT have content column")
@@ -172,18 +168,20 @@ func TestSchema_TaskExecutionsColumns(t *testing.T) {
 func TestSchema_NewIndexes(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 	defer CloseDB()
 
-	indexes := getIndexes(t, DB)
+	indexes := getIndexes(t, UnsafeDBForTest())
 	assert.Contains(t, indexes, "idx_executions_session", "idx_executions_session index should exist")
 	assert.Contains(t, indexes, "idx_sessions_type", "idx_sessions_type index should exist")
 }
@@ -212,18 +210,20 @@ func getTableColumns(t *testing.T, db *sql.DB, table string) map[string]bool {
 func TestSchema_SummariesTable(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 	defer CloseDB()
 
-	columns := getTableColumns(t, DB, "summaries")
+	columns := getTableColumns(t, UnsafeDBForTest(), "summaries")
 	assert.Contains(t, columns, "target_type", "summaries should have target_type column")
 	assert.Contains(t, columns, "target_id", "summaries should have target_id column")
 	assert.Contains(t, columns, "summary", "summaries should have summary column")
@@ -232,18 +232,20 @@ func TestSchema_SummariesTable(t *testing.T) {
 func TestSchema_TTSSummariesNewSchema(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 	defer CloseDB()
 
-	columns := getTableColumns(t, DB, "tts_summaries")
+	columns := getTableColumns(t, UnsafeDBForTest(), "tts_summaries")
 	assert.Contains(t, columns, "message_id", "tts_summaries should have message_id column")
 	assert.Contains(t, columns, "tts_summary", "tts_summaries should have tts_summary column")
 	assert.NotContains(t, columns, "cache_key", "tts_summaries should NOT have cache_key column (old schema)")
@@ -271,65 +273,67 @@ func getIndexes(t *testing.T, db *sql.DB) map[string]bool {
 func TestInitDB_ReadWriteSeparation(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 
 	// DB (write pool) should be initialized
-	assert.NotNil(t, DB, "DB (write pool) should be initialized")
+	assert.NotNil(t, UnsafeDBForTest(), "DB (write pool) should be initialized")
 
-	// DBRead (read pool) should be initialized
-	assert.NotNil(t, DBRead, "DBRead (read pool) should be initialized")
+	// dbRead (read pool) should be initialized
+	assert.NotNil(t, dbRead, "dbRead (read pool) should be initialized")
 
 	// Both should be different instances
-	assert.NotEqual(t, DB, DBRead, "DB and DBRead should be separate connections")
+	assert.NotEqual(t, UnsafeDBForTest(), dbRead, "DB and dbRead should be separate connections")
 
 	// Verify write pool has MaxOpenConns=2 (must be >1 to avoid deadlocks in SELECT+UPDATE loops)
-	stats := DB.Stats()
+	stats := db.Stats()
 	assert.Equal(t, 2, stats.MaxOpenConnections, "DB write pool should have MaxOpenConns=2")
 
 	// Verify read pool has MaxOpenConns=2
-	statsRead := DBRead.Stats()
-	assert.Equal(t, 2, statsRead.MaxOpenConnections, "DBRead pool should have MaxOpenConns=2")
+	statsRead := dbRead.Stats()
+	assert.Equal(t, 2, statsRead.MaxOpenConnections, "dbRead pool should have MaxOpenConns=2")
 
 	// Verify both can query
 	var count int
-	err = DBRead.QueryRow("SELECT COUNT(*) FROM chat_sessions").Scan(&count)
-	assert.NoError(t, err, "DBRead should be able to query")
+	err = dbRead.QueryRow("SELECT COUNT(*) FROM chat_sessions").Scan(&count)
+	assert.NoError(t, err, "dbRead should be able to query")
 
 	// Verify CloseDB closes both
 	CloseDB()
 }
 
-// TestCloseDB_NilDB verifies that CloseDB does not panic when DB and DBRead are nil.
+// TestCloseDB_NilDB verifies that CloseDB does not panic when DB and dbRead are nil.
 func TestCloseDB_NilDB(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
-	DB = nil
-	DBRead = nil
+	db = nil
+	dbRead = nil
 
 	// Should not panic
 	CloseDB()
 }
 
-// TestCloseDB_NilDBRead verifies that CloseDB does not panic when DBRead is nil but DB is not.
+// TestCloseDB_NilDBRead verifies that CloseDB does not panic when dbRead is nil but DB is not.
 func TestCloseDB_NilDBRead(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
-	db, err := sql.Open("sqlite", ":memory:")
+	testDB, err := sql.Open("sqlite", ":memory:")
 	assert.NoError(t, err)
-	DB = db
-	DBRead = nil
+	db = testDB
+	dbRead = nil
 
 	// Should not panic, should close DB
 	CloseDB()
@@ -340,36 +344,40 @@ func TestCloseDB_NilDBRead(t *testing.T) {
 func TestSchema_HistorySessionIDIndex(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 	defer CloseDB()
 
-	indexes := getIndexes(t, DB)
+	indexes := getIndexes(t, UnsafeDBForTest())
 	assert.True(t, indexes["idx_history_session_id"], "expected idx_history_session_id index to exist")
 }
 
 func TestSchema_TasksProjectIndex(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 	defer CloseDB()
 
-	indexes := getIndexes(t, DB)
+	indexes := getIndexes(t, UnsafeDBForTest())
 	assert.True(t, indexes["idx_tasks_project"], "expected idx_tasks_project index to exist")
 }
 
@@ -840,18 +848,20 @@ func TestGetChatQuickSend_OrderedBySortOrder(t *testing.T) {
 func TestSchema_ForwardedPortsColumns(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 	defer CloseDB()
 
-	columns := getTableColumns(t, DB, "forwarded_ports")
+	columns := getTableColumns(t, UnsafeDBForTest(), "forwarded_ports")
 	assert.Contains(t, columns, "local_port", "forwarded_ports should have local_port column")
 	assert.Contains(t, columns, "port", "forwarded_ports should have port column")
 	assert.Contains(t, columns, "host", "forwarded_ports should have host column")
@@ -862,19 +872,21 @@ func TestSchema_ForwardedPortsColumns(t *testing.T) {
 func TestSchema_ForwardedPortsMigration_HostColumn(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	// Create DB with old schema (no host column)
 	err := InitDB()
 	assert.NoError(t, err)
 
 	// Verify host column exists after migration
-	columns := getTableColumns(t, DB, "forwarded_ports")
+	columns := getTableColumns(t, UnsafeDBForTest(), "forwarded_ports")
 	assert.Contains(t, columns, "host", "host column should exist after migration")
 
 	CloseDB()
@@ -883,24 +895,26 @@ func TestSchema_ForwardedPortsMigration_HostColumn(t *testing.T) {
 func TestSchema_ForwardedPortsMigration_LocalPortColumn(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	// Create DB with schema that includes all columns
 	err := InitDB()
 	assert.NoError(t, err)
 
 	// Insert a row and verify local_port defaults correctly
-	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (8080, 8080, '', 'test', 'http')")
+	_, err = db.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (8080, 8080, '', 'test', 'http')")
 	assert.NoError(t, err)
 
 	var localPort, port int
 	var host string
-	err = DB.QueryRow("SELECT local_port, port, host FROM forwarded_ports WHERE local_port = 8080").Scan(&localPort, &port, &host)
+	err = db.QueryRow("SELECT local_port, port, host FROM forwarded_ports WHERE local_port = 8080").Scan(&localPort, &port, &host)
 	assert.NoError(t, err)
 	assert.Equal(t, 8080, localPort)
 	assert.Equal(t, 8080, port)
@@ -913,23 +927,25 @@ func TestSchema_ForwardedPortsMigration_LocalPortBackfill(t *testing.T) {
 	// Simulate migration: old table without local_port → add column + backfill
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	// First init creates the full schema
 	err := InitDB()
 	assert.NoError(t, err)
 
 	// Insert with local_port = port (backward compatible default)
-	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (3000, 3000, '', 'app', 'http')")
+	_, err = db.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (3000, 3000, '', 'app', 'http')")
 	assert.NoError(t, err)
 
 	var localPort, port int
-	err = DB.QueryRow("SELECT local_port, port FROM forwarded_ports WHERE port = 3000").Scan(&localPort, &port)
+	err = db.QueryRow("SELECT local_port, port FROM forwarded_ports WHERE port = 3000").Scan(&localPort, &port)
 	assert.NoError(t, err)
 	assert.Equal(t, port, localPort, "local_port should equal port for backward compatibility")
 
@@ -939,22 +955,24 @@ func TestSchema_ForwardedPortsMigration_LocalPortBackfill(t *testing.T) {
 func TestSchema_ForwardedPortsMigration_HostDefaultValue(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 
 	// Insert without specifying host — should default to empty string
-	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, name, protocol) VALUES (5173, 5173, 'vite', 'http')")
+	_, err = db.Exec("INSERT INTO forwarded_ports (local_port, port, name, protocol) VALUES (5173, 5173, 'vite', 'http')")
 	assert.NoError(t, err)
 
 	var host string
-	err = DB.QueryRow("SELECT host FROM forwarded_ports WHERE local_port = 5173").Scan(&host)
+	err = db.QueryRow("SELECT host FROM forwarded_ports WHERE local_port = 5173").Scan(&host)
 	assert.NoError(t, err)
 	assert.Equal(t, "", host, "host should default to empty string")
 
@@ -964,22 +982,24 @@ func TestSchema_ForwardedPortsMigration_HostDefaultValue(t *testing.T) {
 func TestSchema_ForwardedPortsMigration_HostWithCustomValue(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 
 	// Insert with a custom host value
-	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (8081, 8080, '192.168.1.100', 'remote', 'http')")
+	_, err = db.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (8081, 8080, '192.168.1.100', 'remote', 'http')")
 	assert.NoError(t, err)
 
 	var host string
-	err = DB.QueryRow("SELECT host FROM forwarded_ports WHERE local_port = 8081").Scan(&host)
+	err = db.QueryRow("SELECT host FROM forwarded_ports WHERE local_port = 8081").Scan(&host)
 	assert.NoError(t, err)
 	assert.Equal(t, "192.168.1.100", host)
 
@@ -990,12 +1010,14 @@ func TestSchema_ForwardedPortsMigration_Idempotent(t *testing.T) {
 	// Running InitDB twice should not fail (migrations are idempotent)
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
@@ -1011,25 +1033,27 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 	// Simulate upgrading from old schema without host column
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	// Step 1: Create DB with old schema (no host column, uses port as primary key)
 	dbDir := filepath.Join(tmpDir, ".clawbench")
 	assert.NoError(t, os.MkdirAll(dbDir, 0o755))
-	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
+	oldDB, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
-	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	oldDB.SetMaxOpenConns(1)
+	oldDB.Exec("PRAGMA journal_mode=WAL")
+	oldDB.Exec("PRAGMA busy_timeout=5000")
 
 	// Create old-style table without host column and without local_port
 	// Other tables must have enough columns so InitDB's index creation succeeds
-	_, err = db.Exec(`
+	_, err = oldDB.Exec(`
 		CREATE TABLE IF NOT EXISTS forwarded_ports (
 			port INTEGER PRIMARY KEY,
 			name TEXT NOT NULL DEFAULT '',
@@ -1125,12 +1149,12 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Insert data with old schema (port is primary key)
-	_, err = db.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (8080, 'app', 'http')")
+	_, err = oldDB.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (8080, 'app', 'http')")
 	assert.NoError(t, err)
-	_, err = db.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (3000, 'web', 'https')")
+	_, err = oldDB.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (3000, 'web', 'https')")
 	assert.NoError(t, err)
 
-	db.Close()
+	oldDB.Close()
 
 	// Step 2: Call InitDB which should detect missing columns and run migrations
 	err = InitDB()
@@ -1138,12 +1162,12 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 	defer CloseDB()
 
 	// Step 3: Verify host column was added
-	columns := getTableColumns(t, DB, "forwarded_ports")
+	columns := getTableColumns(t, UnsafeDBForTest(), "forwarded_ports")
 	assert.Contains(t, columns, "host", "host column should exist after migration")
 	assert.Contains(t, columns, "local_port", "local_port column should exist after migration")
 
 	// Step 4: Verify existing data is preserved and local_port is backfilled
-	rows, err := DB.Query("SELECT port, local_port, host, name FROM forwarded_ports ORDER BY port")
+	rows, err := db.Query("SELECT port, local_port, host, name FROM forwarded_ports ORDER BY port")
 	assert.NoError(t, err)
 	defer rows.Close()
 
@@ -1166,8 +1190,6 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 // for testing SaveSummary and GetSummary.
 func setupTestDBForSummaries(t *testing.T) func() {
 	t.Helper()
-	origDB := DB
-	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -1191,11 +1213,9 @@ func setupTestDBForSummaries(t *testing.T) func() {
 		t.Fatalf("failed to create tables: %v", err)
 	}
 
-	DB = db
-	DBRead = db
+	cleanup := SetDBForTest(db, db)
 	teardown := func() {
-		DB = origDB
-		DBRead = origDBRead
+		cleanup()
 		_ = db.Close()
 	}
 	return teardown
@@ -1276,8 +1296,6 @@ func TestSaveSummary_Upsert(t *testing.T) {
 // for testing GetTTSSummary and SaveTTSSummary with message_id.
 func setupTestDBForNewTTSSummaries(t *testing.T) func() {
 	t.Helper()
-	origDB := DB
-	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -1300,11 +1318,9 @@ func setupTestDBForNewTTSSummaries(t *testing.T) func() {
 		t.Fatalf("failed to create tables: %v", err)
 	}
 
-	DB = db
-	DBRead = db
+	cleanup := SetDBForTest(db, db)
 	teardown := func() {
-		DB = origDB
-		DBRead = origDBRead
+		cleanup()
 		_ = db.Close()
 	}
 	return teardown
@@ -1351,20 +1367,22 @@ func TestSaveTTSSummaryByMessageID_Upsert(t *testing.T) {
 func TestInitDB_TTSSummariesMigrationFromOldSchema(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	// First: create a DB with the old schema (cache_key column)
 	dbPath := filepath.Join(tmpDir, ".clawbench", "clawbench.db")
 	os.MkdirAll(filepath.Dir(dbPath), 0o755)
 
-	db, err := sql.Open("sqlite", dbPath)
+	oldDB, err := sql.Open("sqlite", dbPath)
 	assert.NoError(t, err)
-	_, err = db.Exec(`
+	_, err = oldDB.Exec(`
 		CREATE TABLE IF NOT EXISTS tts_summaries (
 			cache_key TEXT PRIMARY KEY,
 			summary TEXT NOT NULL,
@@ -1372,14 +1390,14 @@ func TestInitDB_TTSSummariesMigrationFromOldSchema(t *testing.T) {
 		);
 	`)
 	assert.NoError(t, err)
-	db.Close()
+	oldDB.Close()
 
 	// Now call InitDB — should detect cache_key column and migrate
 	err = InitDB()
 	assert.NoError(t, err)
 
 	// Verify new schema: should have message_id column, not cache_key
-	columns := getTableColumns(t, DB, "tts_summaries")
+	columns := getTableColumns(t, UnsafeDBForTest(), "tts_summaries")
 	assert.Contains(t, columns, "message_id", "tts_summaries should have message_id column after migration")
 	assert.NotContains(t, columns, "cache_key", "tts_summaries should NOT have cache_key column after migration")
 
@@ -1396,19 +1414,21 @@ func TestInitDB_TTSSummariesMigrationFromOldSchema(t *testing.T) {
 func TestInitDB_TTSSummariesFreshInstall(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	// Fresh install: no tts_summaries table exists yet
 	err := InitDB()
 	assert.NoError(t, err)
 
 	// Verify new schema: should have message_id column
-	columns := getTableColumns(t, DB, "tts_summaries")
+	columns := getTableColumns(t, UnsafeDBForTest(), "tts_summaries")
 	assert.Contains(t, columns, "message_id", "tts_summaries should have message_id column on fresh install")
 	assert.Contains(t, columns, "tts_summary", "tts_summaries should have tts_summary column on fresh install")
 
@@ -1426,23 +1446,25 @@ func TestInitDB_TTSSummariesFreshInstall(t *testing.T) {
 func TestSchema_DropHistoryDeletedColumn_FromOldSchema(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	// Step 1: Create DB with old schema that includes chat_history.deleted
 	dbDir := filepath.Join(tmpDir, ".clawbench")
 	assert.NoError(t, os.MkdirAll(dbDir, 0o755))
-	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
+	oldDB, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
-	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	oldDB.SetMaxOpenConns(1)
+	oldDB.Exec("PRAGMA journal_mode=WAL")
+	oldDB.Exec("PRAGMA busy_timeout=5000")
 
-	_, err = db.Exec(`
+	_, err = oldDB.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_history (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			project_path TEXT NOT NULL,
@@ -1513,20 +1535,20 @@ func TestSchema_DropHistoryDeletedColumn_FromOldSchema(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Insert data: some messages with deleted=0, some with deleted=1
-	_, err = db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-1', '/proj', 'claude', 'Test')")
+	_, err = oldDB.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-1', '/proj', 'claude', 'Test')")
 	assert.NoError(t, err)
-	_, err = db.Exec("INSERT INTO chat_history (project_path, role, content, session_id, backend, deleted) VALUES ('/proj', 'user', 'hello', 'sess-1', 'claude', 0)")
+	_, err = oldDB.Exec("INSERT INTO chat_history (project_path, role, content, session_id, backend, deleted) VALUES ('/proj', 'user', 'hello', 'sess-1', 'claude', 0)")
 	assert.NoError(t, err)
-	_, err = db.Exec("INSERT INTO chat_history (project_path, role, content, session_id, backend, deleted) VALUES ('/proj', 'assistant', 'world', 'sess-1', 'claude', 0)")
+	_, err = oldDB.Exec("INSERT INTO chat_history (project_path, role, content, session_id, backend, deleted) VALUES ('/proj', 'assistant', 'world', 'sess-1', 'claude', 0)")
 	assert.NoError(t, err)
-	_, err = db.Exec("INSERT INTO chat_history (project_path, role, content, session_id, backend, deleted) VALUES ('/proj', 'assistant', 'deleted reply', 'sess-1', 'claude', 1)")
+	_, err = oldDB.Exec("INSERT INTO chat_history (project_path, role, content, session_id, backend, deleted) VALUES ('/proj', 'assistant', 'deleted reply', 'sess-1', 'claude', 1)")
 	assert.NoError(t, err)
 
 	// Verify deleted column exists before migration
-	columns := getTableColumns(t, db, "chat_history")
+	columns := getTableColumns(t, oldDB, "chat_history")
 	assert.Contains(t, columns, "deleted", "deleted column should exist before migration")
 
-	db.Close()
+	oldDB.Close()
 
 	// Step 2: Run InitDB — should drop deleted column
 	err = InitDB()
@@ -1534,18 +1556,18 @@ func TestSchema_DropHistoryDeletedColumn_FromOldSchema(t *testing.T) {
 	defer CloseDB()
 
 	// Step 3: Verify deleted column is gone
-	columns = getTableColumns(t, DB, "chat_history")
+	columns = getTableColumns(t, UnsafeDBForTest(), "chat_history")
 	assert.NotContains(t, columns, "deleted", "deleted column should be dropped after migration")
 
 	// Step 4: Verify all message data is preserved
 	var count int
-	err = DB.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = 'sess-1'").Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = 'sess-1'").Scan(&count)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, count, "all messages should be preserved after dropping deleted column")
 
 	// Verify the previously-deleted message content is still there
 	var content string
-	err = DB.QueryRow("SELECT content FROM chat_history WHERE session_id = 'sess-1' AND role = 'assistant' ORDER BY id DESC LIMIT 1").Scan(&content)
+	err = db.QueryRow("SELECT content FROM chat_history WHERE session_id = 'sess-1' AND role = 'assistant' ORDER BY id DESC LIMIT 1").Scan(&content)
 	assert.NoError(t, err)
 	assert.Equal(t, "deleted reply", content, "previously-deleted message content should be preserved")
 }
@@ -1556,19 +1578,21 @@ func TestSchema_DropHistoryDeletedColumn_FromOldSchema(t *testing.T) {
 func TestSchema_DropHistoryDeletedColumn_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	// First run: fresh DB (no deleted column)
 	err := InitDB()
 	assert.NoError(t, err)
 
 	// Verify deleted column does not exist
-	columns := getTableColumns(t, DB, "chat_history")
+	columns := getTableColumns(t, UnsafeDBForTest(), "chat_history")
 	assert.NotContains(t, columns, "deleted")
 
 	CloseDB()
@@ -1578,7 +1602,7 @@ func TestSchema_DropHistoryDeletedColumn_Idempotent(t *testing.T) {
 	assert.NoError(t, err)
 	defer CloseDB()
 
-	columns = getTableColumns(t, DB, "chat_history")
+	columns = getTableColumns(t, UnsafeDBForTest(), "chat_history")
 	assert.NotContains(t, columns, "deleted", "deleted column should still not exist after second InitDB")
 }
 
@@ -1587,8 +1611,6 @@ func TestSchema_DropHistoryDeletedColumn_Idempotent(t *testing.T) {
 // setupTestDBForQuickCommands creates an in-memory SQLite database with the terminal_quick_commands table
 func setupTestDBForQuickCommands(t *testing.T) func() {
 	t.Helper()
-	origDB := DB
-	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -1616,11 +1638,9 @@ func setupTestDBForQuickCommands(t *testing.T) func() {
 		t.Fatalf("failed to create tables: %v", err)
 	}
 
-	DB = db
-	DBRead = db
+	cleanup := SetDBForTest(db, db)
 	teardown := func() {
-		DB = origDB
-		DBRead = origDBRead
+		cleanup()
 		_ = db.Close()
 	}
 	return teardown
@@ -1983,49 +2003,47 @@ func TestReorderQuickCommands_EmptyIDs(t *testing.T) {
 func TestInitDB_CreatesAgentTables(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	origDB := UnsafeDBForTest()
+	origDBRead := dbRead
+	defer func() { db = origDB; dbRead = origDBRead }()
 
 	err := InitDB()
 	assert.NoError(t, err)
 	defer CloseDB()
 
 	// Verify agents table was created by AgentDDL
-	tables := getTableColumns(t, DB, "agents")
+	tables := getTableColumns(t, UnsafeDBForTest(), "agents")
 	assert.Contains(t, tables, "id", "agents table should exist with id column")
 	assert.Contains(t, tables, "name", "agents table should exist with name column")
 	assert.Contains(t, tables, "backend", "agents table should exist with backend column")
 
 	// Verify agent_api_keys table was created by AgentDDL
-	tables = getTableColumns(t, DB, "agent_api_keys")
+	tables = getTableColumns(t, UnsafeDBForTest(), "agent_api_keys")
 	assert.Contains(t, tables, "agent_id", "agent_api_keys table should exist with agent_id column")
 	assert.Contains(t, tables, "provider", "agent_api_keys table should exist with provider column")
 	assert.Contains(t, tables, "encrypted_key", "agent_api_keys table should exist with encrypted_key column")
 }
 
-// ---------- ReorderQuickCommands: DB.Begin error path ----------
+// ---------- ReorderQuickCommands: db.Begin error path ----------
 
 func TestReorderQuickCommands_DBNotInitialized(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
-
 	// Set DB to a closed connection to trigger Begin error
-	db, err := sql.Open("sqlite", ":memory:")
+	closedDB, err := sql.Open("sqlite", ":memory:")
 	assert.NoError(t, err)
-	db.Close()
-	DB = db
-	DBRead = db
+	closedDB.Close()
+	cleanup := SetDBForTest(closedDB, closedDB)
+	defer cleanup()
 
 	err = ReorderQuickCommands([]int64{1, 2})
 	assert.Error(t, err, "reorder should fail when DB is closed")
 }
 
-// ---------- ReorderChatQuickSend: DB.Begin error path ----------
+// ---------- ReorderChatQuickSend: db.Begin error path ----------
 
 // ---------- Tool call migration from content ----------
 
@@ -2034,8 +2052,6 @@ func TestReorderQuickCommands_DBNotInitialized(t *testing.T) {
 // MigrateToolCallsFromContent.
 func setupTestDBForToolCallMigration(t *testing.T) func() {
 	t.Helper()
-	origDB := DB
-	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -2089,11 +2105,9 @@ func setupTestDBForToolCallMigration(t *testing.T) func() {
 		t.Fatalf("failed to create tables: %v", err)
 	}
 
-	DB = db
-	DBRead = db
+	cleanup := SetDBForTest(db, db)
 	teardown := func() {
-		DB = origDB
-		DBRead = origDBRead
+		cleanup()
 		db.Close()
 	}
 	return teardown
@@ -2104,7 +2118,7 @@ func TestMigrateToolCallsFromContent_ExtractsToolCalls(t *testing.T) {
 	defer teardown()
 
 	// Insert a session
-	_, err := DB.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-1', '/proj', 'claude', 'Test')")
+	_, err := db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-1', '/proj', 'claude', 'Test')")
 	assert.NoError(t, err)
 
 	// Insert assistant message with old-format content: tool_use block with input and output
@@ -2115,7 +2129,7 @@ func TestMigrateToolCallsFromContent_ExtractsToolCalls(t *testing.T) {
 			{"type": "text", "text": "Here is the file content."}
 		]
 	}`
-	res, err := DB.Exec(
+	res, err := db.Exec(
 		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, 'assistant', ?, ?, 'claude', 0)",
 		"/proj", oldContent, "sess-1",
 	)
@@ -2127,14 +2141,14 @@ func TestMigrateToolCallsFromContent_ExtractsToolCalls(t *testing.T) {
 
 	// Verify chat_tool_calls row was created
 	var count int
-	err = DB.QueryRow("SELECT COUNT(*) FROM chat_tool_calls WHERE message_id = ?", msgID).Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM chat_tool_calls WHERE message_id = ?", msgID).Scan(&count)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, count, "should have 1 tool call record")
 
 	// Verify tool call fields
 	var toolID, name, input, output, status, summary string
 	var doneInt int
-	err = DB.QueryRow(
+	err = db.QueryRow(
 		"SELECT tool_id, name, input, output, status, done, summary FROM chat_tool_calls WHERE message_id = ?",
 		msgID,
 	).Scan(&toolID, &name, &input, &output, &status, &doneInt, &summary)
@@ -2149,7 +2163,7 @@ func TestMigrateToolCallsFromContent_ExtractsToolCalls(t *testing.T) {
 
 	// Verify content was rewritten to slim format (no input/output in tool_use)
 	var newContent string
-	err = DB.QueryRow("SELECT content FROM chat_history WHERE id = ?", msgID).Scan(&newContent)
+	err = db.QueryRow("SELECT content FROM chat_history WHERE id = ?", msgID).Scan(&newContent)
 	assert.NoError(t, err)
 
 	var parsed struct {
@@ -2173,7 +2187,7 @@ func TestMigrateToolCallsFromContent_MultipleToolUseBlocks(t *testing.T) {
 	teardown := setupTestDBForToolCallMigration(t)
 	defer teardown()
 
-	_, err := DB.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-2', '/proj', 'claude', 'Test')")
+	_, err := db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-2', '/proj', 'claude', 'Test')")
 	assert.NoError(t, err)
 
 	// Message with multiple tool_use blocks
@@ -2184,7 +2198,7 @@ func TestMigrateToolCallsFromContent_MultipleToolUseBlocks(t *testing.T) {
 			{"type": "tool_use", "name": "Agent", "id": "toolu_12", "input": {"subagent_type": "Explore", "prompt": "search code"}, "output": "found 3 files", "status": "success", "done": true}
 		]
 	}`
-	res, err := DB.Exec(
+	res, err := db.Exec(
 		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, 'assistant', ?, ?, 'claude', 0)",
 		"/proj", oldContent, "sess-2",
 	)
@@ -2195,22 +2209,22 @@ func TestMigrateToolCallsFromContent_MultipleToolUseBlocks(t *testing.T) {
 
 	// Should have 3 tool call records
 	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM chat_tool_calls WHERE message_id = ?", msgID).Scan(&count)
+	db.QueryRow("SELECT COUNT(*) FROM chat_tool_calls WHERE message_id = ?", msgID).Scan(&count)
 	assert.Equal(t, 3, count, "should have 3 tool call records")
 
 	// Verify Agent tool has display_name
 	var displayName string
-	DB.QueryRow("SELECT summary FROM chat_tool_calls WHERE tool_id = 'toolu_12' AND message_id = ?", msgID).Scan(&displayName)
+	db.QueryRow("SELECT summary FROM chat_tool_calls WHERE tool_id = 'toolu_12' AND message_id = ?", msgID).Scan(&displayName)
 	assert.Equal(t, "search code", displayName, "Agent tool summary should come from prompt field")
 
 	// Verify Read tool has file_path in summary
 	var readSummary string
-	DB.QueryRow("SELECT summary FROM chat_tool_calls WHERE tool_id = 'toolu_10' AND message_id = ?", msgID).Scan(&readSummary)
+	db.QueryRow("SELECT summary FROM chat_tool_calls WHERE tool_id = 'toolu_10' AND message_id = ?", msgID).Scan(&readSummary)
 	assert.Equal(t, "a.go", readSummary)
 
 	// Verify Bash tool has command in summary
 	var bashSummary string
-	DB.QueryRow("SELECT summary FROM chat_tool_calls WHERE tool_id = 'toolu_11' AND message_id = ?", msgID).Scan(&bashSummary)
+	db.QueryRow("SELECT summary FROM chat_tool_calls WHERE tool_id = 'toolu_11' AND message_id = ?", msgID).Scan(&bashSummary)
 	assert.Equal(t, "ls -la", bashSummary)
 }
 
@@ -2218,7 +2232,7 @@ func TestMigrateToolCallsFromContent_Idempotent(t *testing.T) {
 	teardown := setupTestDBForToolCallMigration(t)
 	defer teardown()
 
-	_, err := DB.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-3', '/proj', 'claude', 'Test')")
+	_, err := db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-3', '/proj', 'claude', 'Test')")
 	assert.NoError(t, err)
 
 	oldContent := `{
@@ -2226,7 +2240,7 @@ func TestMigrateToolCallsFromContent_Idempotent(t *testing.T) {
 			{"type": "tool_use", "name": "Read", "id": "toolu_20", "input": {"file_path": "/x.go"}, "output": "code", "status": "success", "done": true}
 		]
 	}`
-	_, err = DB.Exec(
+	_, err = db.Exec(
 		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, 'assistant', ?, ?, 'claude', 0)",
 		"/proj", oldContent, "sess-3",
 	)
@@ -2238,7 +2252,7 @@ func TestMigrateToolCallsFromContent_Idempotent(t *testing.T) {
 
 	// Should still have exactly 1 tool call record (not duplicated)
 	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
+	db.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
 	assert.Equal(t, 1, count, "second migration should be a no-op")
 }
 
@@ -2246,7 +2260,7 @@ func TestMigrateToolCallsFromContent_SkipsSlimFormat(t *testing.T) {
 	teardown := setupTestDBForToolCallMigration(t)
 	defer teardown()
 
-	_, err := DB.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-4', '/proj', 'claude', 'Test')")
+	_, err := db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-4', '/proj', 'claude', 'Test')")
 	assert.NoError(t, err)
 
 	// Already slim format content (no input field in tool_use)
@@ -2255,7 +2269,7 @@ func TestMigrateToolCallsFromContent_SkipsSlimFormat(t *testing.T) {
 			{"type": "tool_use", "name": "Read", "id": "toolu_30", "status": "success", "done": true, "summary": "main.go", "file_path": "/main.go"}
 		]
 	}`
-	_, err = DB.Exec(
+	_, err = db.Exec(
 		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, 'assistant', ?, ?, 'claude', 0)",
 		"/proj", slimContent, "sess-4",
 	)
@@ -2265,7 +2279,7 @@ func TestMigrateToolCallsFromContent_SkipsSlimFormat(t *testing.T) {
 
 	// Should not create any tool call records (content is already slim)
 	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
+	db.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
 	assert.Equal(t, 0, count, "slim format content should not be migrated")
 }
 
@@ -2273,12 +2287,12 @@ func TestMigrateToolCallsFromContent_SkipsUserMessages(t *testing.T) {
 	teardown := setupTestDBForToolCallMigration(t)
 	defer teardown()
 
-	_, err := DB.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-5', '/proj', 'claude', 'Test')")
+	_, err := db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-5', '/proj', 'claude', 'Test')")
 	assert.NoError(t, err)
 
 	// User message with "input" keyword (should not be processed)
 	userContent := `{"blocks": [{"type": "text", "text": "Please check the input validation"}]}`
-	_, err = DB.Exec(
+	_, err = db.Exec(
 		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, 'user', ?, ?, 'claude', 0)",
 		"/proj", userContent, "sess-5",
 	)
@@ -2287,7 +2301,7 @@ func TestMigrateToolCallsFromContent_SkipsUserMessages(t *testing.T) {
 	MigrateToolCallsFromContent()
 
 	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
+	db.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
 	assert.Equal(t, 0, count, "user messages should be skipped")
 }
 
@@ -2295,7 +2309,7 @@ func TestMigrateToolCallsFromContent_SkipsStreamingMessages(t *testing.T) {
 	teardown := setupTestDBForToolCallMigration(t)
 	defer teardown()
 
-	_, err := DB.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-6', '/proj', 'claude', 'Test')")
+	_, err := db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-6', '/proj', 'claude', 'Test')")
 	assert.NoError(t, err)
 
 	// Streaming message with tool_use (should not be processed — still in progress)
@@ -2304,7 +2318,7 @@ func TestMigrateToolCallsFromContent_SkipsStreamingMessages(t *testing.T) {
 			{"type": "tool_use", "name": "Read", "id": "toolu_40", "input": {"file_path": "/y.go"}, "output": "", "status": "", "done": false}
 		]
 	}`
-	_, err = DB.Exec(
+	_, err = db.Exec(
 		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, 'assistant', ?, ?, 'claude', 1)",
 		"/proj", streamingContent, "sess-6",
 	)
@@ -2313,7 +2327,7 @@ func TestMigrateToolCallsFromContent_SkipsStreamingMessages(t *testing.T) {
 	MigrateToolCallsFromContent()
 
 	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
+	db.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
 	assert.Equal(t, 0, count, "streaming messages should be skipped")
 }
 
@@ -2321,12 +2335,12 @@ func TestMigrateToolCallsFromContent_NoToolUseBlocks(t *testing.T) {
 	teardown := setupTestDBForToolCallMigration(t)
 	defer teardown()
 
-	_, err := DB.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-7', '/proj', 'claude', 'Test')")
+	_, err := db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES ('sess-7', '/proj', 'claude', 'Test')")
 	assert.NoError(t, err)
 
 	// Assistant message with no tool_use blocks
 	textContent := `{"blocks": [{"type": "text", "text": "Hello world"}]}`
-	_, err = DB.Exec(
+	_, err = db.Exec(
 		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, 'assistant', ?, ?, 'claude', 0)",
 		"/proj", textContent, "sess-7",
 	)
@@ -2335,21 +2349,17 @@ func TestMigrateToolCallsFromContent_NoToolUseBlocks(t *testing.T) {
 	MigrateToolCallsFromContent()
 
 	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
+	db.QueryRow("SELECT COUNT(*) FROM chat_tool_calls").Scan(&count)
 	assert.Equal(t, 0, count, "messages without tool_use should not create tool call records")
 }
 
 func TestReorderChatQuickSend_DBNotInitialized(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
-	defer func() { DB = origDB; DBRead = origDBRead }()
-
 	// Set DB to a closed connection to trigger Begin error
-	db, err := sql.Open("sqlite", ":memory:")
+	closedDB, err := sql.Open("sqlite", ":memory:")
 	assert.NoError(t, err)
-	db.Close()
-	DB = db
-	DBRead = db
+	closedDB.Close()
+	cleanup := SetDBForTest(closedDB, closedDB)
+	defer cleanup()
 
 	err = ReorderChatQuickSend([]int64{1, 2})
 	assert.Error(t, err, "reorder should fail when DB is closed")

@@ -24,8 +24,10 @@ func setupPersistTestEnv(t *testing.T) (*testEnv, func()) { //nolint:unparam // 
 
 	// Set BinDir to a temp directory so config.yaml gets written there
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	tmpDir := t.TempDir()
 	model.BinDir = tmpDir
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
 
 	// Also need config dir
 	_ = os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755)
@@ -34,6 +36,7 @@ func setupPersistTestEnv(t *testing.T) (*testEnv, func()) { //nolint:unparam // 
 
 	cleanup := func() {
 		model.BinDir = origBinDir
+		model.DataDir = origDataDir
 		model.ConfigInstance = origConfig
 		teardown()
 	}
@@ -371,26 +374,6 @@ func TestPersist_MossNanoModelDir(t *testing.T) {
 	assert.Equal(t, "/path/to/models", getNestedValue(cfg, "tts.moss_nano.model_dir"))
 }
 
-func TestPersist_MossNanoPromptSpeech(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"tts":{"moss_nano":{"prompt_speech":"/path/to/ref.wav"}}}`)
-	assert.Equal(t, "/path/to/ref.wav", getNestedValue(cfg, "tts.moss_nano.prompt_speech"))
-}
-
-func TestPersist_MossNanoVoice(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"tts":{"moss_nano":{"voice":"Xiaoxiao"}}}`)
-	assert.Equal(t, "Xiaoxiao", getNestedValue(cfg, "tts.moss_nano.voice"))
-}
-
 func TestPersist_MossNanoBackend(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
@@ -515,36 +498,6 @@ func TestPersist_PortForwardPort(t *testing.T) {
 
 	cfg := patchAndReadConfig(t, `{"port_forward":{"port":2222}}`)
 	assert.Equal(t, 2222, getNestedValue(cfg, "port_forward.port"))
-}
-
-// ─── Push section ──────────────────────────────────────
-
-func TestPersist_PushJPushEnabled(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"push":{"jpush":{"enabled":true}}}`)
-	push, ok := cfg["push"].(map[string]any)
-	require.True(t, ok, "push should be a map")
-	jpush, ok := push["jpush"].(map[string]any)
-	require.True(t, ok, "jpush should be a map")
-	assert.Equal(t, true, jpush["enabled"])
-}
-
-func TestPersist_PushJPushAppKey(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"push":{"jpush":{"app_key":"new-app-key"}}}`)
-	push, ok := cfg["push"].(map[string]any)
-	require.True(t, ok, "push should be a map")
-	jpush, ok := push["jpush"].(map[string]any)
-	require.True(t, ok, "jpush should be a map")
-	assert.Equal(t, "new-app-key", jpush["app_key"])
 }
 
 // ─── Multi-field PATCH ──────────────────────────────────────

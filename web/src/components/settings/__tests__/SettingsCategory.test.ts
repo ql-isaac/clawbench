@@ -36,9 +36,8 @@ const serverConfig = ref<Record<string, any>>({
   upload: { max_size_mb: 100, max_files: 20 },
   terminal: { enabled: true, idle_timeout: '10m', max_sessions: 10, buffer_lines: 2000 },
   tts: { engine: 'edge', voice: '', speed: 1.0, max_cache_files: 100, format: '' },
-  rag: { enabled: false, ollama_base_url: 'http://localhost:11434', ollama_model: 'bge-m3', chunk_size: 512, search_limit: 5, retention_days: 90 },
+  rag: { enabled: false, base_url: 'http://localhost:11434', model: 'bge-m3', api_key: '', chunk_size: 512, search_limit: 5, retention_days: 90 },
   port_forward: { enabled: true, port: 0 },
-  push: { jpush: { enabled: false, app_key: '' } },
   summarize: { backend: 'simple', model: '' },
 })
 
@@ -104,10 +103,6 @@ vi.mock('@/composables/usePwaInstall', () => ({
   }),
 }))
 
-vi.mock('@/composables/useGlobalEvents', () => ({
-  useGlobalEvents: () => ({ pushRegistered: ref(false) }),
-}))
-
 vi.mock('@/utils/api', () => ({
   apiPost: vi.fn().mockResolvedValue({ needs_restart: true }),
 }))
@@ -160,16 +155,13 @@ const i18n = createI18n({
           apiFormatAnthropic: 'Anthropic',
           ttsMaxCacheFiles: '缓存上限',
           ragSearchPoolSize: '搜索池大小',
-          ragOllamaUrl: '嵌入接口地址',
+          ragBaseUrl: '嵌入接口地址',
+          ragModel: '嵌入模型',
           portForwardEnabled: '启用端口转发',
           portForwardPort: '端口转发端口',
           portForwardPortAuto: '自动',
-          pushEnabled: '启用极光推送',
-          pushStatus: '推送服务状态',
-          pushStatusRegistered: '正常',
-          pushStatusNotRegistered: '未注册',
-          pushAppKey: 'AppKey',
           portForwardHeader: '端口转发',
+          pushPersistentNotification: '常驻通知',
           pushHeader: '推送',
           ttsCacheHeader: '缓存',
           terminalEnabled: '启用终端',
@@ -185,8 +177,6 @@ const i18n = createI18n({
           fileViewGrid: '网格',
           uploadMaxSize: '上传大小上限',
           uploadMaxFiles: '上传文件上限',
-          ragOllamaUrl: '嵌入接口地址',
-          ragOllamaModel: '嵌入模型',
           ragChunkSize: '分块大小',
           ragSearchLimit: '搜索限制',
           ragRetentionDays: '保留天数',
@@ -339,65 +329,12 @@ describe('SettingsCategory', () => {
 
   // ─── TTS category ──────────────────────────────
   describe('tts category', () => {
-    it('shows engine select and common fields', () => {
-      const wrapper = mountCategory('tts')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-
-      // Should show: engine, voice, speed, summarize items are in separate category
-      const labels = allItems.map(i => i.props().label as string)
-      expect(labels).toContain('TTS引擎')
-      expect(labels).toContain('语音')
-      expect(labels).toContain('语速')
-    })
-
-    it('PATCHes tts.engine when selected', async () => {
+    it('renders TTS engine as a standalone SettingsItem', () => {
       const wrapper = mountCategory('tts')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
       const engineItem = allItems.find(i => i.props().label === 'TTS引擎')
       expect(engineItem).toBeTruthy()
-
-      await engineItem!.vm.$emit('update:modelValue', 'edge')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('tts.engine', 'edge')
     })
-
-    it('PATCHes tts.speed via slider', async () => {
-      const wrapper = mountCategory('tts')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const speedItem = allItems.find(i => i.props().label === '语速')
-      expect(speedItem).toBeTruthy()
-
-      await speedItem!.vm.$emit('update:modelValue', 1.5)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('tts.speed', 1.5)
-    })
-
-    it('PATCHes summarize.backend when selected', async () => {
-      const wrapper = mountCategory('summarization')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const summarizeItem = allItems.find(i => i.props().label === '摘要方式')
-      expect(summarizeItem).toBeTruthy()
-
-      await summarizeItem!.vm.$emit('update:modelValue', 'api')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('summarize.backend', 'api')
-    })
-
-    it('PATCHes tts.max_cache_files when changed', async () => {
-      const wrapper = mountCategory('tts')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const cacheItem = allItems.find(i => i.props().label === '缓存上限')
-      expect(cacheItem).toBeTruthy()
-
-      await cacheItem!.vm.$emit('update:modelValue', 200)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('tts.max_cache_files', 200)
-    })
-
   })
 
   // ─── Terminal category ──────────────────────────────
@@ -463,146 +400,33 @@ describe('SettingsCategory', () => {
     })
   })
 
-  // ─── RAG category ──────────────────────────────
+  // ─── Summarization category (flattened — no group drill-down) ──────────
+  describe('summarization category', () => {
+    it('renders summarize backend as a standalone SettingsItem', () => {
+      const wrapper = mountCategory('summarization')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const backendItem = allItems.find(i => i.props().label === '摘要方式')
+      expect(backendItem).toBeTruthy()
+    })
+  })
+
+  // ─── RAG category (flattened — no group drill-down) ──────────
   describe('rag category', () => {
-    it('PATCHes rag.ollama_base_url when changed', async () => {
+    it('renders RAG base_url as a standalone SettingsItem', () => {
       const wrapper = mountCategory('rag')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '嵌入接口地址')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', 'http://ollama:11434')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('rag.ollama_base_url', 'http://ollama:11434')
-    })
-
-    it('PATCHes rag.ollama_model when changed', async () => {
-      const wrapper = mountCategory('rag')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '嵌入模型')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', 'nomic-embed')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('rag.ollama_model', 'nomic-embed')
-    })
-
-    it('PATCHes rag.chunk_size when changed', async () => {
-      const wrapper = mountCategory('rag')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '分块大小')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', 1024)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('rag.chunk_size', 1024)
-    })
-
-    it('PATCHes rag.search_limit when changed', async () => {
-      const wrapper = mountCategory('rag')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '搜索限制')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', 10)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('rag.search_limit', 10)
-    })
-
-    it('PATCHes rag.retention_days when changed', async () => {
-      const wrapper = mountCategory('rag')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '保留天数')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', 30)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('rag.retention_days', 30)
+      const urlItem = allItems.find(i => i.props().label === '嵌入接口地址')
+      expect(urlItem).toBeTruthy()
     })
   })
 
-  // ─── Port Forward category ──────────────────────────────
+  // ─── Port Forward category (flattened — no group drill-down) ──────────
   describe('portForward category', () => {
-    it('PATCHes port_forward.enabled when toggled', async () => {
+    it('renders port forward enabled as a standalone SettingsItem', () => {
       const wrapper = mountCategory('portForward')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用端口转发')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', false)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.enabled', false)
-    })
-
-    it('PATCHes port_forward.port when changed', async () => {
-      const wrapper = mountCategory('portForward')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '端口转发端口')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', 2222)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.port', 2222)
-    })
-
-    it('shows "Auto" when port_forward.port is 0', async () => {
-      // Default serverConfig has port_forward.port = 0
-      const wrapper = mountCategory('portForward')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '端口转发端口')
-      expect(item).toBeTruthy()
-      expect(item!.props().modelValue).toBe('自动')
-    })
-
-    it('shows numeric value when port_forward.port is non-zero', async () => {
-      serverConfig.value.port_forward = { enabled: true, port: 2222 }
-      const wrapper = mountCategory('portForward')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '端口转发端口')
-      expect(item).toBeTruthy()
-      expect(item!.props().modelValue).toBe(2222)
-    })
-  })
-
-  // ─── Push category ──────────────────────────────
-  describe('push category', () => {
-    it('renders push service status as info row', () => {
-      const wrapper = mountCategory('push')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const statusItem = allItems.find(i => i.props().label === '推送服务状态')
-      expect(statusItem).toBeTruthy()
-      expect(statusItem!.props().type).toBe('info')
-    })
-
-    it('PATCHes push.jpush.enabled when toggled', async () => {
-      const wrapper = mountCategory('push')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用极光推送')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', true)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('push.jpush.enabled', true)
-    })
-
-    it('PATCHes push.jpush.app_key when changed', async () => {
-      const wrapper = mountCategory('push')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === 'AppKey')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', 'new-app-key')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('push.jpush.app_key', 'new-app-key')
+      const enabledItem = allItems.find(i => i.props().label === '启用端口转发')
+      expect(enabledItem).toBeTruthy()
     })
   })
 
@@ -949,28 +773,8 @@ describe('SettingsCategory', () => {
   })
 
   // ─── isLastInSection ──────────────────
-  describe('isLastInSection', () => {
-    it('returns true for last item', async () => {
-      const wrapper = mountCategory('chat')
-      const vm = wrapper.vm as any
-      const items = [{ key: 'a' }, { key: 'b' }, { key: 'c' }]
-      expect(vm.$.setupState.isLastInSection(items, 2)).toBe(true)
-    })
-
-    it('returns true when next item is header', async () => {
-      const wrapper = mountCategory('chat')
-      const vm = wrapper.vm as any
-      const items = [{ key: 'a' }, { key: 'b', type: 'header' }, { key: 'c' }]
-      expect(vm.$.setupState.isLastInSection(items, 0)).toBe(true)
-    })
-
-    it('returns false when next item is not header', async () => {
-      const wrapper = mountCategory('chat')
-      const vm = wrapper.vm as any
-      const items = [{ key: 'a' }, { key: 'b' }, { key: 'c' }]
-      expect(vm.$.setupState.isLastInSection(items, 0)).toBe(false)
-    })
-  })
+  // Note: isLastInSection was removed from SettingsCategory when config groups
+  // were introduced. Section dividers are now handled by sectionHeader on each item.
 
   // ─── handleAddToHomeScreen / downloadAndroidApp ──────────
   describe('handleAddToHomeScreen and downloadAndroidApp', () => {

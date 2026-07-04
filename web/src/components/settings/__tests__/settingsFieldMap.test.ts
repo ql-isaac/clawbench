@@ -1,32 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { getServerFieldToLabelKey, categoryItems } from '@/components/settings/settingsFieldMap'
+import { getServerFieldToLabelKey, categoryItems, categoryGroups, getGroupById, getCategoryForGroup } from '@/components/settings/settingsFieldMap'
 
 describe('settingsFieldMap', () => {
   it('maps all server-side dot-path keys to i18n label keys', () => {
     const map = getServerFieldToLabelKey()
 
     // Key server fields that can appear in changed_cold_fields
-    expect(map['default_agent']).toBeTruthy()
     expect(map['terminal.enabled']).toBeTruthy()
     expect(map['tts.engine']).toBeTruthy()
-    expect(map['rag.ollama_base_url']).toBeTruthy()
+    expect(map['rag.base_url']).toBeTruthy()
     expect(map['port_forward.enabled']).toBeTruthy()
-    expect(map['push.jpush.enabled']).toBeTruthy()
 
-    // Hot-reload fields (shouldn't normally appear but should still be mapped)
+    // Hot-reload fields
     expect(map['chat.page_size']).toBeTruthy()
     expect(map['upload.max_size_mb']).toBeTruthy()
 
-    // All mapped values should be i18n keys
+    // All mapped values should be i18n keys (settings.items.* or settings.categories.* for headers)
     for (const [key, labelKey] of Object.entries(map)) {
-      expect(labelKey).toMatch(/^settings\.items\./)
+      expect(labelKey).toMatch(/^settings\.(items|categories)\./)
     }
   })
 
   it('does not map local-only settings', () => {
     const map = getServerFieldToLabelKey()
 
-    // These are local settings, should not appear
     expect(map['theme']).toBeUndefined()
     expect(map['locale']).toBeUndefined()
     expect(map['autoSpeech']).toBeUndefined()
@@ -64,7 +61,6 @@ describe('settingsFieldMap', () => {
 
   it('does not map orphaned ssh.* keys (renamed to port_forward)', () => {
     const map = getServerFieldToLabelKey()
-    // SSH was renamed to port_forward — ssh.enabled/ssh.port are backend-internal only
     expect(map['ssh.enabled']).toBeUndefined()
     expect(map['ssh.port']).toBeUndefined()
   })
@@ -81,7 +77,6 @@ describe('settingsFieldMap', () => {
     for (const [category, items] of Object.entries(categoryItems)) {
       for (const item of items) {
         if (item.source === 'server' && item.key !== 'serverVersion' && item.key !== 'restart') {
-          // serverVersion and restart are virtual keys, not dot-path config paths
           expect(map[item.key]).toBeDefined()
         }
       }
@@ -94,16 +89,46 @@ describe('settingsFieldMap', () => {
     expect(item).toBeDefined()
     expect(item!.type).toBe('switch')
     expect(item!.source).toBe('local')
-    // No dependsOn — this is always visible (not conditional on push.jpush.enabled)
-    // because the serverConfig may not be loaded yet when the page renders,
-    // causing the dependsOn check to fail with the default value (false).
     expect(item!.dependsOn).toBeUndefined()
   })
 
-  it('pushPersistentNotification comes after pushEnabled in push category', () => {
-    const pushItems = categoryItems['push']
-    const enabledIdx = pushItems.findIndex(i => i.key === 'push.jpush.enabled')
-    const persistentIdx = pushItems.findIndex(i => i.key === 'pushPersistentNotification')
-    expect(enabledIdx).toBeLessThan(persistentIdx)
+  // ── All groups have been flattened to categoryItems ──
+
+  it('categoryGroups is empty (all groups flattened)', () => {
+    expect(Object.keys(categoryGroups)).toHaveLength(0)
+  })
+
+  it('getGroupById returns undefined for any groupId', () => {
+    expect(getGroupById('tts-group')).toBeUndefined()
+    expect(getGroupById('nonexistent-group')).toBeUndefined()
+  })
+
+  it('getCategoryForGroup returns undefined for any groupId', () => {
+    expect(getCategoryForGroup('tts-group')).toBeUndefined()
+    expect(getCategoryForGroup('nonexistent-group')).toBeUndefined()
+  })
+
+  // ── TTS flattened items ──
+
+  it('tts categoryItems has engine selector and per-engine fields with dependsOn', () => {
+    const ttsItems = categoryItems['tts']
+    const engineItem = ttsItems.find(i => i.key === 'tts.engine')
+    expect(engineItem).toBeDefined()
+    expect(engineItem!.type).toBe('select')
+
+    const voiceItem = ttsItems.find(i => i.key === 'tts.voice')
+    expect(voiceItem).toBeDefined()
+
+    const piperItem = ttsItems.find(i => i.key === 'tts.piper.model_path')
+    expect(piperItem).toBeDefined()
+    expect(piperItem!.dependsOn).toEqual({ key: 'tts.engine', value: 'piper' })
+
+    const kokoroItem = ttsItems.find(i => i.key === 'tts.kokoro.model_path')
+    expect(kokoroItem).toBeDefined()
+    expect(kokoroItem!.dependsOn).toEqual({ key: 'tts.engine', value: 'kokoro' })
+
+    const mossNanoItem = ttsItems.find(i => i.key === 'tts.moss_nano.model_dir')
+    expect(mossNanoItem).toBeDefined()
+    expect(mossNanoItem!.dependsOn).toEqual({ key: 'tts.engine', value: 'moss-nano' })
   })
 })

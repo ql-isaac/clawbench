@@ -9,7 +9,6 @@ ASSETS="assets"
 TARGET_OS=""
 TARGET_ARCH=""
 BUILD_ANDROID=""
-EMBED_AGENTS=()
 for arg in "$@"; do
     case "$arg" in
         --windows)
@@ -36,13 +35,6 @@ for arg in "$@"; do
         --android)
             BUILD_ANDROID=1
             ;;
-        --embed-agent=*)
-            EMBED_AGENTS+=("${arg#--embed-agent=}")
-            ;;
-        --with-opencode)
-            # Backward-compatible alias for --embed-agent=opencode
-            EMBED_AGENTS+=("opencode")
-            ;;
     esac
 done
 
@@ -68,8 +60,58 @@ LDFLAGS="-X 'clawbench/internal/version.Version=$FULL_VERSION'"
 VERSION_CODE=$(git rev-list --count HEAD 2>/dev/null || echo "1")
 echo "  Version: $FULL_VERSION (code: $VERSION_CODE, release: $IS_RELEASE)"
 
-# 1. Build Go backend
-echo "[2/5] Building Go backend..."
+# 1. Build Vue frontend (must come before Go build so embed dir is populated)
+echo "[1/5] Building Vue frontend..."
+if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
+    if [ ! -d "node_modules" ]; then
+        echo "  Installing dependencies..."
+        npm install
+    fi
+    # Clean stale hashed assets before rebuild (index-*.js, index-*.css, manifest-*.json)
+    find public/ -maxdepth 1 -name 'index-*.js' -o -name 'index-*.css' -o -name 'manifest-*.json' | xargs rm -f 2>/dev/null || true
+    npm run build
+    echo "  Frontend: public/"
+
+    # Copy frontend build output for Go embed (go:embed all:dist in internal/frontend/)
+    # Include ALL JS/CSS files, not just index-* — Vite dynamic imports produce
+    # lazy chunks (e.g. pdf-*.js, dagre-*.js, mermaid diagram chunks).
+    rm -rf internal/frontend/dist
+    mkdir -p internal/frontend/dist
+    # Restore .gitkeep so go:embed works on fresh clone
+    touch internal/frontend/dist/.gitkeep
+    cp public/index.html internal/frontend/dist/
+    cp public/*.js public/*.css internal/frontend/dist/ 2>/dev/null || true
+    cp public/manifest-*.json public/sw.js internal/frontend/dist/ 2>/dev/null || true
+    cp -r public/assets internal/frontend/dist/assets 2>/dev/null || true
+    echo "  Frontend copied for embedding: internal/frontend/dist/"
+else
+    echo "  npm not found or no package.json, skipping frontend build"
+    echo "  (Go binary will use empty embed — serve from disk public/ if available)"
+fi
+
+# 2. Build Android APK (optional, before Go build so APK is embedded)
+if [ -n "$BUILD_ANDROID" ]; then
+    echo "[2/5] Building Android APK..."
+    if [ -d "android" ] && [ -f "android/gradlew" ]; then
+        (cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew assembleRelease \
+            -PversionCode=$VERSION_CODE -PversionName="$FULL_VERSION")
+        echo "  APK: android/app/build/outputs/apk/release/clawbench-android.apk"
+        if [ -f android/app/build/outputs/apk/release/clawbench-android.apk ]; then
+            mkdir -p internal/frontend/dist/assets
+            cp android/app/build/outputs/apk/release/clawbench-android.apk internal/frontend/dist/assets/
+            echo "  APK copied for embedding: internal/frontend/dist/assets/"
+        else
+            echo "  Warning: APK not found at expected path, skipping copy"
+        fi
+    else
+        echo "  Android project not found, skipping APK build"
+    fi
+else
+    echo "[2/5] Android APK skipped (use --android to build)"
+fi
+
+# 3. Build Go backend (after frontend + APK so embed dir is populated)
+echo "[3/5] Building Go backend..."
 
 if command -v go >/dev/null 2>&1; then
     if [ -n "$TARGET_OS" ] && [ -n "$TARGET_ARCH" ]; then
@@ -92,68 +134,19 @@ else
     echo "  Go not found, skipping backend build"
 fi
 
-# 1.5 Download embedded agent binaries
-# Use --embed-agent=<id> to download (e.g., --embed-agent=opencode).
-# --with-opencode is a backward-compatible alias for --embed-agent=opencode.
-# Version can be pinned via the version_env variable defined in embedded-agents.yaml.
-if [ ${#EMBED_AGENTS[@]} -gt 0 ]; then
-    # Source the shared download helper
-    # shellcheck source=scripts/download-embedded-agent.sh
-    . ./scripts/download-embedded-agent.sh
-    for _agent_id in "${EMBED_AGENTS[@]}"; do
-        download_embedded_agent "$_agent_id"
-    done
-else
-    echo "[3/5] Embedded agent download skipped (use --embed-agent=<id> or --with-opencode)"
-fi
-
-# 2. Build Vue frontend
-echo "[4/5] Building Vue frontend..."
-if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
-    if [ ! -d "node_modules" ]; then
-        echo "  Installing dependencies..."
-        npm install
-    fi
-    # Clean stale hashed assets before rebuild (index-*.js, index-*.css, manifest-*.json)
-    find public/ -maxdepth 1 -name 'index-*.js' -o -name 'index-*.css' -o -name 'manifest-*.json' | xargs rm -f 2>/dev/null || true
-    npm run build
-    echo "  Frontend: public/"
-else
-    echo "  npm not found or no package.json, skipping frontend build"
-fi
-
-# 3. Build Android APK (optional)
-if [ -n "$BUILD_ANDROID" ]; then
-    echo "[5/5] Building Android APK..."
-    if [ -d "android" ] && [ -f "android/gradlew" ]; then
-        (cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew assembleRelease \
-            -PversionCode=$VERSION_CODE -PversionName="$FULL_VERSION")
-        echo "  APK: android/app/build/outputs/apk/release/clawbench-android.apk"
-        if [ -f android/app/build/outputs/apk/release/clawbench-android.apk ]; then
-            mkdir -p public/assets
-            cp android/app/build/outputs/apk/release/clawbench-android.apk public/assets/
-            echo "  APK copied to public/assets/"
-        else
-            echo "  Warning: APK not found at expected path, skipping copy"
-        fi
-    else
-        echo "  Android project not found, skipping APK build"
-    fi
-else
-    echo "[5/5] Android APK skipped (use --android to build)"
-fi
+# 4. (Skipped — embedded agent download removed)
+echo "[4/5] Skipped (embedded agent download removed)"
 
 echo ""
 echo "=== Build complete ==="
 if [ -n "$TARGET_OS" ] && [ -n "$TARGET_ARCH" ]; then
     BINARY_NAME="$NAME"
     [ "$TARGET_OS" = "windows" ] && BINARY_NAME="${NAME}.exe"
-    echo "  ./$BINARY_NAME       # Go binary ($TARGET_OS/$TARGET_ARCH)"
+    echo "  ./$BINARY_NAME       # Go binary ($TARGET_OS/$TARGET_ARCH, frontend+APK embedded)"
 else
-    echo "  ./$NAME              # Go binary"
+    echo "  ./$NAME              # Go binary (frontend+APK embedded)"
 fi
-echo "  public/              # Frontend (if built)"
-echo "  .clawbench/          # Embedded agent binaries (if --embed-agent=<id>)"
+echo "  public/              # Frontend on disk (used if present, overrides embed)"
 echo ""
 echo "Run with: ./$NAME"
 echo ""
@@ -165,7 +158,3 @@ echo "  ./build.sh --darwin-amd64   # macOS amd64 (Intel)"
 echo "  ./build.sh --target=darwin/arm64"
 echo "  ./build.sh --android          # Android APK (release)"
 echo ""
-echo "Embedded agent:"
-echo "  ./build.sh --linux --embed-agent=opencode   # Linux + OpenCode (CI release)"
-echo "  ./build.sh --linux --with-opencode          # Backward-compatible alias"
-echo "  OPENCODE_VERSION=1.17.10 ./build.sh --embed-agent=opencode  # Pin a specific version"

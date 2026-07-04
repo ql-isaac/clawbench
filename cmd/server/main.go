@@ -38,7 +38,6 @@ import (
 	"clawbench/internal/handler"
 	"clawbench/internal/model"
 	"clawbench/internal/platform"
-	"clawbench/internal/push"
 	"clawbench/internal/rag"
 	"clawbench/internal/service"
 	"clawbench/internal/speech"
@@ -154,8 +153,22 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 		fmt.Println("Run \"clawbench <command> --help\" for more information.")
 		fmt.Println()
 		fmt.Println("Server options:")
-		fmt.Println("  --port PORT    Server port (overrides config file, default: 20000)")
+		fmt.Println("  --port PORT       Server port (overrides config file, default: 20000)")
+		fmt.Println("  --data-dir DIR    Runtime data directory (default: <binary_dir>/.clawbench)")
 		os.Exit(0)
+	}
+
+	// Parse --data-dir early (before subcommand dispatch) so CLI subcommands
+	// can find cookie-token in the correct data directory.
+	for i, arg := range os.Args[1:] {
+		if arg == "--data-dir" && i+1 < len(os.Args[1:]) {
+			absDataDir, err := filepath.Abs(os.Args[i+2])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid --data-dir path: %v\n", err)
+				os.Exit(1)
+			}
+			model.DataDir = absDataDir
+		}
 	}
 
 	// Task subcommand dispatch (e.g., "clawbench task create --name ...")
@@ -170,17 +183,33 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 
 	// Parse CLI flags
 	cliPort := 0
+	cliDataDir := ""
 	for i, arg := range os.Args[1:] {
 		if arg == "--port" && i+1 < len(os.Args[1:]) {
 			if p, err := strconv.Atoi(os.Args[i+2]); err == nil && p > 0 && p <= 65535 {
 				cliPort = p
 			}
 		}
+		if arg == "--data-dir" && i+1 < len(os.Args[1:]) {
+			cliDataDir = os.Args[i+2]
+		}
 	}
 
 	// Determine binary directory for data storage (green portable layout)
 	absBinPath, _ := filepath.Abs(os.Args[0])
 	model.BinDir = filepath.Dir(absBinPath)
+
+	// Set data directory: --data-dir flag > default BinDir/.clawbench
+	if cliDataDir != "" {
+		absDataDir, err := filepath.Abs(cliDataDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid --data-dir path: %v\n", err)
+			os.Exit(1)
+		}
+		model.DataDir = absDataDir
+	} else {
+		model.DataDir = filepath.Join(model.BinDir, ".clawbench")
+	}
 
 	// Load configuration — config/config.yaml is optional
 	var cfg model.Config
@@ -317,11 +346,8 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 			m.Backend = cfg.TTS.MossNano.Backend
 		}
 		m.ModelDir = speech.ResolveMossNanoModelDir(cfg.TTS.MossNano.ModelDir)
-		if cfg.TTS.MossNano.PromptSpeech != "" {
-			m.PromptSpeech = cfg.TTS.MossNano.PromptSpeech
-		}
-		if cfg.TTS.MossNano.Voice != "" {
-			m.Voice = cfg.TTS.MossNano.Voice
+		if cfg.TTS.Voice != "" {
+			m.Voice = cfg.TTS.Voice
 		}
 		ttsProvider = m
 		slog.Info(
@@ -329,7 +355,6 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 			slog.String("engine", "moss-nano"),
 			slog.String("backend", m.Backend),
 			slog.String("model_dir", m.ModelDir),
-			slog.String("prompt_speech", m.PromptSpeech),
 			slog.String("voice", m.Voice),
 		)
 	default:
@@ -407,7 +432,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 	if autoPassword != "" {
 		slog.Info(
 			"auto-generated password (no password configured)",
-			slog.String("file", filepath.Join(model.BinDir, ".clawbench", "auto-password")),
+			slog.String("file", filepath.Join(model.DataDir, "auto-password")),
 		)
 	}
 
@@ -453,8 +478,8 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 
 	// Load persisted agent capabilities from DB so mode/thinking/command chips
 	// appear immediately on startup without requiring prefetch.
-	ai.SetRegistryDB(service.DB)
-	ai.GetAgentCapabilityRegistry().LoadFromDB(service.DB)
+	ai.SetRegistryDB(service.WriteDB())
+	ai.GetAgentCapabilityRegistry().LoadFromDB(service.ReadDB())
 
 	// Kill orphan AI subprocesses from a previous server crash.
 	// On Linux, scans /proc for CLAWBENCH_CHILD=1 env marker.
@@ -464,7 +489,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 	// New setups write the key directly to config.yaml. This fallback resolves
 	// the key from DB for legacy configs that have key="" and agent_id set.
 	if cfg.Summarize.Backend == summarizeBackendAPI && cfg.Summarize.API.Key == "" && cfg.Summarize.API.AgentID != "" {
-		if _, _, ak, err := service.LoadAgentAnyAPIKey(service.DB, cfg.Summarize.API.AgentID); err == nil && ak != "" {
+		if _, _, ak, err := service.LoadAgentAnyAPIKey(cfg.Summarize.API.AgentID); err == nil && ak != "" {
 			cfg.Summarize.API.Key = ak
 			slog.Info("resolved summarize API key from agent_api_keys", slog.String("agent_id", cfg.Summarize.API.AgentID))
 		} else if err != nil {
@@ -474,7 +499,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 
 	// Inject API key loader for Pi CLI runtime (avoids import cycle between ai and service packages)
 	ai.SetAgentAPIKeyLoader(func(agentID string) (provider, customURL, apiKey string, found bool) {
-		p, cu, ak, err := service.LoadAgentAnyAPIKey(service.DB, agentID)
+		p, cu, ak, err := service.LoadAgentAnyAPIKey(agentID)
 		if err != nil || ak == "" {
 			return "", "", "", false
 		}
@@ -562,10 +587,10 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 	model.ClawbenchBin = absBinPath
 
 	// 1. Detect installed CLIs and write new agents to DB
-	present := model.SyncDiscoverAgentsDB(service.DB)
+	present := model.SyncDiscoverAgentsDB(service.WriteDB())
 
 	// 1a. Load manually-defined agents from config/agents/*.yaml (e.g., acp-mock for E2E)
-	model.LoadYamlAgents(service.DB, filepath.Dir(configPath))
+	model.LoadYamlAgents(service.WriteDB(), filepath.Dir(configPath))
 
 	// 2. Synchronous model discovery (run when agents may have empty model lists)
 	discoveredModels := model.SyncDiscoverModels()
@@ -573,15 +598,15 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 	// 2a. Migrate custom_system_prompt BEFORE LoadAgentsIntoMemory so the
 	// composition logic (commonPrompt + customSystemPrompt) works correctly
 	// on first startup with legacy system_prompt data.
-	service.MigrateCustomSystemPrompt(service.DB)
+	service.MigrateCustomSystemPrompt()
 
 	// 3. Merge runtime data: fill models/levels from discovery results/registry, delete missing CLIs, reload memory
-	model.MergeDiscoveredDataDB(service.DB, discoveredModels, present)
+	model.MergeDiscoveredDataDB(service.WriteDB(), discoveredModels, present)
 
 	slog.Info("agents loaded", slog.Int("count", len(model.AgentList)))
 
 	// 4. Async: refresh model cache in background (non-blocking)
-	model.AsyncRefreshModelCache(service.DB)
+	model.AsyncRefreshModelCache(service.WriteDB())
 
 	// Set default agent ID from config, or fall back to first agent
 	if cfg.DefaultAgent != "" {
@@ -667,6 +692,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 			if mgr := ws.GetManager(); mgr != nil {
 				mgr.CleanupStale()
 			}
+			service.CleanupPendingEvents()
 		}
 	}()
 
@@ -741,9 +767,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 	}
 
 	// Initialize WS event manager
-	jpushClient := push.NewJPushClient(cfg.Push.JPush)
-	ws.InitManager(jpushClient)
-	handler.SetPushClient(jpushClient)
+	ws.InitManager()
 
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
@@ -852,7 +876,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 		Port:            port,
 		LocalIP:         platform.GetOutboundIP(),
 		AutoPassword:    autoPassword,
-		DataDir:         filepath.Join(model.BinDir, ".clawbench"),
+		DataDir:         model.DataDir,
 		Agents:          agentInfos,
 		SSHEnabled:      sshEnabled,
 		SSHPort:         sshPort,
@@ -946,7 +970,7 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 
 // hotReloadReconfigure is called by applyHotReloadGlobals() after a successful
 // config PATCH to reconfigure subsystems that support hot-reload.
-// It recreates TTS provider, TTS/task summarizers, and reconfigures terminal + push.
+// It recreates TTS provider, TTS/task summarizers, and reconfigures terminal.
 func hotReloadReconfigure(port int) {
 	cfg := model.ConfigInstance
 
@@ -964,12 +988,6 @@ func hotReloadReconfigure(port int) {
 
 	// --- Terminal: reconfigure or toggle enabled ---
 	hotReloadTerminal(cfg, port)
-
-	// --- Push/JPush: reconfigure ---
-	if client := handler.GetPushClient(); client != nil {
-		client.Reconfigure(cfg.Push.JPush)
-		slog.Info("hot-reload: push reconfigured", slog.Bool("enabled", client.Enabled()))
-	}
 }
 
 // newTTSProvider creates a SpeechProvider from TTS config.
@@ -1042,11 +1060,8 @@ func newMossNanoTTSProvider(cfg model.Config) *speech.MossNanoProvider {
 		m.Backend = cfg.TTS.MossNano.Backend
 	}
 	m.ModelDir = speech.ResolveMossNanoModelDir(cfg.TTS.MossNano.ModelDir)
-	if cfg.TTS.MossNano.PromptSpeech != "" {
-		m.PromptSpeech = cfg.TTS.MossNano.PromptSpeech
-	}
-	if cfg.TTS.MossNano.Voice != "" {
-		m.Voice = cfg.TTS.MossNano.Voice
+	if cfg.TTS.Voice != "" {
+		m.Voice = cfg.TTS.Voice
 	}
 	return m
 }

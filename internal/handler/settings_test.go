@@ -50,8 +50,6 @@ func TestServeConfig_Get(t *testing.T) {
 	cfg.RAG.RetentionDays = 30
 	cfg.PortForward.Enabled = true
 	cfg.PortForward.Port = 20001
-	cfg.Push.JPush.Enabled = true
-	cfg.Push.JPush.AppKey = "test-app-key"
 	cfg.Summarize.Backend = "simple"
 	cfg.Summarize.Model = ""
 	model.ConfigInstance = cfg
@@ -78,7 +76,6 @@ func TestServeConfig_Get(t *testing.T) {
 	assert.Contains(t, resp, "tts")
 	assert.Contains(t, resp, "rag")
 	assert.Contains(t, resp, "port_forward")
-	assert.Contains(t, resp, "push")
 	assert.Contains(t, resp, "summarize")
 
 	// Verify specific values
@@ -123,11 +120,6 @@ func TestServeConfig_Get(t *testing.T) {
 	// Verify port_forward doesn't expose host_key
 	pf, _ := resp["port_forward"].(map[string]any)
 	assert.NotContains(t, pf, "host_key")
-
-	// Verify Push exposes master_secret (masked)
-	push, _ := resp["push"].(map[string]any)
-	jpush, _ := push["jpush"].(map[string]any)
-	assert.Contains(t, jpush, "master_secret")
 }
 
 func TestServeConfig_Get_ConditionalPiperSubConfig(t *testing.T) {
@@ -198,7 +190,7 @@ func TestServeConfig_Get_ConditionalMossNanoSubConfig(t *testing.T) {
 	cfg := model.Config{}
 	cfg.TTS.Engine = "moss-nano"
 	cfg.TTS.MossNano.ModelDir = "/path/to/models"
-	cfg.TTS.MossNano.Voice = "Junhao"
+	cfg.TTS.Voice = "Junhao"
 	cfg.TTS.MossNano.Backend = "onnx"
 	model.ConfigInstance = cfg
 
@@ -218,7 +210,8 @@ func TestServeConfig_Get_ConditionalMossNanoSubConfig(t *testing.T) {
 
 	mossNano, _ := tts["moss_nano"].(map[string]any)
 	assert.Equal(t, "onnx", mossNano["backend"])
-	assert.Equal(t, "Junhao", mossNano["voice"])
+	// voice is now the shared tts.voice field, not moss_nano.voice
+	assert.Equal(t, "Junhao", tts["voice"])
 }
 
 func TestServeConfig_Get_ConditionalAPISubConfig(t *testing.T) {
@@ -501,21 +494,6 @@ func TestServeConfig_Patch_ForbiddenField_TLS(t *testing.T) {
 	w := callHandler(ServeConfig, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestServeConfig_Patch_MasterSecret(t *testing.T) {
-	_, teardown := setupTestEnv(t)
-	defer teardown()
-
-	// master_secret is now patchable and should be accepted
-	body := `{"push":{"jpush":{"master_secret":"newsecret1234567890"}}}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	withAuthCookie(req, model.SessionToken)
-	w := callHandler(ServeConfig, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "newsecret1234567890", model.ConfigInstance.Push.JPush.MasterSecret)
 }
 
 func TestServeConfig_Patch_InvalidEngine(t *testing.T) {
@@ -834,16 +812,16 @@ func TestServeConfig_Patch_MossNanoSubConfigWithoutModelDir(t *testing.T) {
 	cfg.TTS.MossNano.ModelDir = ""
 	model.ConfigInstance = cfg
 
-	// Saving sub-config when engine is already moss-nano and model_dir is empty should succeed
-	// (model_dir is optional — empty value is valid, ResolveMossNanoModelDir handles it)
-	body := `{"tts":{"moss_nano":{"voice":"Junhao"}}}`
+	// Saving voice when engine is already moss-nano should succeed
+	// (voice is now the shared tts.voice field)
+	body := `{"tts":{"voice":"Junhao"}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfig, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "Junhao", model.ConfigInstance.TTS.MossNano.Voice)
+	assert.Equal(t, "Junhao", model.ConfigInstance.TTS.Voice)
 }
 
 func TestServeConfig_Patch_InvalidDefaultAgent(t *testing.T) {
@@ -1564,7 +1542,7 @@ func TestServeConfig_Patch_MossNanoModelDirInPatch(t *testing.T) {
 	model.ConfigInstance = cfg
 
 	// Patch model_dir when engine is already moss-nano
-	body := `{"tts":{"moss_nano":{"model_dir":"/path/to/models","voice":"Test","backend":"onnx"}}}`
+	body := `{"tts":{"moss_nano":{"model_dir":"/path/to/models","backend":"onnx"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -1572,7 +1550,6 @@ func TestServeConfig_Patch_MossNanoModelDirInPatch(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "/path/to/models", model.ConfigInstance.TTS.MossNano.ModelDir)
-	assert.Equal(t, "Test", model.ConfigInstance.TTS.MossNano.Voice)
 	assert.Equal(t, "onnx", model.ConfigInstance.TTS.MossNano.Backend)
 }
 
@@ -1784,8 +1761,10 @@ func TestServeConfigPassword_WithAutoPasswordFile(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(binDir, "config"), 0o755))
 
 	origBinDir := model.BinDir
+	origDataDir := model.DataDir
 	model.BinDir = binDir
-	defer func() { model.BinDir = origBinDir }()
+	model.DataDir = clawbenchDir
+	defer func() { model.BinDir = origBinDir; model.DataDir = origDataDir }()
 
 	req := newRequest(t, http.MethodPost, "/api/config/password", map[string]string{
 		"current_password": password,
@@ -1922,24 +1901,6 @@ func TestServeConfigPatch_PortForward(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.True(t, model.ConfigInstance.PortForward.Enabled)
 	assert.Equal(t, 2222, model.ConfigInstance.PortForward.Port)
-}
-
-func TestServeConfigPatch_PushJPush(t *testing.T) {
-	_, teardown := setupTestEnv(t)
-	defer teardown()
-
-	cfg := model.Config{}
-	model.ConfigInstance = cfg
-
-	body := `{"push":{"jpush":{"enabled":true,"app_key":"test-key","master_secret":"test-secret-1234567890"}}}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	withAuthCookie(req, model.SessionToken)
-	w := callHandler(ServeConfig, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.True(t, model.ConfigInstance.Push.JPush.Enabled)
-	assert.Equal(t, "test-key", model.ConfigInstance.Push.JPush.AppKey)
 }
 
 func TestServeConfigPatch_TerminalFields(t *testing.T) {

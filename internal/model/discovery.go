@@ -3,7 +3,6 @@ package model
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -14,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"clawbench/internal/dbutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -53,10 +53,7 @@ type BackendSpec struct {
 	Specialty            string   // short description, e.g. "代码编写与推理"
 	ThinkingEffortLevels []string // supported thinking effort levels, e.g. ["low","medium","high"]; nil = not supported
 	AcpCommand           string   // ACP spawn command for acp-stdio transport, e.g. "kimi --acp"; empty = no ACP support
-	EmbeddedSubDir       string   // subdirectory under .clawbench/ for embedded binary, e.g. "pi"; empty = no embedded binary
-	EmbeddedVersionFile  string   // filename for fast version lookup under EmbeddedSubDir, e.g. "VERSION"; empty = no version file
-	EmbeddedGitHubRepo   string   // GitHub repo for release downloads, e.g. "anomalyco/opencode"; empty = no auto-download
-	EmbeddedArchMapping  string   // arch name mapping in archive names, e.g. "amd64=x64"; empty = no mapping
+	InstallCmd           string   // npm/pip install command, e.g. "npm install -g @anthropic-ai/claude-code"; empty = not installable
 	SortOrder            int      // display/registration order for deterministic BackendRegistry ordering
 }
 
@@ -89,17 +86,9 @@ func GetBackendRegistry() []BackendSpec {
 // If that fails, it falls back to exec.LookPath — some CLIs (especially Node.js ones)
 // may return non-zero exit codes for --version when run without a TTY or in certain
 // environments, but the binary itself is still present and functional.
-// For backends with EmbeddedSubDir, also checks the embedded binary.
 func CheckCLIExists(cmd string) bool {
 	if cmd == "" {
 		return false
-	}
-
-	// Check for embedded binary (e.g. .clawbench/pi/pi)
-	if spec := FindBackendSpecByDefaultCmd(cmd); spec != nil && spec.EmbeddedSubDir != "" {
-		if EmbeddedBinaryPath(spec.EmbeddedSubDir) != "" {
-			return true
-		}
 	}
 
 	// Primary check: run `cmd --version`
@@ -126,17 +115,9 @@ func CheckCLIExists(cmd string) bool {
 
 // CheckCLIExistsErr returns an error describing why the CLI is not available,
 // or nil if the CLI is available. This is used for more specific error reporting.
-// For backends with EmbeddedSubDir, also checks the embedded binary.
 func CheckCLIExistsErr(cmd string) error {
 	if cmd == "" {
 		return fmt.Errorf("empty command")
-	}
-
-	// Check for embedded binary
-	if spec := FindBackendSpecByDefaultCmd(cmd); spec != nil && spec.EmbeddedSubDir != "" {
-		if EmbeddedBinaryPath(spec.EmbeddedSubDir) != "" {
-			return nil
-		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -221,7 +202,7 @@ func SyncDiscoverModels() map[string][]AgentModel {
 
 // AsyncRefreshModelCache runs DiscoverModels in a goroutine for all backends
 // and updates in-memory Agent data + DB. Call this after startup — it does not block.
-func AsyncRefreshModelCache(db *sql.DB) {
+func AsyncRefreshModelCache(db dbutil.Writer) {
 	go func() {
 		for _, spec := range GetBackendRegistry() {
 			if !CanDiscoverModels(spec) {
@@ -250,70 +231,13 @@ func AsyncRefreshModelCache(db *sql.DB) {
 	}()
 }
 
-// --- Embedded binary detection ---
-
-// EmbeddedBinaryPath returns the absolute path to the embedded binary under
-// .clawbench/{subDir}/, or empty string if not found.
-// subDir is the BackendSpec.EmbeddedSubDir value (e.g. "pi").
-func EmbeddedBinaryPath(subDir string) string {
-	exePath, err := os.Executable()
-	if err != nil {
-		slog.Error("failed to get executable path", "error", err)
-		return ""
-	}
-	baseDir := filepath.Dir(exePath)
-	for _, name := range []string{subDir, subDir + ".exe"} {
-		p := filepath.Join(baseDir, ".clawbench", subDir, name)
-		if info, err := os.Stat(p); err == nil && !info.IsDir() {
-			return p
-		}
-	}
-	return ""
-}
-
-// EmbeddedBinaryVersion extracts the version for an embedded binary.
-// First reads .clawbench/{subDir}/{versionFile} (fast), then falls back to
-// running {binary} --version.
-func EmbeddedBinaryVersion(subDir, versionFile string) string {
-	exePath, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	baseDir := filepath.Dir(exePath)
-
-	// Fast path: read version file
-	if versionFile != "" {
-		vf := filepath.Join(baseDir, ".clawbench", subDir, versionFile)
-		if data, err := os.ReadFile(vf); err == nil {
-			v := strings.TrimSpace(string(data))
-			if v != "" {
-				return v
-			}
-		}
-	}
-
-	// Slow path: run binary --version
-	binPath := EmbeddedBinaryPath(subDir)
-	if binPath == "" {
-		return ""
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, binPath, "--version").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
 // --- DB-based agent discovery and merge ---
 
 // SyncDiscoverAgentsDB is the DB-based replacement for SyncDiscoverAgents.
 // It detects installed CLIs from BackendRegistry and writes new agents to the database
 // instead of YAML files. Existing DB records are never overwritten.
-// It also checks for embedded binaries (backends with EmbeddedSubDir).
 // Returns a set of backend types whose CLI is currently present.
-func SyncDiscoverAgentsDB(db *sql.DB) map[string]bool { //nolint:gocognit,gocyclo // multi-backend DB agent discovery
+func SyncDiscoverAgentsDB(db dbutil.Writer) map[string]bool { //nolint:gocognit,gocyclo // multi-backend DB agent discovery
 	type result struct {
 		spec   BackendSpec
 		exists bool
@@ -331,17 +255,6 @@ func SyncDiscoverAgentsDB(db *sql.DB) map[string]bool { //nolint:gocognit,gocycl
 	}
 	wg.Wait()
 
-	// Also check for embedded binaries (backends with EmbeddedSubDir)
-	embeddedPaths := make(map[string]string) // backend → embedded binary path
-	for i, r := range results {
-		if r.spec.EmbeddedSubDir != "" && !r.exists {
-			if p := EmbeddedBinaryPath(r.spec.EmbeddedSubDir); p != "" {
-				results[i] = result{spec: r.spec, exists: true}
-				embeddedPaths[r.spec.Backend] = p
-			}
-		}
-	}
-
 	present := make(map[string]bool)
 
 	for _, r := range results {
@@ -349,22 +262,10 @@ func SyncDiscoverAgentsDB(db *sql.DB) map[string]bool { //nolint:gocognit,gocycl
 			present[r.spec.Backend] = true
 		}
 
-		// Skip auto-creation for backends only found via embedded binary.
-		// The setup wizard handles agent creation with API key + model config.
-		// Auto-creating from embedded binary would leave a broken agent (no API key).
-		if r.spec.EmbeddedSubDir != "" {
-			if _, ok := embeddedPaths[r.spec.Backend]; ok {
-				// Only auto-create if the CLI is genuinely installed on PATH (not just embedded)
-				if _, lookupErr := exec.LookPath(r.spec.DefaultCmd); lookupErr != nil {
-					continue
-				}
-			}
-		}
-
 		// Check if DB already has an agent for this backend
 		var count int
-		var existingAcpCommand string
-		err := db.QueryRow("SELECT COUNT(*), COALESCE(acp_command, '') FROM agents WHERE backend = ?", r.spec.Backend).Scan(&count, &existingAcpCommand)
+		var existingAcpCommand, existingTransport string
+		err := db.QueryRow("SELECT COUNT(*), COALESCE(acp_command, ''), COALESCE(transport, '') FROM agents WHERE backend = ?", r.spec.Backend).Scan(&count, &existingAcpCommand, &existingTransport)
 		if err != nil {
 			slog.Warn("failed to query agents table", "backend", r.spec.Backend, "error", err)
 			continue
@@ -390,6 +291,15 @@ func SyncDiscoverAgentsDB(db *sql.DB) map[string]bool { //nolint:gocognit,gocycl
 			// stale values when ACP support is removed from a backend).
 			if r.spec.AcpCommand != existingAcpCommand {
 				updates["acp_command"] = r.spec.AcpCommand
+			}
+			// Sync transport with acp_command changes:
+			// - ACP newly added + current transport is cli → upgrade to acp-stdio
+			// - ACP removed + current transport is acp-stdio → downgrade to cli
+			// - ACP unchanged but transport is stale cli (pre-existing DB record) → upgrade
+			if r.spec.AcpCommand != "" && existingTransport == "cli" {
+				updates["transport"] = "acp-stdio"
+			} else if r.spec.AcpCommand == "" && existingTransport == "acp-stdio" {
+				updates["transport"] = "cli"
 			}
 
 			if len(updates) > 0 {
@@ -424,14 +334,10 @@ func SyncDiscoverAgentsDB(db *sql.DB) map[string]bool { //nolint:gocognit,gocycl
 			Source:    "auto",
 		}
 
-		// Set command to embedded binary path for backends with embedded binaries
-		if p, ok := embeddedPaths[r.spec.Backend]; ok {
-			agent.Command = p
-		}
-
-		// Store ACP command info from BackendSpec (transport defaults to "cli")
+		// Store ACP command info from BackendSpec (transport defaults to "acp-stdio")
 		if r.spec.AcpCommand != "" {
 			agent.AcpCommand = r.spec.AcpCommand
+			agent.Transport = "acp-stdio"
 		}
 
 		if err := saveAgentToDB(db, agent); err != nil {
@@ -459,7 +365,7 @@ func SyncDiscoverAgentsDB(db *sql.DB) map[string]bool { //nolint:gocognit,gocycl
 }
 
 // saveAgentToDB inserts a minimal agent record into the database.
-func saveAgentToDB(db *sql.DB, agent *Agent) error {
+func saveAgentToDB(db dbutil.Writer, agent *Agent) error {
 	modelsJSON, err := json.Marshal(agent.Models)
 	if err != nil {
 		return fmt.Errorf("marshal models: %w", err)
@@ -475,7 +381,11 @@ func saveAgentToDB(db *sql.DB, agent *Agent) error {
 
 	transport := agent.Transport
 	if transport == "" {
-		transport = "cli"
+		if agent.AcpCommand != "" {
+			transport = "acp-stdio"
+		} else {
+			transport = "cli"
+		}
 	}
 
 	_, err = db.Exec(`INSERT INTO agents (id, name, icon, specialty, backend, command,
@@ -515,7 +425,7 @@ type yamlAgent struct {
 // them into the database if they don't already exist. This allows manually-defined
 // agents (e.g., acp-mock for E2E testing) to be loaded without requiring an entry
 // in BackendRegistry.
-func LoadYamlAgents(db *sql.DB, configDir string) {
+func LoadYamlAgents(db dbutil.Writer, configDir string) {
 	agentsDir := filepath.Join(configDir, "agents")
 	entries, err := os.ReadDir(agentsDir)
 	if err != nil {
@@ -592,7 +502,7 @@ func LoadYamlAgents(db *sql.DB, configDir string) {
 // 2. Fill ThinkingEffortLevels from BackendRegistry and update DB
 // 3. Fill Models from cache for agents with empty models and update DB
 // 4. Reload in-memory state from DB
-func MergeDiscoveredDataDB(db *sql.DB, discoveredModels map[string][]AgentModel, present map[string]bool) { //nolint:gocognit,gocyclo // multi-step data merge
+func MergeDiscoveredDataDB(db dbutil.Writer, discoveredModels map[string][]AgentModel, present map[string]bool) { //nolint:gocognit,gocyclo // multi-step data merge
 	// Step 1: Soft-delete auto agents whose CLI is not present
 	if present != nil {
 		// Build list of present backends for SQL
@@ -726,7 +636,7 @@ func MergeDiscoveredDataDB(db *sql.DB, discoveredModels map[string][]AgentModel,
 }
 
 // loadAgentsFromDBRows loads agents from the database into Agent structs.
-func loadAgentsFromDBRows(db *sql.DB) ([]*Agent, error) {
+func loadAgentsFromDBRows(db dbutil.Reader) ([]*Agent, error) {
 	rows, err := db.Query(`SELECT id, name, icon, specialty, backend, command,
 		thinking_effort, thinking_effort_levels, preferred_model, preferred_thinking_effort,
 		system_prompt, models, models_auto_detected, source, sort_order,

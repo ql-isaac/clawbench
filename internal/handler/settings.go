@@ -54,30 +54,24 @@ var hotReloadFields = map[string]bool{
 	"terminal.max_sessions": true,
 	"terminal.buffer_lines": true,
 	// TTS engine + sub-configs — recreate provider
-	"tts.engine":                  true,
-	"tts.tts_model":               true, // forward-compatible: MiniMax TTS model name (no-op until MiniMax provider is wired)
-	"tts.format":                  true, // forward-compatible: audio format override (no-op, inferred from engine)
-	"tts.piper.model_path":        true,
-	"tts.piper.noise_scale":       true,
-	"tts.piper.length_scale":      true,
-	"tts.piper.sentence_silence":  true,
-	"tts.kokoro.model_path":       true,
-	"tts.kokoro.voices_path":      true,
-	"tts.kokoro.lang":             true,
-	"tts.moss_nano.model_dir":     true,
-	"tts.moss_nano.prompt_speech": true,
-	"tts.moss_nano.voice":         true,
-	"tts.moss_nano.backend":       true,
+	"tts.engine":                 true,
+	"tts.tts_model":              true, // forward-compatible: MiniMax TTS model name (no-op until MiniMax provider is wired)
+	"tts.format":                 true, // forward-compatible: audio format override (no-op, inferred from engine)
+	"tts.piper.model_path":       true,
+	"tts.piper.noise_scale":      true,
+	"tts.piper.length_scale":     true,
+	"tts.piper.sentence_silence": true,
+	"tts.kokoro.model_path":      true,
+	"tts.kokoro.voices_path":     true,
+	"tts.kokoro.lang":            true,
+	"tts.moss_nano.model_dir":    true,
+	"tts.moss_nano.backend":      true,
 	// Summarize — reconstruct summarizer
 	"summarize.backend":      true,
 	"summarize.model":        true,
 	"summarize.api.base_url": true,
 	"summarize.api.key":      true,
 	"summarize.api.format":   true,
-	// Push/JPush — stateless client, just update fields
-	"push.jpush.enabled":       true,
-	"push.jpush.app_key":       true,
-	"push.jpush.master_secret": true,
 }
 
 // restartGracePeriod is the delay before shutting down the server after a restart
@@ -96,7 +90,7 @@ func SetRestartFunc(f func()) {
 
 // reconfigureOnHotReload is called by applyHotReloadGlobals() to apply
 // hot-reload changes that require subsystem reconfiguration (TTS engine swap,
-// summarize reconstruction, terminal reconfigure, push reconfigure).
+// summarize reconstruction, terminal reconfigure).
 // Set by main.go via SetReconfigureFunc(). Defaults to a no-op for tests.
 var reconfigureOnHotReload func()
 
@@ -122,7 +116,6 @@ type configResponse struct {
 	TTS                 configTTS            `json:"tts"`
 	RAG                 configRAG            `json:"rag"`
 	PortForward         configPortForward    `json:"port_forward"`
-	Push                configPush           `json:"push"`
 	Summarize           configSummarize      `json:"summarize"`
 }
 
@@ -178,10 +171,8 @@ type configKokoro struct {
 }
 
 type configMossNano struct {
-	ModelDir     string `json:"model_dir"`
-	PromptSpeech string `json:"prompt_speech"`
-	Voice        string `json:"voice"`
-	Backend      string `json:"backend"`
+	ModelDir string `json:"model_dir"`
+	Backend  string `json:"backend"`
 }
 
 type configAPI struct {
@@ -203,16 +194,6 @@ type configRAG struct {
 type configPortForward struct {
 	Enabled bool `json:"enabled"`
 	Port    int  `json:"port"`
-}
-
-type configPush struct {
-	JPush configJPush `json:"jpush"`
-}
-
-type configJPush struct {
-	Enabled      bool   `json:"enabled"`
-	AppKey       string `json:"app_key"`
-	MasterSecret string `json:"master_secret"`
 }
 
 type configSummarize struct {
@@ -250,8 +231,6 @@ var PatchableConfigPaths = map[string]bool{
 	"tts.kokoro.voices_path":      true,
 	"tts.kokoro.lang":             true,
 	"tts.moss_nano.model_dir":     true,
-	"tts.moss_nano.prompt_speech": true,
-	"tts.moss_nano.voice":         true,
 	"tts.moss_nano.backend":       true,
 	"rag.base_url":                true,
 	"rag.model":                   true,
@@ -262,9 +241,6 @@ var PatchableConfigPaths = map[string]bool{
 	"rag.retention_days":          true,
 	"port_forward.enabled":        true,
 	"port_forward.port":           true,
-	"push.jpush.enabled":          true,
-	"push.jpush.app_key":          true,
-	"push.jpush.master_secret":    true,
 	"summarize.backend":           true,
 	"summarize.model":             true,
 	"summarize.api.base_url":      true,
@@ -385,13 +361,6 @@ func serveConfigGet(w http.ResponseWriter, _ *http.Request) {
 			Enabled: cfg.PortForward.Enabled,
 			Port:    cfg.PortForward.Port,
 		},
-		Push: configPush{
-			JPush: configJPush{
-				Enabled:      cfg.Push.JPush.Enabled,
-				AppKey:       cfg.Push.JPush.AppKey, // AppKey is not a secret, no need to mask
-				MasterSecret: maskAPIKey(cfg.Push.JPush.MasterSecret),
-			},
-		},
 		Summarize: configSummarize{
 			Backend: cfg.Summarize.Backend,
 			Model:   cfg.Summarize.Model,
@@ -424,10 +393,8 @@ func serveConfigGet(w http.ResponseWriter, _ *http.Request) {
 		}
 	case "moss-nano":
 		resp.TTS.MossNano = &configMossNano{
-			ModelDir:     cfg.TTS.MossNano.ModelDir,
-			PromptSpeech: cfg.TTS.MossNano.PromptSpeech,
-			Voice:        cfg.TTS.MossNano.Voice,
-			Backend:      cfg.TTS.MossNano.Backend,
+			ModelDir: cfg.TTS.MossNano.ModelDir,
+			Backend:  cfg.TTS.MossNano.Backend,
 		}
 	}
 
@@ -849,12 +816,6 @@ func applyConfigPatch(patch map[string]any) error { //nolint:gocognit,gocyclo //
 			if v, ok := mossNano["model_dir"].(string); ok {
 				cfg.TTS.MossNano.ModelDir = v
 			}
-			if v, ok := mossNano["prompt_speech"].(string); ok {
-				cfg.TTS.MossNano.PromptSpeech = v
-			}
-			if v, ok := mossNano["voice"].(string); ok {
-				cfg.TTS.MossNano.Voice = v
-			}
 			if v, ok := mossNano["backend"].(string); ok {
 				cfg.TTS.MossNano.Backend = v
 			}
@@ -894,20 +855,6 @@ func applyConfigPatch(patch map[string]any) error { //nolint:gocognit,gocyclo //
 		}
 		if v, ok := pf["port"].(float64); ok {
 			cfg.PortForward.Port = int(v)
-		}
-	}
-
-	if push, ok := patch["push"].(map[string]any); ok {
-		if jpush, ok := push["jpush"].(map[string]any); ok {
-			if v, ok := jpush["enabled"].(bool); ok {
-				cfg.Push.JPush.Enabled = v
-			}
-			if v, ok := jpush["app_key"].(string); ok {
-				cfg.Push.JPush.AppKey = v
-			}
-			if v, ok := jpush["master_secret"].(string); ok {
-				cfg.Push.JPush.MasterSecret = v
-			}
 		}
 	}
 
@@ -967,7 +914,7 @@ func applyHotReloadGlobals() {
 			p.Voice = cfg.TTS.Voice
 		}
 		// Piper: voice is embedded in model_path, not a standalone field
-		// MOSS-Nano: uses moss_nano.voice, not tts.voice
+		// MOSS-Nano: uses tts.voice (shared with Edge/Kokoro)
 	}
 	if cfg.TTS.Speed > 0 {
 		if p, ok := curProvider.(*speech.EdgeTTSProvider); ok {
@@ -993,7 +940,7 @@ func applyHotReloadGlobals() {
 	}
 
 	// Reconfigure subsystems (TTS engine swap, summarize reconstruction,
-	// terminal reconfigure, push reconfigure). Set by main.go.
+	// terminal reconfigure). Set by main.go.
 	if reconfigureOnHotReload != nil {
 		reconfigureOnHotReload()
 	}
@@ -1209,7 +1156,7 @@ func ServeConfigPassword(w http.ResponseWriter, r *http.Request) { //nolint:gocy
 	}
 
 	// Also remove the auto-password file (if any) since user has set an explicit password
-	autoPasswordFile := filepath.Join(model.BinDir, ".clawbench", "auto-password")
+	autoPasswordFile := filepath.Join(model.DataDir, "auto-password")
 	// Read the old auto-password before deleting it (needed for API key rotation)
 	oldAutoPassword, _ := os.ReadFile(autoPasswordFile)
 	_ = os.Remove(autoPasswordFile)
@@ -1217,8 +1164,8 @@ func ServeConfigPassword(w http.ResponseWriter, r *http.Request) { //nolint:gocy
 	// Rotate API key encryption: the auto-password is being removed, which changes
 	// the encryption key derivation. Re-encrypt all stored API keys with the new key
 	// (which will fall back to deriveFallbackKey since auto-password is gone).
-	if service.DB != nil && len(oldAutoPassword) > 0 {
-		if err := service.RotateAPIKeyEncryption(service.DB, string(oldAutoPassword)); err != nil {
+	if service.DBReady() && len(oldAutoPassword) > 0 {
+		if err := service.RotateAPIKeyEncryption(string(oldAutoPassword)); err != nil {
 			slog.Error("failed to rotate API key encryption after password change", "error", err)
 			// Don't fail the password change — the user can re-enter API keys later
 		}

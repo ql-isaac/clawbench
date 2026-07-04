@@ -15,17 +15,20 @@ const TAG = 'Agents'
 let _updateAvailableModes: ((modes: Array<{ id: string; name: string }>) => void) | null = null
 let _updateAvailableThinkingEfforts: ((levels: Array<{ id: string; name: string }>) => void) | null = null
 let _updateCommandState: ((commands: Array<{ name: string; description: string; inputHint?: string }>) => void) | null = null
+let _updateUsageState: ((used: number, size: number, cost?: number, currency?: string) => void) | null = null
 let _currentAgentId: { value: string } | null = null
 
 export function registerIdentityUpdaters(opts: {
   updateAvailableModes: (modes: Array<{ id: string; name: string }>) => void
   updateAvailableThinkingEfforts: (levels: Array<{ id: string; name: string }>) => void
   updateCommandState: (commands: Array<{ name: string; description: string; inputHint?: string }>) => void
+  updateUsageState: (used: number, size: number, cost?: number, currency?: string) => void
   currentAgentId: { value: string }
 }) {
   _updateAvailableModes = opts.updateAvailableModes
   _updateAvailableThinkingEfforts = opts.updateAvailableThinkingEfforts
   _updateCommandState = opts.updateCommandState
+  _updateUsageState = opts.updateUsageState
   _currentAgentId = opts.currentAgentId
 }
 
@@ -54,6 +57,7 @@ export function resetAgents(): void {
     _updateAvailableModes = null
     _updateAvailableThinkingEfforts = null
     _updateCommandState = null
+    _updateUsageState = null
     _currentAgentId = null
 }
 
@@ -109,6 +113,10 @@ async function loadAgents(force = false): Promise<void> {
                     }
                     if (activeState.planState?.entries?.length > 0) {
                         updatePlanEntries(activeState.planState.entries)
+                    }
+                    // Restore usage state from agent-level cache (best-effort fallback).
+                    if (activeState.usageState && activeState.usageState.size > 0) {
+                        _updateUsageState?.(activeState.usageState.used ?? 0, activeState.usageState.size, activeState.usageState.cost, activeState.usageState.currency)
                     }
                 }
             }
@@ -225,6 +233,12 @@ function getEffectiveThinkingEffort(agentId: string): string {
     return agent?.preferredThinkingEffort || agent?.thinkingEffort || ''
 }
 
+/** Get the effective mode ID for an agent. Priority: preferredMode > empty. */
+function getEffectiveModeId(agentId: string): string {
+    const agent = agents.value.find(a => a.id === agentId)
+    return agent?.preferredMode || ''
+}
+
 /** Update a single field on an agent in the reactive store (for immediate UI feedback after PATCH). */
 function updateAgentField(agentId: string, field: string, value: any): void {
     const agent = agents.value.find(a => a.id === agentId)
@@ -281,7 +295,8 @@ function supportsDualTransport(agentId: string): boolean {
 /** Get the current transport mode for an agent. Returns 'acp-stdio' or 'cli'. */
 function getAgentTransport(agentId: string): string {
     const agent = agents.value.find(a => a.id === agentId)
-    return agent?.transport || 'cli'
+    if (agent?.transport) return agent.transport
+    return agent?.acpCommand ? 'acp-stdio' : 'cli'
 }
 
 /** Invalidate the ACP state cache for an agent so next access force-refreshes. */
@@ -332,6 +347,12 @@ export async function populateACPStateFromCache(agentId: string): Promise<void> 
     if (state.planState?.entries?.length > 0) {
         updatePlanEntries(state.planState.entries)
     }
+    // Restore usage state from agent-level cache (best-effort fallback).
+    // This ensures usage chips appear immediately on session switch /
+    // reconnect without waiting for a new SSE usage_update event.
+    if (state.usageState && state.usageState.size > 0) {
+        _updateUsageState?.(state.usageState.used ?? 0, state.usageState.size, state.usageState.cost, state.usageState.currency)
+    }
 }
 
 /** Duplicate an agent by cloning its configuration with a new name. */
@@ -371,6 +392,7 @@ export function useAgents() {
         getAgentThinkingEffortLevels,
         hasThinkingEffortLevels,
         getEffectiveThinkingEffort,
+        getEffectiveModeId,
         updateAgentField,
         setDefaultAgent,
         canRefreshModels,

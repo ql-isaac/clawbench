@@ -1,0 +1,10 @@
+{
+  "name": "@xulongzhe/clawbench-darwin-arm64",
+  "version": "0.1.0",
+  "description": "ClawBench binary for macOS arm64 (Apple Silicon)",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "preferUnplugged": true,
+  "files": ["bin/", "config/"],
+  "license": "MIT"
+}

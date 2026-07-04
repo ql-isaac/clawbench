@@ -100,6 +100,7 @@ function pathJoin(base, name) {
 
 // Reload data when dialog opens (only first time)
 let initialized = false
+
 watch(() => props.open, (isOpen) => {
     if (isOpen) {
         searchQuery.value = ''
@@ -268,8 +269,9 @@ async function confirm() {
 }
 
 .dialog-toolbar-row :deep(.search-pill) {
-    flex: 1;
-    min-width: 0;
+    margin-left: auto;
+    min-width: 80px;
+    max-width: 200px;
 }
 
 .dialog-nav :deep(.dir-breadcrumb) {

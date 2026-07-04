@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"clawbench/internal/frontend"
 	i18npkg "clawbench/internal/i18n"
 	"clawbench/internal/middleware"
 	"clawbench/internal/model"
@@ -153,7 +154,7 @@ func isPathUnderAnyRoot(absPath string) bool {
 // isPathUnderBase checks that absPath is under basePath by resolving symlinks
 // on both sides before comparing. This prevents symlink traversal attacks.
 // Both paths must be absolute.
-func isPathUnderBase(absPath, basePath string) bool { //nolint:unused // security utility
+func isPathUnderBase(absPath, basePath string) bool {
 	evalBase, err := filepath.EvalSymlinks(basePath)
 	if err != nil {
 		return false
@@ -302,15 +303,6 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/proxy/ports", middleware.Auth(ServeProxyPortAction))
 	register("/api/proxy/detect", middleware.Auth(ServeProxyDetect))
 
-	// Push config — intentionally unauthenticated:
-	// Android native layer calls this before WebView loads (no cookies)
-	// to discover JPush AppKey at runtime. Only exposes enabled flag and
-	// AppKey — no secrets or credentials.
-	register("/api/push/config", ServePushConfig)
-
-	// Push registration is now done via WS "register" message (see events.go).
-	// No need for a separate HTTP endpoint.
-
 	// SSH tunnel info — intentionally unauthenticated:
 	// 1. Android BackgroundService.fetchSSHPort() calls this from native Java
 	//    (no WebView cookies available) to discover the SSH port before connecting.
@@ -334,15 +326,21 @@ func RegisterRoutes(mux *http.ServeMux) {
 		ws.EventsHandler(w, r)
 	})))
 
+	// Pending events (missed notifications for offline clients)
+	register("/api/ai/events/pending", middleware.Auth(http.HandlerFunc(ServePendingEvents)))
+
 	// Chat quick-send (CRUD for quick-send presets stored in database)
 	register("/api/chat/quick-send", middleware.Auth(ServeChatQuickSend))
 	register("/api/chat/quick-send/", middleware.Auth(ServeChatQuickSendByID))
 
-	if _, err := os.Stat("public"); err == nil {
-		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("public"))))
-	} else {
+	// Serve static assets from frontend filesystem (disk public/ > embed fallback)
+	// http.FileServerFS internally cleans paths before Open(), preventing traversal.
+	// For embed.FS, Open() additionally rejects ".." paths. No explicit ISS-055 guard needed.
+	fsys := frontend.GetFS()
+	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServerFS(fsys)))
+	if !frontend.DiskPublicExists() {
+		// Dev mode fallbacks: Vite dev server needs these routes
 		mux.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir(filepath.Join("web", "css")))))
 		mux.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir(filepath.Join("web", "js")))))
-		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
 	}
 }

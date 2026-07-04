@@ -18,6 +18,7 @@
         class="lightbox-content"
         :class="{ grabbing: isDragging, 'slide-left': slideDirection === 'left', 'slide-right': slideDirection === 'right' }"
         ref="contentRef"
+        @click="handleContentClick"
         @wheel.prevent="handleWheel"
         @mousedown="handleMouseDown"
         @touchstart.passive="handleTouchStart"
@@ -63,6 +64,7 @@ import { store } from '@/stores/app.ts'
 import { baseName, joinPath } from '@/utils/path.ts'
 import { getFileType } from '@/utils/fileType.ts'
 import { downloadBlob, buildLocalFileUrl, downloadFileByPath } from '@/utils/download.ts'
+import { extractImageName } from '@/utils/lightbox.ts'
 
 const lightboxVisible = ref(false)
 const currentUrl = ref('')
@@ -357,6 +359,13 @@ function handleDownload() {
     setTimeout(() => { document.body.removeChild(a) }, 1000)
 }
 
+function handleContentClick(e) {
+    // Close lightbox when clicking the blank area (not on the image/svg itself)
+    if (e.target === contentRef.value || e.target.closest('.lb-loading-spinner')) {
+        close()
+    }
+}
+
 function handleWheel(e) {
     const delta = e.deltaY > 0 ? 0.85 : 1.2
     const newScale = Math.min(Math.max(scale.value * delta, 0.1), 10)
@@ -479,22 +488,6 @@ function handleTouchEnd(e) {
     pinchStartDist.value = 0
 }
 
-function extractImageName(src) {
-    try {
-        // Remove query string and hash
-        const url = new URL(src, window.location.origin)
-        const path = decodeURIComponent(url.pathname)
-        // Extract from /api/local-file/ prefix or just get basename
-        const localPrefix = '/api/local-file/'
-        if (path.startsWith(localPrefix)) {
-            return baseName(path.slice(localPrefix.length))
-        }
-        return baseName(path)
-    } catch {
-        return ''
-    }
-}
-
 function collectMdImages(container, clickedImg) {
     const imgs = container.querySelectorAll('img')
     const list = []
@@ -512,6 +505,9 @@ function collectMdImages(container, clickedImg) {
 
 provide('openLightbox', open)
 provide('openSvgLightbox', openSvg)
+provide('openMdImages', openMdImages)
+
+defineExpose({ open, openMdImages, openSvg })
 
 onMounted(() => {
     document.addEventListener('mousemove', handleMouseMove)
@@ -566,7 +562,7 @@ onUnmounted(() => {
 .lightbox-backdrop {
     position: absolute;
     inset: 0;
-    background: var(--lb-bg, rgba(0,0,0,0.92));
+    background: var(--lb-bg, rgba(0,0,0,0.65));
     cursor: zoom-out;
 }
 

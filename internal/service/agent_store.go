@@ -2,7 +2,6 @@
 package service
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"clawbench/internal/dbutil"
 	"clawbench/internal/model"
 )
 
@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS agents (
 	command TEXT NOT NULL DEFAULT '',
 	thinking_effort TEXT NOT NULL DEFAULT '',
 	thinking_effort_levels TEXT NOT NULL DEFAULT '[]',
+	preferred_mode TEXT NOT NULL DEFAULT '',
 	preferred_model TEXT NOT NULL DEFAULT '',
 	preferred_thinking_effort TEXT NOT NULL DEFAULT '',
 	system_prompt TEXT NOT NULL DEFAULT '',
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS agents (
 	acp_available_thinking_efforts TEXT NOT NULL DEFAULT '[]',
 	acp_available_commands TEXT NOT NULL DEFAULT '[]',
 	acp_config_options TEXT NOT NULL DEFAULT '',
+	acp_cached_usage_state TEXT NOT NULL DEFAULT '',
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -63,11 +65,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_api_keys_agent_provider
 `
 
 // LoadAgentsFromDB loads all agents from the database and returns them sorted by ID.
-func LoadAgentsFromDB(db *sql.DB) ([]*model.Agent, error) {
-	rows, err := db.Query(`
+func LoadAgentsFromDB() ([]*model.Agent, error) {
+	rows, err := dbRead.Query(`
 		SELECT id, name, icon, specialty, backend, command,
 			thinking_effort, thinking_effort_levels,
-			preferred_model, preferred_thinking_effort,
+			preferred_mode, preferred_model, preferred_thinking_effort,
 			system_prompt, custom_system_prompt, models, models_auto_detected,
 			source, sort_order,
 			transport, acp_command
@@ -87,7 +89,7 @@ func LoadAgentsFromDB(db *sql.DB) ([]*model.Agent, error) {
 		err := rows.Scan(
 			&a.ID, &a.Name, &a.Icon, &a.Specialty, &a.Backend, &a.Command,
 			&a.ThinkingEffort, &levelsJSON,
-			&a.PreferredModel, &a.PreferredThinkingEffort,
+			&a.PreferredMode, &a.PreferredModel, &a.PreferredThinkingEffort,
 			&a.SystemPrompt, &a.CustomSystemPrompt, &modelsJSON, &modelsAutoDetected,
 			&a.Source, &a.SortOrder,
 			&a.Transport, &a.AcpCommand,
@@ -120,14 +122,7 @@ func LoadAgentsFromDB(db *sql.DB) ([]*model.Agent, error) {
 	return agents, rows.Err()
 }
 
-// SaveAgent inserts or updates an agent in the database (upsert).
-// DBExec is the minimal interface for DB operations that work with both *sql.DB and *sql.Tx.
-type DBExec interface {
-	Exec(query string, args ...any) (sql.Result, error)
-	QueryRow(query string, args ...any) *sql.Row
-}
-
-func SaveAgent(db DBExec, agent *model.Agent) error {
+func SaveAgent(db dbutil.Writer, agent *model.Agent) error {
 	modelsJSON, err := json.Marshal(agent.Models)
 	if err != nil {
 		return fmt.Errorf("marshal models: %w", err)
@@ -149,17 +144,21 @@ func SaveAgent(db DBExec, agent *model.Agent) error {
 	sortOrder := agent.SortOrder
 	transport := agent.Transport
 	if transport == "" {
-		transport = "cli"
+		if agent.AcpCommand != "" {
+			transport = "acp-stdio"
+		} else {
+			transport = "cli"
+		}
 	}
 
 	_, err = db.Exec(`
 		INSERT INTO agents (id, name, icon, specialty, backend, command,
 			thinking_effort, thinking_effort_levels,
-			preferred_model, preferred_thinking_effort,
+			preferred_mode, preferred_model, preferred_thinking_effort,
 			system_prompt, custom_system_prompt, models, models_auto_detected,
 			source, sort_order,
 			transport, acp_command)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			icon = excluded.icon,
@@ -168,6 +167,7 @@ func SaveAgent(db DBExec, agent *model.Agent) error {
 			command = excluded.command,
 			thinking_effort = excluded.thinking_effort,
 			thinking_effort_levels = excluded.thinking_effort_levels,
+			preferred_mode = excluded.preferred_mode,
 			preferred_model = excluded.preferred_model,
 			preferred_thinking_effort = excluded.preferred_thinking_effort,
 			system_prompt = excluded.system_prompt,
@@ -181,7 +181,7 @@ func SaveAgent(db DBExec, agent *model.Agent) error {
 			updated_at = CURRENT_TIMESTAMP
 	`, agent.ID, agent.Name, agent.Icon, agent.Specialty, agent.Backend, agent.Command,
 		agent.ThinkingEffort, string(levelsJSON),
-		agent.PreferredModel, agent.PreferredThinkingEffort,
+		agent.PreferredMode, agent.PreferredModel, agent.PreferredThinkingEffort,
 		agent.SystemPrompt, agent.CustomSystemPrompt, string(modelsJSON), modelsAutoDetected,
 		agent.Source, sortOrder,
 		transport, agent.AcpCommand)
@@ -193,10 +193,10 @@ func SaveAgent(db DBExec, agent *model.Agent) error {
 
 // DeleteAgent deletes an agent by ID. Cascades to agent_api_keys (requires PRAGMA foreign_keys=ON).
 // Returns nil even if the agent doesn't exist.
-func DeleteAgent(db *sql.DB, id string) error {
+func DeleteAgent(id string) error {
 	// Ensure foreign keys are enforced for cascade delete
-	_, _ = db.Exec("PRAGMA foreign_keys = ON")
-	_, err := db.Exec("DELETE FROM agents WHERE id = ?", id)
+	_, _ = WriteExec("PRAGMA foreign_keys = ON")
+	_, err := WriteExec("DELETE FROM agents WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete agent %s: %w", id, err)
 	}
@@ -206,18 +206,19 @@ func DeleteAgent(db *sql.DB, id string) error {
 // PatchAgent updates only the original user-editable fields (preferred_model, preferred_thinking_effort, transport).
 // Returns nil even if the agent doesn't exist (no rows affected).
 // Kept for backward compatibility — delegates to PatchAgentFields.
-func PatchAgent(db *sql.DB, id, preferredModel, preferredThinkingEffort, transport string) error {
+func PatchAgent(id, preferredModel, preferredThinkingEffort, transport string) error {
 	patch := AgentPatch{
 		PreferredModel:          &preferredModel,
 		PreferredThinkingEffort: &preferredThinkingEffort,
 		Transport:               &transport,
 	}
-	return PatchAgentFields(db, id, patch)
+	return PatchAgentFields(id, patch)
 }
 
 // AgentPatch holds optional fields for partial agent updates.
 // Pointer fields distinguish "not provided" (nil) from "set to empty/zero".
 type AgentPatch struct {
+	PreferredMode           *string
 	PreferredModel          *string
 	PreferredThinkingEffort *string
 	Transport               *string
@@ -230,11 +231,15 @@ type AgentPatch struct {
 
 // PatchAgentFields updates only the non-nil fields in the AgentPatch struct.
 // Returns nil even if the agent doesn't exist (no rows affected).
-func PatchAgentFields(db *sql.DB, id string, patch AgentPatch) error {
+func PatchAgentFields(id string, patch AgentPatch) error { //nolint:gocyclo // multi-field dynamic patch builder
 	// Build dynamic SET clause
 	setClauses := []string{}
 	args := []any{}
 
+	if patch.PreferredMode != nil {
+		setClauses = append(setClauses, "preferred_mode = ?")
+		args = append(args, *patch.PreferredMode)
+	}
 	if patch.PreferredModel != nil {
 		setClauses = append(setClauses, "preferred_model = ?")
 		args = append(args, *patch.PreferredModel)
@@ -289,7 +294,7 @@ func PatchAgentFields(db *sql.DB, id string, patch AgentPatch) error {
 	args = append(args, id)
 
 	query := "UPDATE agents SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
-	_, err := db.Exec(query, args...)
+	_, err := WriteExec(query, args...)
 	if err != nil {
 		return fmt.Errorf("patch agent %s: %w", id, err)
 	}
@@ -298,8 +303,8 @@ func PatchAgentFields(db *sql.DB, id string, patch AgentPatch) error {
 
 // LoadAgentsIntoMemory loads agents from DB into the global model.Agents map and model.AgentList slice.
 // Also builds the common prompt and prepends it to each agent's system prompt.
-func LoadAgentsIntoMemory(db *sql.DB) error {
-	agents, err := LoadAgentsFromDB(db)
+func LoadAgentsIntoMemory() error {
+	agents, err := LoadAgentsFromDB()
 	if err != nil {
 		return err
 	}
@@ -353,7 +358,7 @@ func LoadAgentsIntoMemory(db *sql.DB) error {
 // DuplicateAgent creates a new agent by cloning an existing one.
 // It generates a unique ID (sourceID-copy-timestamp), copies all configuration
 // fields from the source, sets source="manual", and saves to DB.
-func DuplicateAgent(db *sql.DB, sourceID, newName string) (*model.Agent, error) {
+func DuplicateAgent(sourceID, newName string) (*model.Agent, error) {
 	source, ok := model.Agents[sourceID]
 	if !ok {
 		return nil, fmt.Errorf("source agent %s not found", sourceID)
@@ -370,6 +375,7 @@ func DuplicateAgent(db *sql.DB, sourceID, newName string) (*model.Agent, error) 
 		Command:                 source.Command,
 		ThinkingEffort:          source.ThinkingEffort,
 		ThinkingEffortLevels:    make([]string, len(source.ThinkingEffortLevels)),
+		PreferredMode:           source.PreferredMode,
 		PreferredModel:          source.PreferredModel,
 		PreferredThinkingEffort: source.PreferredThinkingEffort,
 		CustomSystemPrompt:      source.CustomSystemPrompt,
@@ -394,7 +400,7 @@ func DuplicateAgent(db *sql.DB, sourceID, newName string) (*model.Agent, error) 
 		clone.SystemPrompt = clone.CustomSystemPrompt
 	}
 
-	if err := SaveAgent(db, clone); err != nil {
+	if err := SaveAgent(WriteDB(), clone); err != nil {
 		return nil, fmt.Errorf("save duplicated agent: %w", err)
 	}
 
@@ -405,13 +411,13 @@ func DuplicateAgent(db *sql.DB, sourceID, newName string) (*model.Agent, error) 
 // that have a system_prompt but an empty custom_system_prompt. It strips the
 // common prompt prefix from the stored system_prompt and stores the remainder
 // as custom_system_prompt.
-func MigrateCustomSystemPrompt(db *sql.DB) {
+func MigrateCustomSystemPrompt() {
 	commonPrompt := model.BuildCommonPrompt()
 	if commonPrompt == "" {
 		return
 	}
 
-	rows, err := db.Query("SELECT id, system_prompt, custom_system_prompt FROM agents WHERE custom_system_prompt = '' AND system_prompt != ''")
+	rows, err := dbRead.Query("SELECT id, system_prompt, custom_system_prompt FROM agents WHERE custom_system_prompt = '' AND system_prompt != ''")
 	if err != nil {
 		slog.Error("migrate custom_system_prompt: query failed", "error", err)
 		return
@@ -450,7 +456,7 @@ func MigrateCustomSystemPrompt(db *sql.DB) {
 			custom = ""
 		}
 
-		if _, err := db.Exec("UPDATE agents SET custom_system_prompt = ? WHERE id = ?", custom, row.id); err != nil {
+		if _, err := WriteExec("UPDATE agents SET custom_system_prompt = ? WHERE id = ?", custom, row.id); err != nil {
 			slog.Warn("migrate custom_system_prompt: update failed", "agent", row.id, "error", err)
 			continue
 		}

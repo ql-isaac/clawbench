@@ -90,6 +90,7 @@ const currentCategoryTitle = computed(() => {
     const agent = getAgent(agentId)
     return agent ? `${agent.icon} ${agent.name}` : t('settings.categories.agents')
   }
+  // For group drill-down pages ({category}:{groupId}) — no longer used, all groups flattened
   return t(`settings.categories.${cat}`)
 })
 

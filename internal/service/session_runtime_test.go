@@ -538,12 +538,9 @@ func insertTestMessage(t *testing.T, db *sql.DB, sessionID, role, content string
 }
 
 func TestGetSessionResponsePreview_WithTextBlock(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	content := model.ContentBlock{Type: "text", Text: "你好，这是AI的回复内容"}
 	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
@@ -556,12 +553,9 @@ func TestGetSessionResponsePreview_WithTextBlock(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_Truncation(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// responsePreviewMaxRunes+1 runes — should be truncated
 	longText := strings.Repeat("测", responsePreviewMaxRunes+1)
@@ -580,12 +574,9 @@ func TestGetSessionResponsePreview_Truncation(t *testing.T) {
 // TestGetSessionResponsePreview_FallbackTruncation verifies that the longest-text
 // fallback path truncates when the best text block exceeds responsePreviewMaxRunes.
 func TestGetSessionResponsePreview_FallbackTruncation(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// [text("very long..."), tool_use] — no text AFTER tool_use, falls back to longest text block
 	longText := strings.Repeat("测", responsePreviewMaxRunes+1)
@@ -602,12 +593,9 @@ func TestGetSessionResponsePreview_FallbackTruncation(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_NoAssistantMessage(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	insertTestMessage(t, db, "session-preview-3", "user", "只有用户消息")
 
@@ -616,24 +604,18 @@ func TestGetSessionResponsePreview_NoAssistantMessage(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_NoMessages(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	result := getSessionResponsePreview("session-nonexistent")
 	assert.Equal(t, "", result)
 }
 
 func TestGetSessionResponsePreview_SkipsToolUseBlocks(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
 	textBlock := model.ContentBlock{Type: "text", Text: "工具执行后的文本"}
@@ -647,12 +629,9 @@ func TestGetSessionResponsePreview_SkipsToolUseBlocks(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_PrefersTextAfterLastToolUse(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Scenario: [text("Reading file..."), tool_use, text("Here is the analysis")]
 	// The preview should return "Here is the analysis", not "Reading file..."
@@ -669,12 +648,9 @@ func TestGetSessionResponsePreview_PrefersTextAfterLastToolUse(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_MultipleToolUses(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Scenario: [tool_use, text("intermediate"), tool_use, text("final answer")]
 	// Should return "final answer" — text after the LAST tool_use
@@ -692,12 +668,9 @@ func TestGetSessionResponsePreview_MultipleToolUses(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_OnlyToolUses(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Only tool_use blocks, no text after — should return empty
 	tool1 := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
@@ -712,12 +685,9 @@ func TestGetSessionResponsePreview_OnlyToolUses(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_TextBeforeToolOnly(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// [text("thinking..."), tool_use] — no text AFTER tool_use, falls back to longest text block
 	textBlock := model.ContentBlock{Type: "text", Text: "让我思考一下"}
@@ -734,12 +704,9 @@ func TestGetSessionResponsePreview_TextBeforeToolOnly(t *testing.T) {
 // --- Real-data based tests (extracted from ClawBench production database) ---
 
 func TestGetSessionResponsePreview_RealData_TextThenToolThenSummary(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Real pattern from session 93c986e1, message id=1063:
 	//   [thinking, text("方案一已经在上一轮实现了。验证一下当前状态："), tool_use(Bash), tool_use(Bash), text("方案一已在 commit b4d7b73 中实现完毕...")]
@@ -761,12 +728,9 @@ func TestGetSessionResponsePreview_RealData_TextThenToolThenSummary(t *testing.T
 }
 
 func TestGetSessionResponsePreview_RealData_ToolThenWorktreeReport(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Real pattern from session dd1968cf, message id=1059:
 	//   [thinking, tool_use(Bash), text("Worktree 已创建：\n\n- **路径**: `/root/code/clawbench/.worktrees/fix-push-summary-55`...")]
@@ -789,12 +753,9 @@ func TestGetSessionResponsePreview_RealData_ToolThenWorktreeReport(t *testing.T)
 }
 
 func TestGetSessionResponsePreview_RealData_MultiToolInterleavedWithText(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Real pattern from session da4003a0, message id=1047:
 	//   [thinking, tool_use(Bash), text("有问题！..."), tool_use(Bash), tool_use(Bash),
@@ -823,12 +784,9 @@ func TestGetSessionResponsePreview_RealData_MultiToolInterleavedWithText(t *test
 }
 
 func TestGetSessionResponsePreview_RealData_ThinkingThenToolThenIssueLink(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Real pattern from session bb92e480, message id=1039:
 	//   [thinking, tool_use(Bash), text("已创建 Issue: https://github.com/xulongzhe/clawbench/issues/55")]
@@ -847,12 +805,9 @@ func TestGetSessionResponsePreview_RealData_ThinkingThenToolThenIssueLink(t *tes
 }
 
 func TestGetSessionResponsePreview_RealData_ThreeToolsThenWorktreeReport(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Real pattern from session bb92e480, message id=1055:
 	//   [thinking, tool_use(Bash), tool_use(Bash), tool_use(Bash), text("Worktree 已创建：...")]
@@ -876,12 +831,9 @@ func TestGetSessionResponsePreview_RealData_ThreeToolsThenWorktreeReport(t *test
 }
 
 func TestGetSessionResponsePreview_RealData_PureTextSummary(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Real pattern from session id=726 (no tool_use at all):
 	//   [text("好的。后台耗电优化到此为止，总结已完成的改动：\n\n1. **webView.onPause()**...")]
@@ -901,12 +853,9 @@ func TestGetSessionResponsePreview_RealData_PureTextSummary(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_UsesLastAssistantMessage(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	firstContent := model.ContentBlock{Type: "text", Text: "第一次回复"}
 	firstBlocks := map[string]any{"blocks": []model.ContentBlock{firstContent}}
@@ -925,12 +874,9 @@ func TestGetSessionResponsePreview_UsesLastAssistantMessage(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_InvalidJSON(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	insertTestMessage(t, db, "session-preview-6", "user", "问题")
 	insertTestMessage(t, db, "session-preview-6", "assistant", "not valid json {{{")
@@ -940,12 +886,9 @@ func TestGetSessionResponsePreview_InvalidJSON(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_NoTextBlocks(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
 	blocks := map[string]any{"blocks": []model.ContentBlock{toolBlock}}
@@ -958,12 +901,9 @@ func TestGetSessionResponsePreview_NoTextBlocks(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_ExactMaxRunes(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Exactly responsePreviewMaxRunes runes — should NOT be truncated
 	exactText := strings.Repeat("一二三四", responsePreviewMaxRunes/4)
@@ -979,12 +919,9 @@ func TestGetSessionResponsePreview_ExactMaxRunes(t *testing.T) {
 }
 
 func TestGetSessionResponsePreview_OneOverMaxRunes(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// responsePreviewMaxRunes+1 runes — should be truncated to maxRunes + …
 	longText := strings.Repeat("一二三四", responsePreviewMaxRunes/4) + "五"
@@ -1001,12 +938,9 @@ func TestGetSessionResponsePreview_OneOverMaxRunes(t *testing.T) {
 // --- emitSessionEvent with response preview ---
 
 func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Insert assistant message for preview
 	content := model.ContentBlock{Type: "text", Text: "AI完成了任务"}
@@ -1023,7 +957,7 @@ func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set up ws manager and a subscriber to capture the event
-	mgr := ws.NewManagerForTest(nil)
+	mgr := ws.NewManagerForTest()
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
 
@@ -1049,14 +983,11 @@ func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 }
 
 func TestEmitSessionEvent_RunningNoPreview(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
-	mgr := ws.NewManagerForTest(nil)
+	mgr := ws.NewManagerForTest()
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
 
@@ -1170,14 +1101,11 @@ func TestSetSessionRunning_SkipEventTrue(t *testing.T) {
 // --- emitTaskEvent tests ---
 
 func TestEmitTaskEvent_WithSessionIDAndProjectPath(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
-	mgr := ws.NewManagerForTest(nil)
+	mgr := ws.NewManagerForTest()
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
 
@@ -1204,7 +1132,7 @@ func TestEmitTaskEvent_WithSessionIDAndProjectPath(t *testing.T) {
 }
 
 func TestEmitTaskEvent_EmptyOptionalFields(t *testing.T) {
-	mgr := ws.NewManagerForTest(nil)
+	mgr := ws.NewManagerForTest()
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
 
@@ -1322,15 +1250,12 @@ func setupExecTaskDB(t *testing.T) *sql.DB {
 
 func TestExecuteTask_BackendCreationFailed(t *testing.T) {
 	// Set up DB with scheduler schema
-	origDB := DB
-	origDBRead := DBRead
 	db := setupExecTaskDB(t)
-	DB = db
-	DBRead = db // Same instance for :memory: SQLite — data is shared
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Set up ws manager to capture events
-	mgr := ws.NewManagerForTest(nil)
+	mgr := ws.NewManagerForTest()
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
 
@@ -1395,15 +1320,12 @@ func TestExecuteTask_BackendCreationFailed(t *testing.T) {
 func TestExecuteTask_ExecuteStreamError(t *testing.T) {
 	// When backend creation succeeds but ExecuteStream fails,
 	// executeTask should emit "failed" events (running + failed) and return.
-	origDB := DB
-	origDBRead := DBRead
 	db := setupExecTaskDB(t)
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Set up ws manager to capture events
-	mgr := ws.NewManagerForTest(nil)
+	mgr := ws.NewManagerForTest()
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
 
@@ -1486,15 +1408,12 @@ func TestExecuteTask_ExecuteStreamError(t *testing.T) {
 func TestExecuteTask_AgentNotFound(t *testing.T) {
 	// When the agent is not found in model.Agents, executeTask should
 	// pause the task and return without creating a session.
-	origDB := DB
-	origDBRead := DBRead
 	db := setupExecTaskDB(t)
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Set up ws manager
-	mgr := ws.NewManagerForTest(nil)
+	mgr := ws.NewManagerForTest()
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
 
@@ -1541,8 +1460,6 @@ func TestExecuteTask_AgentNotFound(t *testing.T) {
 func TestExecuteTask_SessionExecutor_CompletedWithTerminalEvent(t *testing.T) {
 	// Simulate the happy path: streaming placeholder → SessionExecutor(ModeScheduled)
 	// → RunWithChannel with "done" terminal event → Finalize.
-	origDB := DB
-	origDBRead := DBRead
 	db := setupExecTaskDB(t)
 	// Need chat_metadata table for Finalize
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS chat_metadata (
@@ -1561,9 +1478,8 @@ func TestExecuteTask_SessionExecutor_CompletedWithTerminalEvent(t *testing.T) {
 		error_message TEXT DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`)
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Create a session for this execution
 	sessionID, err := CreateSession("/test-project", "test", "Exec Task", "test", "", "default", "scheduled")
@@ -1630,12 +1546,9 @@ func TestExecuteTask_SessionExecutor_CompletedWithTerminalEvent(t *testing.T) {
 func TestExecuteTask_SessionExecutor_ChannelCloseNoTerminal(t *testing.T) {
 	// Simulate CLI crash: channel closes without "done"/"error" event.
 	// executeTask checks !ReceivedTerminal → marks as failed (line 726-736).
-	origDB := DB
-	origDBRead := DBRead
 	db := setupExecTaskDB(t)
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	sessionID, err := CreateSession("/test-project", "test", "Crash Task", "test", "", "default", "scheduled")
 	require.NoError(t, err)
@@ -1675,12 +1588,9 @@ func TestExecuteTask_SessionExecutor_ChannelCloseNoTerminal(t *testing.T) {
 func TestExecuteTask_SessionExecutor_ContextCancelled(t *testing.T) {
 	// Simulate context cancellation during execution.
 	// executeTask checks ctx.Err() == context.Canceled (line 710-720).
-	origDB := DB
-	origDBRead := DBRead
 	db := setupExecTaskDB(t)
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	sessionID, err := CreateSession("/test-project", "test", "Cancel Task", "test", "", "default", "scheduled")
 	require.NoError(t, err)
@@ -1723,12 +1633,9 @@ func TestExecuteTask_SessionExecutor_ContextCancelled(t *testing.T) {
 // --- EmitSessionEvent with toolName ---
 
 func TestEmitSessionEvent_PermissionPendingWithToolName(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
 	db := setupChatTestDB(t)
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Insert a session row so GetSessionProjectPath can look it up
 	_, err := db.Exec("CREATE TABLE IF NOT EXISTS chat_sessions (id TEXT PRIMARY KEY, project_path TEXT, backend TEXT, title TEXT, external_session_id TEXT DEFAULT '')")
@@ -1737,7 +1644,7 @@ func TestEmitSessionEvent_PermissionPendingWithToolName(t *testing.T) {
 		"session-pp-1", "/home/user/project", "codebuddy", "Test Session")
 	require.NoError(t, err)
 
-	mgr := ws.NewManagerForTest(nil)
+	mgr := ws.NewManagerForTest()
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
 
@@ -1779,7 +1686,7 @@ func TestTriggerChatSummarization_SimpleMode_BroadcastsWSUpdate(t *testing.T) {
 	chatSummaryEnabled.Store(true)
 
 	// Set up WS manager to capture broadcast
-	mgr := ws.NewManagerForTest(nil)
+	mgr := ws.NewManagerForTest()
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
 
@@ -1868,4 +1775,365 @@ func TestTriggerChatSummarization_SimpleMode_SaveSummaryError(t *testing.T) {
 
 	// Should not panic, just log warning and return
 	triggerChatSummarization(sessionID)
+}
+
+// --- truncatePreview tests ---
+
+func TestTruncatePreview_EmptyString(t *testing.T) {
+	assert.Equal(t, "", truncatePreview(""))
+}
+
+func TestTruncatePreview_ShortText(t *testing.T) {
+	assert.Equal(t, "hello", truncatePreview("hello"))
+}
+
+func TestTruncatePreview_ExactMaxRunes(t *testing.T) {
+	text := strings.Repeat("a", responsePreviewMaxRunes)
+	assert.Equal(t, text, truncatePreview(text))
+}
+
+func TestTruncatePreview_OverMaxRunes(t *testing.T) {
+	text := strings.Repeat("a", responsePreviewMaxRunes+10)
+	result := truncatePreview(text)
+	assert.Equal(t, responsePreviewMaxRunes, utf8.RuneCountInString(result)-1) // minus ellipsis
+	assert.True(t, strings.HasSuffix(result, "…"))
+}
+
+func TestTruncatePreview_MultibyteExact(t *testing.T) {
+	text := strings.Repeat("你", responsePreviewMaxRunes)
+	result := truncatePreview(text)
+	assert.Equal(t, text, result)
+	assert.Equal(t, responsePreviewMaxRunes, utf8.RuneCountInString(result))
+}
+
+func TestTruncatePreview_MultibyteOver(t *testing.T) {
+	text := strings.Repeat("你", responsePreviewMaxRunes+1)
+	result := truncatePreview(text)
+	expected := strings.Repeat("你", responsePreviewMaxRunes) + "…"
+	assert.Equal(t, expected, result)
+}
+
+// --- extractPreviewFromBlocks tests ---
+
+func TestExtractPreviewFromBlocks_Empty(t *testing.T) {
+	assert.Equal(t, "", extractPreviewFromBlocks(nil))
+	assert.Equal(t, "", extractPreviewFromBlocks([]model.ContentBlock{}))
+}
+
+func TestExtractPreviewFromBlocks_SingleText(t *testing.T) {
+	blocks := []model.ContentBlock{{Type: "text", Text: "answer"}}
+	assert.Equal(t, "answer", extractPreviewFromBlocks(blocks))
+}
+
+func TestExtractPreviewFromBlocks_TextAfterToolUse(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "intermediate"},
+		{Type: "tool_use", Name: "Bash", ID: "t1"},
+		{Type: "text", Text: "final answer"},
+	}
+	assert.Equal(t, "final answer", extractPreviewFromBlocks(blocks))
+}
+
+func TestExtractPreviewFromBlocks_FallbackLongestText(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "short"},
+		{Type: "tool_use", Name: "Bash", ID: "t1"},
+	}
+	// No text after tool_use → fallback to longest text block
+	assert.Equal(t, "short", extractPreviewFromBlocks(blocks))
+}
+
+func TestExtractPreviewFromBlocks_FallbackPicksLongest(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "short text"},
+		{Type: "text", Text: "this is a much longer text block"},
+		{Type: "tool_use", Name: "Bash", ID: "t1"},
+	}
+	// No text after tool_use → fallback picks the longest text block
+	assert.Equal(t, "this is a much longer text block", extractPreviewFromBlocks(blocks))
+}
+
+func TestExtractPreviewFromBlocks_OnlyToolUses(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "tool_use", Name: "Bash", ID: "t1"},
+		{Type: "tool_use", Name: "Read", ID: "t2"},
+	}
+	assert.Equal(t, "", extractPreviewFromBlocks(blocks))
+}
+
+func TestExtractPreviewFromBlocks_EmptyTextSkipped(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: ""},
+		{Type: "tool_use", Name: "Bash", ID: "t1"},
+		{Type: "text", Text: ""},
+	}
+	// All text blocks empty → empty result
+	assert.Equal(t, "", extractPreviewFromBlocks(blocks))
+}
+
+func TestExtractPreviewFromBlocks_Truncation(t *testing.T) {
+	longText := strings.Repeat("x", responsePreviewMaxRunes+10)
+	blocks := []model.ContentBlock{{Type: "text", Text: longText}}
+	result := extractPreviewFromBlocks(blocks)
+	assert.True(t, strings.HasSuffix(result, "…"))
+}
+
+// --- GetRunningSessionIDs tests ---
+
+func TestGetRunningSessionIDs_Empty(t *testing.T) {
+	cleanupActiveSessions()
+	defer cleanupActiveSessions()
+
+	ids := GetRunningSessionIDs()
+	assert.Equal(t, []string{}, ids)
+}
+
+func TestGetRunningSessionIDs_SingleSession(t *testing.T) {
+	cleanupActiveSessions()
+	defer cleanupActiveSessions()
+
+	SetSessionRunning("session-ids-1", true)
+	ids := GetRunningSessionIDs()
+	assert.ElementsMatch(t, []string{"session-ids-1"}, ids)
+}
+
+func TestGetRunningSessionIDs_MultipleSessions(t *testing.T) {
+	cleanupActiveSessions()
+	defer cleanupActiveSessions()
+
+	SetSessionRunning("session-ids-a", true)
+	SetSessionRunning("session-ids-b", true)
+	SetSessionRunning("session-ids-c", true)
+
+	ids := GetRunningSessionIDs()
+	assert.ElementsMatch(t, []string{"session-ids-a", "session-ids-b", "session-ids-c"}, ids)
+}
+
+func TestGetRunningSessionIDs_AfterRemoval(t *testing.T) {
+	cleanupActiveSessions()
+	defer cleanupActiveSessions()
+
+	SetSessionRunning("session-ids-x", true)
+	SetSessionRunning("session-ids-y", true)
+	SetSessionRunning("session-ids-x", false) // remove x
+
+	ids := GetRunningSessionIDs()
+	assert.ElementsMatch(t, []string{"session-ids-y"}, ids)
+}
+
+// --- finalizeOrphanedStreamingMessages tests ---
+
+func TestFinalizeOrphanedStreamingMessages_NilDB(t *testing.T) {
+	cleanup := SetDBForTest(nil, nil)
+	defer cleanup()
+
+	// Should return early without panic
+	assert.NotPanics(t, func() {
+		finalizeOrphanedStreamingMessages("session-orphan-nil")
+	})
+}
+
+func TestFinalizeOrphanedStreamingMessages_NoOrphans(t *testing.T) {
+	db := setupChatTestDB(t)
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
+
+	// No streaming messages → should return without error
+	assert.NotPanics(t, func() {
+		finalizeOrphanedStreamingMessages("session-no-orphans")
+	})
+}
+
+func TestFinalizeOrphanedStreamingMessages_WithOrphan(t *testing.T) {
+	db := setupChatTestDB(t)
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
+
+	sessionID := "session-orphan-1"
+
+	// Insert a streaming=1 assistant message (orphan)
+	validContent := `{"blocks":[{"type":"text","text":"partial answer"}]}`
+	_, err := db.Exec(
+		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, ?, ?, ?, 'claude', 1)",
+		"/test", "assistant", validContent, sessionID,
+	)
+	require.NoError(t, err)
+
+	// Finalize orphans
+	finalizeOrphanedStreamingMessages(sessionID)
+
+	// Wait briefly for the async goroutine in SetSessionRunning to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify the message was finalized: streaming=0 and content has cancelled=true + warning block
+	var streaming int
+	var updatedContent string
+	err = db.QueryRow(
+		"SELECT content, streaming FROM chat_history WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+		sessionID,
+	).Scan(&updatedContent, &streaming)
+	require.NoError(t, err)
+	assert.Equal(t, 0, streaming, "orphaned message should be finalized (streaming=0)")
+
+	// Content should have cancelled=true and a warning block appended
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(updatedContent), &parsed))
+	assert.Equal(t, true, parsed["cancelled"])
+	blocks, ok := parsed["blocks"].([]any)
+	require.True(t, ok)
+	// Original 1 block + 1 warning block = 2
+	assert.Equal(t, 2, len(blocks))
+	// Last block should be the warning
+	lastBlock, ok := blocks[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "warning", lastBlock["type"])
+	assert.Equal(t, "finalize_busy", lastBlock["reason"])
+}
+
+func TestFinalizeOrphanedStreamingMessages_WithAlreadyCancelledContent(t *testing.T) {
+	db := setupChatTestDB(t)
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
+
+	sessionID := "session-orphan-cancelled"
+
+	// Insert a streaming=1 message that already has cancelled=true
+	cancelledContent := `{"blocks":[{"type":"text","text":"stopped"}],"cancelled":true}`
+	_, err := db.Exec(
+		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, ?, ?, ?, 'claude', 1)",
+		"/test", "assistant", cancelledContent, sessionID,
+	)
+	require.NoError(t, err)
+
+	finalizeOrphanedStreamingMessages(sessionID)
+	time.Sleep(50 * time.Millisecond)
+
+	// Content should NOT have an additional warning block (already cancelled)
+	var updatedContent string
+	var streaming int
+	err = db.QueryRow(
+		"SELECT content, streaming FROM chat_history WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+		sessionID,
+	).Scan(&updatedContent, &streaming)
+	require.NoError(t, err)
+	assert.Equal(t, 0, streaming)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(updatedContent), &parsed))
+	assert.Equal(t, true, parsed["cancelled"])
+	blocks, ok := parsed["blocks"].([]any)
+	require.True(t, ok)
+	// Should still have 1 block (no warning appended for already-cancelled content)
+	assert.Equal(t, 1, len(blocks))
+}
+
+func TestFinalizeOrphanedStreamingMessages_WithInvalidJSON(t *testing.T) {
+	db := setupChatTestDB(t)
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
+
+	sessionID := "session-orphan-bad-json"
+
+	// Insert a streaming=1 message with invalid JSON content
+	invalidContent := "this is not JSON at all"
+	_, err := db.Exec(
+		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, ?, ?, ?, 'claude', 1)",
+		"/test", "assistant", invalidContent, sessionID,
+	)
+	require.NoError(t, err)
+
+	finalizeOrphanedStreamingMessages(sessionID)
+	time.Sleep(50 * time.Millisecond)
+
+	// Invalid JSON → fallback content with text block + cancelled=true
+	var updatedContent string
+	var streaming int
+	err = db.QueryRow(
+		"SELECT content, streaming FROM chat_history WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+		sessionID,
+	).Scan(&updatedContent, &streaming)
+	require.NoError(t, err)
+	assert.Equal(t, 0, streaming)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(updatedContent), &parsed))
+	assert.Equal(t, true, parsed["cancelled"])
+	blocks, ok := parsed["blocks"].([]any)
+	require.True(t, ok)
+	// Fallback: wraps raw content as a text block
+	assert.Equal(t, 1, len(blocks))
+	firstBlock, ok := blocks[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "text", firstBlock["type"])
+	assert.Equal(t, invalidContent, firstBlock["text"])
+}
+
+func TestFinalizeOrphanedStreamingMessages_MultipleOrphans(t *testing.T) {
+	db := setupChatTestDB(t)
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
+
+	sessionID := "session-orphan-multi"
+
+	// Insert two streaming=1 messages
+	content1 := `{"blocks":[{"type":"text","text":"first partial"}]}`
+	content2 := `{"blocks":[{"type":"text","text":"second partial"}]}`
+	_, err := db.Exec(
+		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, ?, ?, ?, 'claude', 1)",
+		"/test", "assistant", content1, sessionID,
+	)
+	require.NoError(t, err)
+	_, err = db.Exec(
+		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, ?, ?, ?, 'claude', 1)",
+		"/test", "assistant", content2, sessionID,
+	)
+	require.NoError(t, err)
+
+	finalizeOrphanedStreamingMessages(sessionID)
+	time.Sleep(50 * time.Millisecond)
+
+	// Both messages should be finalized
+	var count int
+	err = db.QueryRow(
+		"SELECT COUNT(*) FROM chat_history WHERE session_id = ? AND role = 'assistant' AND streaming = 0",
+		sessionID,
+	).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count, "both orphaned messages should be finalized")
+}
+
+// --- SetSessionRunning triggers finalizeOrphanedStreamingMessages ---
+
+func TestSetSessionRunning_FalseTriggersOrphanFinalization(t *testing.T) {
+	cleanupActiveSessions()
+	defer cleanupActiveSessions()
+
+	db := setupChatTestDB(t)
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
+
+	sessionID := "session-orphan-trigger"
+
+	// Insert a streaming=1 orphan message
+	validContent := `{"blocks":[{"type":"text","text":"orphaned text"}]}`
+	_, err := db.Exec(
+		"INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, ?, ?, ?, 'claude', 1)",
+		"/test", "assistant", validContent, sessionID,
+	)
+	require.NoError(t, err)
+
+	// Set running=false triggers go finalizeOrphanedStreamingMessages
+	SetSessionRunning(sessionID, false, true)
+
+	// Wait for async goroutine to complete
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify the orphan was finalized
+	var streaming int
+	err = db.QueryRow(
+		"SELECT streaming FROM chat_history WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+		sessionID,
+	).Scan(&streaming)
+	require.NoError(t, err)
+	assert.Equal(t, 0, streaming, "orphan should be finalized when session stops")
 }

@@ -76,6 +76,21 @@
 - **一台 PC（Linux / macOS / Windows）**：用于运行 ClawBench 服务端，需已安装至少一种 AI 编程智能体 CLI（CodeBuddy、Claude Code、OpenCode、Codex、Qoder CLI、VeCLI、CodeWhale、MiMo-Code、Pi、Cline、Copilot、Kimi 均可）
 - **一台手机**：安装 [ClawBench Android App](https://github.com/xulongzhe/clawbench/releases)，或使用手机浏览器（推荐 Chrome）访问服务端地址
 
+### npm 安装（国内镜像加速）
+
+通过 npm 一键安装，国内用户走淘宝源秒下：
+
+```bash
+# 配置淘宝镜像（仅需一次）
+npm config set registry https://registry.npmmirror.com/
+# 全局安装
+npm install -g @xulongzhe/clawbench
+# 启动
+clawbench
+```
+
+支持 Linux (x64/arm64)、macOS (Intel/Apple Silicon)、Windows (x64)。npm 根据当前平台自动选择对应的二进制包。
+
 ### 安装包部署
 
 从 [GitHub Releases](https://github.com/xulongzhe/clawbench/releases) 下载最新版 ZIP 包，解压即可运行，无需安装：
@@ -154,7 +169,6 @@ docker exec $(docker ps -qf ancestor=ghcr.io/clawbench-dev/clawbench) cat /data/
 - **模型选择持久化**：每个智能体的模型选择和思考档位自动保存到 localStorage，刷新/切换会话自动恢复
 - **定时任务**：AI 通过 CLI 子命令创建 Cron 调度，定时自动执行；独立标签页管理，4 级面包屑导航；频率预设（每小时/每天/每周/每月）+ 自定义 Cron 表达式；任务卡片内嵌聊天消息；执行级别已读追踪 + TTS 朗读；执行完成后自动摘要 + 完成通知（音效/震动/Toast）
 - **继续对话**：定时任务执行详情页可一键继续对话，自动复制历史消息和摘要到新会话，继承后端/智能体/模型/思考档位；会话列表中定时任务来源的会话显示紫色「定时」角标
-- **设置向导**：未安装任何 AI CLI 时，内置 Pi 智能体提供 5 步引导（欢迎 → 选择提供商 → 输入 API Key → 验证模型 → 命名智能体），支持 23 家 LLM 提供商（OpenAI、Anthropic、Google、DeepSeek、阿里通义等）；支持自定义 URL 模式，可接入任意 OpenAI/Anthropic 兼容端点，自动检测 API 格式，直接 HTTP 验证（无需 Pi CLI），API Key AES-256-GCM 加密存储，修改密码时自动轮换加密密钥
 - **多会话管理**：创建、切换、删除独立会话，滑动切换
 - **滑动会话切换开关**：可在设置中开关聊天区域左右滑动切换会话，默认关闭避免滚动宽内容时误触
 - **图片上传**：支持上传图片与 AI 对话（多模态）
@@ -235,7 +249,7 @@ docker exec $(docker ps -qf ancestor=ghcr.io/clawbench-dev/clawbench) cat /data/
 - 通知音效 + 触觉反馈（AI 完成时提醒）
 - 浏览器推送通知
 - **任务完成推送**：定时任务执行完成后推送包含响应预览摘要，点击跳转至执行详情
-- **ACP 审批推送**：ACP 代理需要用户审批时（如文件写入、命令执行），通过 JPush 发送安卓通知，显示工具名称，点击直达会话审批
+
 
 ### 🎨 主题
 - 亮色 / 暗色模式，跟随系统偏好

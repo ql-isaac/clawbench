@@ -11,6 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// setupTestDirs creates a temp dir, sets BinDir and DataDir, and returns a cleanup function.
+func setupTestDirs(t *testing.T) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	origDataDir := model.DataDir
+	model.BinDir = tmpDir
+	model.DataDir = filepath.Join(tmpDir, ".clawbench")
+	t.Cleanup(func() { model.BinDir = origBinDir; model.DataDir = origDataDir })
+}
+
 func TestDeriveFallbackKey(t *testing.T) {
 	key := deriveFallbackKey()
 	assert.Len(t, key, 32, "fallback key should be 32 bytes")
@@ -21,15 +32,13 @@ func TestDeriveFallbackKey(t *testing.T) {
 }
 
 func TestReadAutoPassword_FileExists(t *testing.T) {
-	tmpDir := t.TempDir()
-	origBinDir := model.BinDir
-	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	setupTestDirs(t)
+	dataDir := model.DataDir
 
 	// Write auto-password file
-	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
+	err := os.MkdirAll(dataDir, 0o755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("test-password-123"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("test-password-123"), 0o600)
 	require.NoError(t, err)
 
 	password := readAutoPassword()
@@ -37,34 +46,29 @@ func TestReadAutoPassword_FileExists(t *testing.T) {
 }
 
 func TestReadAutoPassword_NoFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	origBinDir := model.BinDir
-	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	setupTestDirs(t)
 
 	password := readAutoPassword()
 	assert.Equal(t, "", password, "should return empty string when file doesn't exist")
 }
 
 func TestReadAutoPassword_EmptyBinDir(t *testing.T) {
-	origBinDir := model.BinDir
-	model.BinDir = ""
-	defer func() { model.BinDir = origBinDir }()
+	origDataDir := model.DataDir
+	model.DataDir = ""
+	defer func() { model.DataDir = origDataDir }()
 
 	password := readAutoPassword()
-	assert.Equal(t, "", password, "should return empty string when BinDir is empty")
+	assert.Equal(t, "", password, "should return empty string when DataDir is empty")
 }
 
 func TestDeriveKeyFromPassword_WithPassword(t *testing.T) {
-	tmpDir := t.TempDir()
-	origBinDir := model.BinDir
-	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	setupTestDirs(t)
+	dataDir := model.DataDir
 
 	// Write auto-password file
-	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
+	err := os.MkdirAll(dataDir, 0o755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("my-secret-password"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("my-secret-password"), 0o600)
 	require.NoError(t, err)
 
 	ResetEncryptionKeyCache()
@@ -73,10 +77,7 @@ func TestDeriveKeyFromPassword_WithPassword(t *testing.T) {
 }
 
 func TestDeriveKeyFromPassword_NoPassword(t *testing.T) {
-	tmpDir := t.TempDir()
-	origBinDir := model.BinDir
-	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	setupTestDirs(t)
 
 	// No auto-password file — HKDF will use empty string, not fallback
 	ResetEncryptionKeyCache()
@@ -94,13 +95,10 @@ func TestLoadAllAPIKeys_Empty(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	origDB := DB
-	origDBRead := DBRead
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
-	keys, err := loadAllAPIKeys(db)
+	keys, err := loadAllAPIKeys()
 	require.NoError(t, err)
 	assert.Empty(t, keys)
 }
@@ -110,11 +108,8 @@ func TestLoadAllAPIKeys_WithKeys(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	origDB := DB
-	origDBRead := DBRead
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	err = SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
 	require.NoError(t, err)
@@ -122,7 +117,7 @@ func TestLoadAllAPIKeys_WithKeys(t *testing.T) {
 	err = SaveAgentAPIKey(db, "pi", "openai", "https://api.openai.com", "sk-test-key")
 	require.NoError(t, err)
 
-	keys, err := loadAllAPIKeys(db)
+	keys, err := loadAllAPIKeys()
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
 	assert.Equal(t, "pi", keys[0].AgentID)
@@ -136,11 +131,8 @@ func TestLoadAllAPIKeys_MultipleKeys(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	origDB := DB
-	origDBRead := DBRead
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	err = SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
 	require.NoError(t, err)
@@ -150,7 +142,7 @@ func TestLoadAllAPIKeys_MultipleKeys(t *testing.T) {
 	err = SaveAgentAPIKey(db, "pi", "anthropic", "https://custom.api", "sk-ant-key")
 	require.NoError(t, err)
 
-	keys, err := loadAllAPIKeys(db)
+	keys, err := loadAllAPIKeys()
 	require.NoError(t, err)
 	assert.Len(t, keys, 2)
 }
@@ -160,11 +152,8 @@ func TestLoadAllAPIKeys_CorruptKey(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	origDB := DB
-	origDBRead := DBRead
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	err = SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
 	require.NoError(t, err)
@@ -174,7 +163,7 @@ func TestLoadAllAPIKeys_CorruptKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// loadAllAPIKeys should return an error when decryption fails
-	_, err = loadAllAPIKeys(db)
+	_, err = loadAllAPIKeys()
 	assert.Error(t, err)
 }
 
@@ -182,40 +171,32 @@ func TestRotateAPIKeyEncryption_LoadKeysError(t *testing.T) {
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
 
-	origDB := DB
-	origDBRead := DBRead
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	// Close the DB to make loadAllAPIKeys fail
 	db.Close()
 
-	err = RotateAPIKeyEncryption(db, "old-password")
+	err = RotateAPIKeyEncryption("old-password")
 	assert.Error(t, err, "should fail when loadAllAPIKeys errors")
 	assert.Contains(t, err.Error(), "load API keys for rotation")
 }
 
 func TestRotateAPIKeyEncryption_SaveKeyError(t *testing.T) {
-	tmpDir := t.TempDir()
-	origBinDir := model.BinDir
-	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	setupTestDirs(t)
+	dataDir := model.DataDir
 
 	// Write initial password file
-	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
+	err := os.MkdirAll(dataDir, 0o755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("old-password"), 0o600)
 	require.NoError(t, err)
 
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
 
-	origDB := DB
-	origDBRead := DBRead
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	err = SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
 	require.NoError(t, err)
@@ -226,7 +207,7 @@ func TestRotateAPIKeyEncryption_SaveKeyError(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update password file before rotation (as the real code does)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("new-password"), 0o600)
 	require.NoError(t, err)
 
 	// Make the DB read-only by putting it in WAL mode and opening a second read-only connection
@@ -237,12 +218,12 @@ func TestRotateAPIKeyEncryption_SaveKeyError(t *testing.T) {
 	_, err = db.Exec("PRAGMA query_only = ON")
 	require.NoError(t, err)
 
-	err = RotateAPIKeyEncryption(db, "old-password")
+	err = RotateAPIKeyEncryption("old-password")
 	assert.Error(t, err, "should fail when SaveAgentAPIKey errors during rotation")
 	assert.Contains(t, err.Error(), "re-encrypt API key")
 
 	// Verify password was rolled back
-	data, err := os.ReadFile(filepath.Join(tmpDir, ".clawbench", "auto-password"))
+	data, err := os.ReadFile(filepath.Join(dataDir, "auto-password"))
 	require.NoError(t, err)
 	assert.Equal(t, "old-password", string(data), "password should be rolled back on rotation failure")
 
@@ -268,11 +249,11 @@ func TestInitInMemoryDB_Success(t *testing.T) {
 }
 
 func TestDeriveKeyFromPassword_FallbackKey(t *testing.T) {
-	// Test that deriveKeyFromPassword produces a valid key when BinDir is empty
+	// Test that deriveKeyFromPassword produces a valid key when DataDir is empty
 	// (HKDF with empty password should succeed, not hit the fallback path)
-	origBinDir := model.BinDir
-	model.BinDir = ""
-	defer func() { model.BinDir = origBinDir }()
+	origDataDir := model.DataDir
+	model.DataDir = ""
+	defer func() { model.DataDir = origDataDir }()
 
 	ResetEncryptionKeyCache()
 	key := deriveKeyFromPassword()
@@ -302,26 +283,21 @@ func TestDeriveEncryptionKey_ConcurrentAccess(t *testing.T) {
 }
 
 func TestRotateAPIKeyEncryption_WithPasswordChange(t *testing.T) {
-	tmpDir := t.TempDir()
-	origBinDir := model.BinDir
-	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	setupTestDirs(t)
+	dataDir := model.DataDir
 
 	// Write initial password file
-	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
+	err := os.MkdirAll(dataDir, 0o755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("old-password"), 0o600)
 	require.NoError(t, err)
 
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	origDB := DB
-	origDBRead := DBRead
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	err = SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
 	require.NoError(t, err)
@@ -334,17 +310,17 @@ func TestRotateAPIKeyEncryption_WithPasswordChange(t *testing.T) {
 	// Simulate password change: update the password file BEFORE calling RotateAPIKeyEncryption.
 	// The caller is responsible for updating the file; RotateAPIKeyEncryption decrypts with
 	// the CURRENT key (old), resets cache, then re-encrypts with the new key.
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("new-password"), 0o600)
 	require.NoError(t, err)
 
 	// IMPORTANT: Do NOT reset cache before calling RotateAPIKeyEncryption.
 	// The function itself handles the cache reset after decrypting all keys.
-	err = RotateAPIKeyEncryption(db, "old-password")
+	err = RotateAPIKeyEncryption("old-password")
 	require.NoError(t, err)
 
 	// Verify the key can still be decrypted with the new key
 	ResetEncryptionKeyCache() // Now derive from new password
-	customURL, apiKey, err := LoadAgentAPIKey(db, "pi", "openai")
+	customURL, apiKey, err := LoadAgentAPIKey("pi", "openai")
 	require.NoError(t, err)
 	assert.Equal(t, "", customURL)
 	assert.Equal(t, "sk-test-key", apiKey)
@@ -355,26 +331,21 @@ func TestRotateAPIKeyEncryption_WithPasswordChange(t *testing.T) {
 // process crashed mid-rotation, DecryptAPIKey should fall back to the
 // previous key to decrypt it.
 func TestDecryptAPIKey_PreviousKeyFallback(t *testing.T) {
-	tmpDir := t.TempDir()
-	origBinDir := model.BinDir
-	model.BinDir = tmpDir
-	defer func() { model.BinDir = origBinDir }()
+	setupTestDirs(t)
+	dataDir := model.DataDir
 
 	// Write initial password file
-	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
+	err := os.MkdirAll(dataDir, 0o755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("old-password"), 0o600)
 	require.NoError(t, err)
 
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	origDB := DB
-	origDBRead := DBRead
-	DB = db
-	DBRead = db
-	defer func() { DB = origDB; DBRead = origDBRead }()
+	cleanup := SetDBForTest(db, db)
+	defer cleanup()
 
 	err = SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
 	require.NoError(t, err)
@@ -386,11 +357,11 @@ func TestDecryptAPIKey_PreviousKeyFallback(t *testing.T) {
 
 	// Step 2: Simulate rotation starting — this saves the old key as previousEncryptionKey
 	// Change password file
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("new-password"), 0o600)
 	require.NoError(t, err)
 
 	// Call RotateAPIKeyEncryption which sets previousEncryptionKey
-	err = RotateAPIKeyEncryption(db, "old-password")
+	err = RotateAPIKeyEncryption("old-password")
 	require.NoError(t, err)
 
 	// Step 3: Now simulate a crash mid-rotation by saving a new key with the NEW password,
@@ -406,7 +377,7 @@ func TestDecryptAPIKey_PreviousKeyFallback(t *testing.T) {
 	// (as if the rotation crashed before re-encrypting this one)
 	ResetEncryptionKeyCache()
 	// Read the old-password derived key by temporarily restoring the old password
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("old-password"), 0o600)
 	require.NoError(t, err)
 	oldKey := DeriveEncryptionKey()
 
@@ -417,18 +388,18 @@ func TestDecryptAPIKey_PreviousKeyFallback(t *testing.T) {
 	previousKeyMu.Unlock()
 
 	// Now restore the new password
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0o600)
+	err = os.WriteFile(filepath.Join(dataDir, "auto-password"), []byte("new-password"), 0o600)
 	require.NoError(t, err)
 	ResetEncryptionKeyCache()
 
 	// The openai key should still be decryptable via the previous key fallback
-	customURL, apiKey, err := LoadAgentAPIKey(db, "pi", "openai")
+	customURL, apiKey, err := LoadAgentAPIKey("pi", "openai")
 	require.NoError(t, err, "should decrypt with previous key fallback (ISS-225)")
 	assert.Equal(t, "", customURL)
 	assert.Equal(t, "sk-fallback-test", apiKey)
 
 	// The anthropic key (encrypted with new key) should decrypt normally
-	customURL, apiKey, err = LoadAgentAPIKey(db, "pi", "anthropic")
+	customURL, apiKey, err = LoadAgentAPIKey("pi", "anthropic")
 	require.NoError(t, err)
 	assert.Equal(t, "", customURL)
 	assert.Equal(t, "sk-new-key", apiKey)

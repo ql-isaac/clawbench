@@ -1,4 +1,4 @@
-//nolint:noctx,govet,goconst,rowserrcheck // DB global, context not applicable; shadowed err is acceptable in sequential blocks; status strings are domain constants; legacy DB.Query pattern
+//nolint:noctx,govet,goconst,rowserrcheck // db global, context not applicable; shadowed err is acceptable in sequential blocks; status strings are domain constants; legacy db.Query pattern
 package service
 
 import (
@@ -266,7 +266,7 @@ func (s *Scheduler) LoadTasksFromDB(projectPath string) error {
 // marked "running" belongs to a CLI process that died with the previous
 // server instance.
 func (s *Scheduler) cleanZombieExecutions() {
-	result, err := DB.Exec("UPDATE task_executions SET status = 'failed' WHERE status = 'running'")
+	result, err := WriteExec("UPDATE task_executions SET status = 'failed' WHERE status = 'running'")
 	if err != nil {
 		slog.Error("failed to clean zombie executions", slog.String("err", err.Error()))
 		return
@@ -314,7 +314,7 @@ func (s *Scheduler) RemoveTask(id int64) {
 	s.mu.Unlock()
 
 	// Cascade: soft-delete associated chat sessions
-	rows, err := DBRead.Query(`
+	rows, err := dbRead.Query(`
 		SELECT te.session_id, cs.project_path, cs.backend
 		FROM task_executions te
 		JOIN chat_sessions cs ON cs.id = te.session_id
@@ -353,10 +353,10 @@ func (s *Scheduler) RemoveTask(id int64) {
 	}
 
 	// Delete task_executions rows
-	_, _ = DB.Exec("DELETE FROM task_executions WHERE task_id = ?", id)
+	_, _ = WriteExec("DELETE FROM task_executions WHERE task_id = ?", id)
 
 	// Hard-delete the task
-	_, _ = DB.Exec("DELETE FROM scheduled_tasks WHERE id = ?", id)
+	_, _ = WriteExec("DELETE FROM scheduled_tasks WHERE id = ?", id)
 }
 
 // PauseTask removes a task from cron but keeps it in the database as paused.
@@ -368,7 +368,7 @@ func (s *Scheduler) PauseTask(id int64) {
 	}
 	s.mu.Unlock()
 
-	_, _ = DB.Exec("UPDATE scheduled_tasks SET status = 'paused', updated_at = CURRENT_TIMESTAMP WHERE id = ?", id)
+	_, _ = WriteExec("UPDATE scheduled_tasks SET status = 'paused', updated_at = CURRENT_TIMESTAMP WHERE id = ?", id)
 }
 
 // ResumeTask re-registers a paused task with cron.
@@ -381,7 +381,7 @@ func (s *Scheduler) ResumeTask(id int64) error {
 		return fmt.Errorf("task is not paused")
 	}
 
-	_, _ = DB.Exec("UPDATE scheduled_tasks SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?", id)
+	_, _ = WriteExec("UPDATE scheduled_tasks SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?", id)
 	task.Status = "active"
 
 	return s.registerTask(task)
@@ -507,7 +507,7 @@ func (s *Scheduler) registerTaskLocked(task *model.ScheduledTask) error {
 // See ISS-013.
 func UpdateTaskStats(task *model.ScheduledTask) {
 	now := time.Now()
-	_, _ = DB.Exec("UPDATE scheduled_tasks SET last_run_at = ?, run_count = run_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+	_, _ = WriteExec("UPDATE scheduled_tasks SET last_run_at = ?, run_count = run_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
 		now, task.ID)
 }
 
@@ -533,12 +533,14 @@ func emitTaskEvent(taskID, status, executionID, sessionID, projectPath, taskName
 			data.ResponsePreview = getSessionResponsePreview(sessionID)
 		}
 	}
-	mgr.BroadcastEvent(ws.ServerMessage{
+	msg := ws.ServerMessage{
 		Type:  ws.MessageTypeEvent,
 		ID:    ws.GenerateEventID(),
 		Event: "task_update",
 		Data:  data,
-	})
+	}
+	StoreNotifiableEvent(msg)
+	mgr.BroadcastEvent(msg)
 }
 
 // executeTask runs a scheduled task by invoking the AI backend and inserting
@@ -787,7 +789,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	// Read current DB status to avoid overwriting user-initiated changes (e.g. pause).
 	// See ISS-013: using task.Status (in-memory snapshot) can revert "paused" back to "active".
 	var currentStatus string
-	if err := DBRead.QueryRow("SELECT status FROM scheduled_tasks WHERE id = ?", task.ID).Scan(&currentStatus); err != nil {
+	if err := dbRead.QueryRow("SELECT status FROM scheduled_tasks WHERE id = ?", task.ID).Scan(&currentStatus); err != nil {
 		slog.Warn("failed to read current task status, falling back to snapshot", "error", err)
 		currentStatus = task.Status
 	}
@@ -796,7 +798,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	// Check repeat mode — for "limited", read current DB value to decide completion
 	if task.RepeatMode == "limited" {
 		var currentCount int
-		if err := DBRead.QueryRow("SELECT run_count FROM scheduled_tasks WHERE id = ?", task.ID).Scan(&currentCount); err == nil {
+		if err := dbRead.QueryRow("SELECT run_count FROM scheduled_tasks WHERE id = ?", task.ID).Scan(&currentCount); err == nil {
 			if currentCount+1 >= task.MaxRuns {
 				newStatus = "completed"
 			}
@@ -835,10 +837,10 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	}
 
 	if nextRunAt != nil {
-		_, _ = DB.Exec("UPDATE scheduled_tasks SET last_run_at = ?, next_run_at = ?, run_count = run_count + 1, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		_, _ = WriteExec("UPDATE scheduled_tasks SET last_run_at = ?, next_run_at = ?, run_count = run_count + 1, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
 			time.Now(), nextRunAt, newStatus, task.ID)
 	} else {
-		_, _ = DB.Exec("UPDATE scheduled_tasks SET last_run_at = ?, next_run_at = NULL, run_count = run_count + 1, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		_, _ = WriteExec("UPDATE scheduled_tasks SET last_run_at = ?, next_run_at = NULL, run_count = run_count + 1, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
 			time.Now(), newStatus, task.ID)
 	}
 
@@ -883,7 +885,7 @@ func GetTasks(projectPath string) ([]model.ScheduledTask, error) {
 		args = []interface{}{projectPath}
 	}
 
-	rows, err := DBRead.Query(query, args...)
+	rows, err := dbRead.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -913,7 +915,7 @@ func GetTasks(projectPath string) ([]model.ScheduledTask, error) {
 func GetTaskByID(id int64) (*model.ScheduledTask, error) {
 	var t model.ScheduledTask
 	var lastRun, nextRun, lastRead sql.NullTime
-	err := DBRead.QueryRow(
+	err := dbRead.QueryRow(
 		`SELECT s.id, s.project_path, s.name, s.cron_expr, s.agent_id, s.prompt, s.session_id,
 		s.status, s.repeat_mode, s.max_runs, s.last_run_at, s.next_run_at, s.run_count,
 		s.last_read_at, s.created_at, s.updated_at,
@@ -940,7 +942,7 @@ func GetTaskByID(id int64) (*model.ScheduledTask, error) {
 
 // insertTask inserts a new task into the database and sets the auto-generated ID.
 func insertTask(task *model.ScheduledTask) error {
-	result, err := DB.Exec(
+	result, err := WriteExec(
 		`INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, max_runs, next_run_at, run_count, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ProjectPath, task.Name, task.CronExpr, task.AgentID, task.Prompt, task.SessionID, task.Status, task.RepeatMode, task.MaxRuns, task.NextRunAt, task.RunCount, task.CreatedAt, task.UpdatedAt,
@@ -958,7 +960,7 @@ func insertTask(task *model.ScheduledTask) error {
 
 // updateTask updates an existing task in the database.
 func updateTask(task *model.ScheduledTask) error {
-	_, err := DB.Exec(
+	_, err := WriteExec(
 		`UPDATE scheduled_tasks SET name=?, cron_expr=?, agent_id=?, prompt=?, session_id=?, status=?, repeat_mode=?, max_runs=?, next_run_at=?, run_count=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
 		task.Name, task.CronExpr, task.AgentID, task.Prompt, task.SessionID, task.Status, task.RepeatMode, task.MaxRuns, task.NextRunAt, task.RunCount, task.ID,
 	)
@@ -968,7 +970,7 @@ func updateTask(task *model.ScheduledTask) error {
 // AddTaskExecution records a task execution linked to a chat session.
 // Returns the auto-generated execution ID.
 func AddTaskExecution(taskID int64, sessionID string, triggerType string) (int64, error) {
-	result, err := DB.Exec(
+	result, err := WriteExec(
 		"INSERT INTO task_executions (task_id, session_id, trigger_type, status) VALUES (?, ?, ?, 'running')",
 		taskID, sessionID, triggerType,
 	)
@@ -980,7 +982,7 @@ func AddTaskExecution(taskID int64, sessionID string, triggerType string) (int64
 
 // UpdateExecutionStatus updates the status of a task execution by session_id.
 func UpdateExecutionStatus(sessionID string, status string) error {
-	_, err := DB.Exec(
+	_, err := WriteExec(
 		"UPDATE task_executions SET status = ? WHERE session_id = ?",
 		status, sessionID,
 	)
@@ -989,7 +991,7 @@ func UpdateExecutionStatus(sessionID string, status string) error {
 
 // UpdateTaskLastRead updates the last_read_at timestamp for a task, clearing unread status.
 func UpdateTaskLastRead(taskID int64) error {
-	_, err := DB.Exec(
+	_, err := WriteExec(
 		"UPDATE scheduled_tasks SET last_read_at = CURRENT_TIMESTAMP WHERE id = ?",
 		taskID,
 	)
@@ -998,7 +1000,7 @@ func UpdateTaskLastRead(taskID int64) error {
 
 // MarkExecutionRead marks a single execution as read by setting its read_at timestamp.
 func MarkExecutionRead(executionID string) error {
-	_, err := DB.Exec(
+	_, err := WriteExec(
 		"UPDATE task_executions SET read_at = CURRENT_TIMESTAMP WHERE id = ?",
 		executionID,
 	)
@@ -1012,7 +1014,7 @@ func DeleteTaskExecution(executionID int64) error {
 	var sessionID string
 	var taskID int64
 	var status string
-	err := DBRead.QueryRow(
+	err := dbRead.QueryRow(
 		"SELECT session_id, task_id, status FROM task_executions WHERE id = ?",
 		executionID,
 	).Scan(&sessionID, &taskID, &status)
@@ -1026,9 +1028,9 @@ func DeleteTaskExecution(executionID int64) error {
 
 	// Hard-delete the execution row first (conditional on status to prevent TOCTOU race).
 	// This must happen BEFORE soft-deleting the session: if the conditional DELETE fails
-	// (execution became running between the DBRead check and this DELETE), the session
+	// (execution became running between the dbRead check and this DELETE), the session
 	// must remain intact to avoid inconsistent state.
-	result, err := DB.Exec("DELETE FROM task_executions WHERE id = ? AND status != 'running'", executionID)
+	result, err := WriteExec("DELETE FROM task_executions WHERE id = ? AND status != 'running'", executionID)
 	if err != nil {
 		return fmt.Errorf("failed to delete execution: %w", err)
 	}
@@ -1038,7 +1040,7 @@ func DeleteTaskExecution(executionID int64) error {
 
 	// Only soft-delete the associated chat session AFTER successful execution deletion.
 	var projectPath, backend string
-	err = DBRead.QueryRow(
+	err = dbRead.QueryRow(
 		"SELECT project_path, backend FROM chat_sessions WHERE id = ?",
 		sessionID,
 	).Scan(&projectPath, &backend)
@@ -1053,7 +1055,7 @@ func DeleteTaskExecution(executionID int64) error {
 	}
 
 	// Decrement run_count on the parent task (clamp to 0)
-	_, _ = DB.Exec("UPDATE scheduled_tasks SET run_count = MAX(run_count - 1, 0), updated_at = CURRENT_TIMESTAMP WHERE id = ?", taskID)
+	_, _ = WriteExec("UPDATE scheduled_tasks SET run_count = MAX(run_count - 1, 0), updated_at = CURRENT_TIMESTAMP WHERE id = ?", taskID)
 
 	return nil
 }
@@ -1062,7 +1064,7 @@ func DeleteTaskExecution(executionID int64) error {
 // and soft-deletes the associated chat sessions.
 func DeleteAllTaskExecutions(taskID int64) error {
 	// Collect all non-running executions with their session info
-	rows, err := DBRead.Query(`
+	rows, err := dbRead.Query(`
 		SELECT te.id, te.session_id, cs.project_path, cs.backend
 		FROM task_executions te
 		JOIN chat_sessions cs ON cs.id = te.session_id
@@ -1098,12 +1100,12 @@ func DeleteAllTaskExecutions(taskID int64) error {
 	}
 
 	// Hard-delete all non-running execution rows
-	_, _ = DB.Exec("DELETE FROM task_executions WHERE task_id = ? AND status != 'running'", taskID)
+	_, _ = WriteExec("DELETE FROM task_executions WHERE task_id = ? AND status != 'running'", taskID)
 
 	// Reset run_count to match remaining (running) executions
 	var runningCount int
-	_ = DBRead.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", taskID).Scan(&runningCount)
-	_, _ = DB.Exec("UPDATE scheduled_tasks SET run_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runningCount, taskID)
+	_ = dbRead.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", taskID).Scan(&runningCount)
+	_, _ = WriteExec("UPDATE scheduled_tasks SET run_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runningCount, taskID)
 
 	return nil
 }
@@ -1113,14 +1115,14 @@ func HasUnreadTasks(projectPath string) (bool, error) {
 	var count int
 	var err error
 	if projectPath == "" {
-		err = DBRead.QueryRow(
+		err = dbRead.QueryRow(
 			`SELECT COUNT(*) FROM scheduled_tasks s
 			 WHERE (SELECT COUNT(*) FROM task_executions e
 			      WHERE e.task_id = s.id AND e.read_at IS NULL AND e.status != 'running'
 			      AND (s.last_read_at IS NULL OR e.created_at > s.last_read_at)) > 0`,
 		).Scan(&count)
 	} else {
-		err = DBRead.QueryRow(
+		err = dbRead.QueryRow(
 			`SELECT COUNT(*) FROM scheduled_tasks s
 			 WHERE s.project_path = ?
 			 AND (SELECT COUNT(*) FROM task_executions e

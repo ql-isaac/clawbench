@@ -30,6 +30,8 @@ const (
 	contentKeyBlocks = "blocks"
 	// cancelReasonUser is the cancel reason when the user explicitly cancels.
 	cancelReasonUser = "user"
+	// blockTypeWarning is the content block type for warning messages.
+	blockTypeWarning = "warning"
 )
 
 // RunConfig configures a single SessionExecutor execution.
@@ -422,8 +424,8 @@ func (e *SessionExecutor) injectSessionMetadata(meta *ai.Metadata) {
 	effectiveTransport := "cli"
 	if t := GetSessionTransport(e.cfg.SessionID); t != "" {
 		effectiveTransport = t
-	} else if agent, ok := model.Agents[e.cfg.AgentID]; ok && agent.SupportsACP() {
-		effectiveTransport = "acp-stdio"
+	} else if agent, ok := model.Agents[e.cfg.AgentID]; ok && agent.Transport != "" {
+		effectiveTransport = agent.Transport
 	}
 	meta.Transport = effectiveTransport
 
@@ -463,7 +465,7 @@ func (e *SessionExecutor) buildContentJSON(blocks []model.ContentBlock, result R
 	} else if e.ctx.Err() == context.Canceled {
 		contentMap["cancelled"] = true
 	} else if e.ctx.Err() == context.DeadlineExceeded {
-		blocks = append(blocks, model.ContentBlock{Type: "warning", Text: "AI response timed out (30 min)", Reason: ai.ReasonTimeout})
+		blocks = append(blocks, model.ContentBlock{Type: blockTypeWarning, Text: "AI response timed out (30 min)", Reason: ai.ReasonTimeout})
 	}
 	contentMap[contentKeyBlocks] = blocks
 	blocksJSON, _ := json.Marshal(contentMap)

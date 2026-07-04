@@ -7,6 +7,8 @@ import android.app.Service;
 import android.app.AlarmManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
@@ -25,6 +27,7 @@ import androidx.core.app.NotificationCompat;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -35,6 +38,8 @@ import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,12 +65,11 @@ import okhttp3.WebSocketListener;
  *
  * Manages:
  * 1. SSH tunnels for port forwarding (127.0.0.1:{port} on device → 127.0.0.1:{port} on server)
- * 2. Native WebSocket event channel for AI session/task notifications when JPush is unavailable
- * 3. JPush push notification integration for real-time event delivery
+ * 2. Native WebSocket event channel for AI session/task notifications
  *
  * The service stays alive as long as at least one of these is active:
  * - Any forwarded SSH ports
- * - Native WS needed (JPush unavailable)
+ * - Native WS needed
  *
  * Reliability features:
  * - Auto-reconnect: monitors SSH connection and reconnects with exponential backoff
@@ -87,11 +91,20 @@ public class BackgroundService extends Service {
     private static final String KEY_SSH_PASSWORD = "ssh_password";
     private static final String KEY_FORWARDED_PORTS = "forwarded_ports";
     private static final String KEY_BATTERY_OPT_REQUESTED = "battery_opt_requested";
+    private static final String KEY_PERSISTENT_NOTIFICATION = "persistent_notification";
+    private static final String KEY_LAST_SEEN_EVENT_ID = "last_seen_event_id";
 
     // Reconnect parameters: exponential backoff delays in milliseconds
     private static final int[] RECONNECT_DELAYS_MS = {5000, 10000, 30000, 60000, 120000};
-    private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final int MONITOR_CHECK_INTERVAL_MS = 15000;
+    // WakeLock timeout: re-acquired via ensureWakeLock() before network operations
+    private static final long WAKELOCK_TIMEOUT_MS = 60_000L;
+
+    // Adaptive WebSocket ping intervals (milliseconds)
+    private static final int WS_PING_FAST_MS = 30000;       // Screen on / recently active
+    private static final int WS_PING_MEDIUM_MS = 60000;     // Screen off 2-5 min
+    private static final int WS_PING_SLOW_MS = 120000;      // Screen off 5-10 min
+    private static final int WS_PING_VERY_SLOW_MS = 300000; // Screen off 10+ min
 
     private static volatile boolean isRunning = false;
     private static volatile BackgroundService instance;
@@ -136,7 +149,7 @@ public class BackgroundService extends Service {
     // WifiLock: prevents WiFi from being disabled while SSH tunnel is active
     private WifiManager.WifiLock wifiLock;
 
-    // WakeLock: prevents CPU from sleeping so SSH keep-alive packets are sent
+    // WakeLock: prevents CPU from sleeping so SSH keep-alive and WebSocket pings are sent
     private PowerManager.WakeLock wakeLock;
 
     // Reconnect state
@@ -146,17 +159,52 @@ public class BackgroundService extends Service {
     // Last SSH error message (for JS bridge error reporting)
     private static volatile String lastError = null;
 
-    // --- Native WebSocket for background event notifications (when JPush is not available) ---
-    private WebSocket nativeEventWs;
+    // --- Native WebSocket for background event notifications ---
+    private volatile WebSocket nativeEventWs;
     private volatile boolean nativeWsActive = false;
     private volatile boolean nativeWsIntentionalStop = false;
     private volatile int nativeWsReconnectAttempt = 0;
     private String nativeClientId;
+    // Application-layer WS ping: sends {"type":"ping"} at adaptive intervals
+    // to detect half-open connections and keep the WebSocket alive through NAT timeouts.
+    private Handler wsPingHandler;
+    private Runnable wsPingRunnable;
+    // Adaptive ping: screen state and ramp-up timer
+    // Initialized from PowerManager in onCreate; default true before init
+    private volatile boolean screenOn = true;
+    private volatile long screenOffTime = 0;
+    private Handler screenRampHandler;
+    private Runnable screenRampRunnable;
+    // Skip next ping when a WS message was just received (connection proven alive)
+    private volatile boolean skipNextPing = false;
+    // Screen state BroadcastReceiver (unregistered in onDestroy)
+    private BroadcastReceiver screenStateReceiver;
+    // Reconnect scheduling: avoids accumulating multiple pending reconnect callbacks
+    private Handler wsReconnectHandler;
+    private Runnable wsReconnectRunnable;
     // Tracks whether the native WS needs this Service to stay alive.
     // Without this flag, onCreate() would stopSelf() when there are no SSH ports,
     // killing the Service before the native WS can be established.
     // Must be static so startNativeEventWs() can set it before the Service is created.
     private static volatile boolean nativeWsNeeded = false;
+
+    // Event ID dedup (mirrors frontend processedEventIds pattern)
+    // ConcurrentHashMap-backed for thread safety (accessed from OkHttp callback + networkExecutor)
+    private final Set<String> processedEventIds = java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final int MAX_PROCESSED_IDS = 100;
+
+    private boolean isDuplicateEvent(String eventId) {
+        return processedEventIds.contains(eventId);
+    }
+
+    private void addProcessedEventId(String eventId) {
+        // Evict oldest entries if over capacity ( ConcurrentHashMap doesn't maintain insertion
+        // order, so we just clear and re-add when over capacity — rare, at most once per 100 events)
+        if (processedEventIds.size() >= MAX_PROCESSED_IDS) {
+            processedEventIds.clear();
+        }
+        processedEventIds.add(eventId);
+    }
 
     // Terminal session count — updated by the WebView via WebAppInterface.
     // Used to show the active terminal count in the foreground service notification.
@@ -164,6 +212,59 @@ public class BackgroundService extends Service {
 
     public static boolean isRunning() {
         return isRunning;
+    }
+
+    /**
+     * Check whether the native WebSocket is currently active.
+     * Used by PendingEventsWorker to skip polling when WS is connected.
+     */
+    public static boolean isNativeWsActive() {
+        return isRunning && instance != null && instance.nativeWsActive;
+    }
+
+    /**
+     * Update the last seen event ID cursor from the WebView WS.
+     * Called via JS bridge when the frontend receives a terminal-state event
+     * while the app is in the foreground. This keeps the SharedPreferences
+     * cursor in sync with localStorage so that fetchPendingEvents() won't
+     * re-deliver already-seen events when switching to background.
+     */
+    public static void updateLastSeenEventId(Context context, String eventId) {
+        if (eventId == null || eventId.isEmpty()) return;
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_LAST_SEEN_EVENT_ID, eventId)
+                .apply();
+    }
+
+    /**
+     * Get the trust-all SSL context for use by PendingEventsWorker.
+     * Returns null if not yet initialized.
+     */
+    public static SSLContext getTrustAllSSLContext() {
+        return trustAllSSLContext;
+    }
+
+    /**
+     * Set whether the persistent (foreground service) notification is enabled.
+     * When disabled, the foreground notification is made minimal/silent.
+     */
+    public static void setPersistentNotificationEnabled(Context context, boolean enabled) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putBoolean(KEY_PERSISTENT_NOTIFICATION, enabled).apply();
+        // If service is running, update the notification immediately
+        if (instance != null) {
+            instance.updateNotification(instance.forwardedPorts.size(), null);
+        }
+    }
+
+    /**
+     * Query whether persistent notification is currently enabled.
+     * Defaults to true (notification shown) if not explicitly set.
+     */
+    public static boolean isPersistentNotificationEnabled(Context context) {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_PERSISTENT_NOTIFICATION, true);
     }
 
     /**
@@ -326,6 +427,44 @@ public class BackgroundService extends Service {
         createNotificationChannel();
         startForegroundCompat(NOTIFICATION_ID, buildNotification(0, null));
 
+        // Initialize screen state from PowerManager (may be off if service restarts while screen is off)
+        PowerManager pmInit = (PowerManager) getApplicationContext().getSystemService(Context.POWER_SERVICE);
+        if (pmInit != null) {
+            screenOn = pmInit.isInteractive();
+            if (!screenOn) {
+                screenOffTime = System.currentTimeMillis();
+            }
+        }
+
+        // Register screen state receiver for adaptive WS ping interval
+        IntentFilter screenFilter = new IntentFilter();
+        screenFilter.addAction(Intent.ACTION_SCREEN_ON);
+        screenFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        screenStateReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
+                    screenOn = true;
+                    screenOffTime = 0;
+                    cancelPingRampUp();
+                    // Restart ping loop with fast interval
+                    if (nativeWsActive) {
+                        startWsPingLoop();
+                    }
+                } else if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
+                    screenOn = false;
+                    screenOffTime = System.currentTimeMillis();
+                    // Schedule ramp-up steps to increase ping interval gradually
+                    schedulePingRampUp();
+                }
+            }
+        };
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            registerReceiver(screenStateReceiver, screenFilter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(screenStateReceiver, screenFilter);
+        }
+
         // Restore previously saved ports (from before Service was killed)
         restoreForwardedPorts();
 
@@ -366,7 +505,18 @@ public class BackgroundService extends Service {
                 networkExecutor.execute(this::disconnect);
             } else if ("RESTORE_PORTS".equals(action)) {
                 // Explicit restore request — e.g. from Activity after configuration change
+                // or from onTaskRemoved (app swiped from recents)
                 networkExecutor.execute(this::restoreAndReconnect);
+                // Also restore native WebSocket if it was active before task removal
+                if (nativeWsNeeded) {
+                    networkExecutor.execute(() -> {
+                        String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                                .getString(KEY_SERVER_URL, "");
+                        if (!serverUrl.isEmpty()) {
+                            startNativeEventWs(serverUrl);
+                        }
+                    });
+                }
             } else if ("START_NATIVE_WS".equals(action)) {
                 nativeWsNeeded = true;
                 networkExecutor.execute(() -> {
@@ -420,6 +570,12 @@ public class BackgroundService extends Service {
     @Override
     public void onDestroy() {
         intentionalDisconnect = true;
+        // Unregister screen state receiver
+        if (screenStateReceiver != null) {
+            try { unregisterReceiver(screenStateReceiver); } catch (Exception ignored) {}
+            screenStateReceiver = null;
+        }
+        cancelPingRampUp();
         stopNativeEventWs();
         stopConnectionMonitor();
         releaseWifiLock();
@@ -597,8 +753,9 @@ public class BackgroundService extends Service {
 
                         // Wait before attempt (except first attempt)
                         if (reconnectAttempt > 1) {
+                            int displayAttempt = Math.min(reconnectAttempt, 999);
                             updateNotification(forwardedPorts.size(),
-                                    "SSH 隧道断开，第 " + reconnectAttempt + "/" + MAX_RECONNECT_ATTEMPTS + " 次重连…");
+                                    "SSH 隧道断开，第 " + displayAttempt + " 次重连…");
                             try {
                                 Thread.sleep(delay);
                             } catch (InterruptedException e) {
@@ -607,13 +764,6 @@ public class BackgroundService extends Service {
                         }
 
                         if (!monitorActive || intentionalDisconnect) break;
-
-                        // Give up after max attempts
-                        if (reconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
-                            AppLog.e(TAG, "SSH: exhausted " + MAX_RECONNECT_ATTEMPTS + " reconnect attempts, giving up");
-                            updateNotification(forwardedPorts.size(), "SSH 隧道重连失败，请重新打开页面");
-                            break;
-                        }
 
                         try {
                             AppLog.i(TAG, "SSH: auto-reconnect attempt #" + reconnectAttempt);
@@ -673,15 +823,12 @@ public class BackgroundService extends Service {
         try {
             WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             if (wifiManager != null) {
-                // WIFI_MODE_FULL_HIGH_PERF uses less power than WIFI_MODE_FULL (Android 12+)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ClawBench-SSH");
-                } else {
-                    wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, "ClawBench-SSH");
-                }
+                // WIFI_MODE_FULL: sufficient for low-bandwidth WS event traffic.
+                // Avoids WIFI_MODE_FULL_HIGH_PERF which prevents WiFi power save entirely.
+                wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, "ClawBench-SSH");
                 wifiLock.setReferenceCounted(false);
                 wifiLock.acquire();
-                AppLog.i(TAG, "SSH: WifiLock acquired");
+                AppLog.i(TAG, "SSH: WifiLock acquired (WIFI_MODE_FULL)");
             }
         } catch (Exception e) {
             AppLog.w(TAG, "SSH: failed to acquire WifiLock", e);
@@ -1074,8 +1221,8 @@ public class BackgroundService extends Service {
     private synchronized void disconnect() {
         intentionalDisconnect = true;
         stopConnectionMonitor();
-        releaseWifiLock();
-        releaseWakeLock();
+        maybeReleaseWifiLock();
+        maybeReleaseWakeLock();
         disconnectInternal();
     }
 
@@ -1174,14 +1321,23 @@ public class BackgroundService extends Service {
             text = sb.length() > 0 ? sb.toString() : "后台服务即将停止";
         }
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        boolean persistent = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getBoolean(KEY_PERSISTENT_NOTIFICATION, true);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .setSilent(true)
-                .build();
+                .setOngoing(true);
+
+        // When persistent notification is disabled, minimize it
+        if (!persistent) {
+            builder.setPriority(NotificationCompat.PRIORITY_MIN)
+                    .setSilent(true);
+        }
+
+        return builder.build();
     }
 
     // --- Foreground service compat ---
@@ -1207,25 +1363,161 @@ public class BackgroundService extends Service {
         }
     }
 
+    // --- WebSocket application-layer ping ---
+
+    /**
+     * Get the current adaptive ping interval based on screen state.
+     * Screen on → 30s, screen off ramps up: 30s→60s→120s→300s.
+     */
+    private int getCurrentPingInterval() {
+        if (screenOn) return WS_PING_FAST_MS;
+        if (screenOffTime == 0) return WS_PING_FAST_MS;
+        long offDuration = System.currentTimeMillis() - screenOffTime;
+        if (offDuration < 120_000) return WS_PING_FAST_MS;
+        if (offDuration < 300_000) return WS_PING_MEDIUM_MS;
+        if (offDuration < 600_000) return WS_PING_SLOW_MS;
+        return WS_PING_VERY_SLOW_MS;
+    }
+
+    /**
+     * Start sending application-layer ping messages at adaptive intervals.
+     * Detects half-open connections and keeps the WebSocket alive through
+     * NAT/firewall timeouts. Adapts ping rate based on screen state.
+     * Safe to call from any thread — posts to the main looper.
+     */
+    private void startWsPingLoop() {
+        // Ensure setup runs on the main thread (may be called from OkHttp callback thread)
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            new Handler(Looper.getMainLooper()).post(this::startWsPingLoop);
+            return;
+        }
+        stopWsPingLoop();
+        wsPingHandler = new Handler(Looper.getMainLooper());
+        wsPingRunnable = new Runnable() {
+            @Override
+            public void run() {
+                // Local volatile read to avoid race with stopNativeEventWs()
+                WebSocket ws = nativeEventWs;
+                if (ws != null && nativeWsActive && !nativeWsIntentionalStop) {
+                    // If we just received a WS message, skip this ping (connection proven alive)
+                    if (skipNextPing) {
+                        skipNextPing = false;
+                        wsPingHandler.postDelayed(this, getCurrentPingInterval());
+                        return;
+                    }
+                    ensureWakeLock(); // Re-acquire WakeLock if expired before network I/O
+                    boolean sent = ws.send("{\"type\":\"ping\"}");
+                    if (!sent) {
+                        AppLog.w(TAG, "NativeWS: ping send failed, connection likely dead");
+                        nativeWsActive = false;
+                        ws.close(1000, "ping-failed");
+                        nativeEventWs = null;
+                        String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                                .getString(KEY_SERVER_URL, "");
+                        if (!serverUrl.isEmpty() && !nativeWsIntentionalStop) {
+                            scheduleNativeWsReconnect(serverUrl);
+                        }
+                        return;
+                    }
+                    AppLog.d(TAG, "NativeWS: sent app-layer ping");
+                    wsPingHandler.postDelayed(this, getCurrentPingInterval());
+                }
+            }
+        };
+        int interval = getCurrentPingInterval();
+        wsPingHandler.postDelayed(wsPingRunnable, interval);
+        AppLog.i(TAG, "NativeWS: adaptive ping loop started (interval=" + interval + "ms)");
+    }
+
+    /**
+     * Stop the application-layer ping loop.
+     */
+    private void stopWsPingLoop() {
+        if (wsPingHandler != null && wsPingRunnable != null) {
+            wsPingHandler.removeCallbacks(wsPingRunnable);
+            AppLog.d(TAG, "NativeWS: app-layer ping loop stopped");
+        }
+        wsPingHandler = null;
+        wsPingRunnable = null;
+    }
+
+    /**
+     * Schedule a chained ramp-up callback that fires at each checkpoint
+     * (2min, 5min, 10min after screen off) to increase the ping interval.
+     * Uses a single self-chaining Runnable to avoid Handler.postDelayed
+     * replacing the previous callback (which would skip intermediate steps).
+     */
+    private void schedulePingRampUp() {
+        cancelPingRampUp();
+        screenRampHandler = new Handler(Looper.getMainLooper());
+        // Ramps: 2min → 60s, 5min → 120s, 10min → 300s
+        // Each step restarts the ping loop (which calls getCurrentPingInterval())
+        // and chains to the next checkpoint if screen is still off.
+        final long[] checkpoints = {120_000L, 300_000L, 600_000L}; // 2min, 5min, 10min from screenOffTime
+        screenRampRunnable = new Runnable() {
+            int step = 0;
+            @Override
+            public void run() {
+                if (!screenOn && nativeWsActive) {
+                    int interval = getCurrentPingInterval();
+                    AppLog.i(TAG, "NativeWS: ping ramp-up step " + step + " (interval=" + interval + "ms)");
+                    startWsPingLoop();
+                    // Chain to next checkpoint
+                    step++;
+                    if (step < checkpoints.length) {
+                        long offDuration = System.currentTimeMillis() - screenOffTime;
+                        long nextDelay = Math.max(0, checkpoints[step] - offDuration);
+                        screenRampHandler.postDelayed(this, nextDelay);
+                    }
+                }
+            }
+        };
+        // First checkpoint at 2min from screen off
+        screenRampHandler.postDelayed(screenRampRunnable, 120_000L);
+    }
+
+    /**
+     * Cancel any pending ping ramp-up callbacks.
+     */
+    private void cancelPingRampUp() {
+        if (screenRampHandler != null && screenRampRunnable != null) {
+            screenRampHandler.removeCallbacks(screenRampRunnable);
+        }
+        screenRampHandler = null;
+        screenRampRunnable = null;
+    }
+
     // --- WakeLock ---
 
     /**
-     * Acquire a partial WakeLock to prevent CPU from sleeping.
-     * This ensures SSH keep-alive packets are sent even when the screen is off
-     * and the device enters Doze mode.
+     * Acquire a partial WakeLock with a timeout to prevent CPU from sleeping.
+     * Uses a 60s timeout instead of permanent acquire to allow CPU to sleep
+     * between network operations. Call ensureWakeLock() before each network op.
      */
     private void acquireWakeLock() {
         if (wakeLock != null && wakeLock.isHeld()) return;
         try {
             PowerManager pm = (PowerManager) getApplicationContext().getSystemService(Context.POWER_SERVICE);
             if (pm != null) {
-                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ClawBench:SSH-Tunnel");
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ClawBench:BgService");
                 wakeLock.setReferenceCounted(false);
-                wakeLock.acquire();
-                AppLog.i(TAG, "SSH: WakeLock acquired");
+                wakeLock.acquire(WAKELOCK_TIMEOUT_MS);
+                AppLog.i(TAG, "SSH: WakeLock acquired (timeout=" + WAKELOCK_TIMEOUT_MS + "ms)");
             }
         } catch (Exception e) {
             AppLog.w(TAG, "SSH: failed to acquire WakeLock", e);
+        }
+    }
+
+    /**
+     * Re-acquire WakeLock if expired. Call before network operations
+     * (ping send, reconnect attempt) to ensure CPU is awake for I/O.
+     */
+    private void ensureWakeLock() {
+        if (!isRunning) return; // Don't re-acquire if service is shutting down
+        if (wakeLock == null || !wakeLock.isHeld()) {
+            AppLog.d(TAG, "SSH: WakeLock expired, re-acquiring");
+            acquireWakeLock();
         }
     }
 
@@ -1241,6 +1533,28 @@ public class BackgroundService extends Service {
                 AppLog.w(TAG, "SSH: failed to release WakeLock", e);
             }
             wakeLock = null;
+        }
+    }
+
+    /**
+     * Release WakeLock only if neither SSH session nor native WebSocket is active.
+     * Called from disconnect paths where one subsystem may disconnect but the other
+     * still needs the CPU to stay awake.
+     */
+    private void maybeReleaseWakeLock() {
+        boolean sshActive = sshSession != null && sshSession.isConnected();
+        if (!sshActive && !nativeWsActive) {
+            releaseWakeLock();
+        }
+    }
+
+    /**
+     * Release WifiLock only if neither SSH session nor native WebSocket is active.
+     */
+    private void maybeReleaseWifiLock() {
+        boolean sshActive = sshSession != null && sshSession.isConnected();
+        if (!sshActive && !nativeWsActive) {
+            releaseWifiLock();
         }
     }
 
@@ -1301,7 +1615,7 @@ public class BackgroundService extends Service {
 
     /**
      * Start the native WebSocket for background event notifications.
-     * Called when the app goes to background and JPush is NOT available.
+     * Called when the app goes to background.
      * Sets nativeWsNeeded BEFORE starting the Service so that onCreate()
      * won't stopSelf() due to having no SSH ports to forward.
      */
@@ -1318,6 +1632,9 @@ public class BackgroundService extends Service {
         } else {
             context.startService(intent);
         }
+        // Schedule WorkManager fallback in case foreground service gets killed
+        // (common on Chinese ROMs during Doze). Will be cancelled when WS connects.
+        schedulePendingEventsWork(context);
     }
 
     /**
@@ -1328,6 +1645,62 @@ public class BackgroundService extends Service {
         Intent intent = new Intent(context, BackgroundService.class);
         intent.setAction("STOP_NATIVE_WS");
         context.startService(intent);
+    }
+
+    // --- WorkManager periodic pending events polling ---
+
+    private static final String PENDING_EVENTS_WORK_NAME = "clawbench_pending_events";
+
+    /**
+     * Schedule periodic WorkManager polling for pending events.
+     * Runs every 15 minutes (WorkManager minimum interval).
+     * Only fires when battery is not low to avoid excessive polling.
+     * Called when native WS goes inactive (foreground service killed by system).
+     */
+    public static void schedulePendingEventsWork(Context context) {
+        try {
+            androidx.work.PeriodicWorkRequest workRequest =
+                    new androidx.work.PeriodicWorkRequest.Builder(
+                            PendingEventsWorker.class,
+                            15, java.util.concurrent.TimeUnit.MINUTES)
+                            .setConstraints(
+                                    new androidx.work.Constraints.Builder()
+                                            .setRequiresBatteryNotLow(true)
+                                            .build())
+                            .build();
+            androidx.work.WorkManager.getInstance(context)
+                    .enqueueUniquePeriodicWork(
+                            PENDING_EVENTS_WORK_NAME,
+                            androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+                            workRequest);
+            AppLog.i(TAG, "WorkManager: scheduled pending events periodic work (15min)");
+        } catch (Exception e) {
+            AppLog.w(TAG, "WorkManager: failed to schedule pending events work", e);
+        }
+    }
+
+    /**
+     * Cancel periodic WorkManager polling for pending events.
+     * Called when native WS becomes active (foreground service reconnects).
+     */
+    public static void cancelPendingEventsWork(Context context) {
+        try {
+            androidx.work.WorkManager.getInstance(context)
+                    .cancelUniqueWork(PENDING_EVENTS_WORK_NAME);
+            AppLog.i(TAG, "WorkManager: cancelled pending events periodic work");
+        } catch (Exception e) {
+            AppLog.w(TAG, "WorkManager: failed to cancel pending events work", e);
+        }
+    }
+
+    /** Instance helper: schedule WorkManager work using application context. */
+    private void schedulePendingEventsWs() {
+        schedulePendingEventsWork(getApplicationContext());
+    }
+
+    /** Instance helper: cancel WorkManager work using application context. */
+    private void cancelPendingEventsWs() {
+        cancelPendingEventsWork(getApplicationContext());
     }
 
     /**
@@ -1360,19 +1733,29 @@ public class BackgroundService extends Service {
     private void connectNativeWs(String serverUrl) {
         try {
             // Read session cookie from WebView's CookieManager
+            // Server uses port-scoped cookie names on non-default ports:
+            //   port 20000 → "clawbench_session"
+            //   port 20300 → "cb20300_clawbench_session"
             String cookies = android.webkit.CookieManager.getInstance().getCookie(serverUrl);
             String sessionCookie = null;
             if (cookies != null) {
                 for (String cookie : cookies.split(";")) {
                     String trimmed = cookie.trim();
-                    if (trimmed.startsWith("clawbench_session=")) {
-                        sessionCookie = trimmed;
-                        break;
+                    // Match both "clawbench_session=..." and "cb<port>_clawbench_session=..."
+                    int eqIdx = trimmed.indexOf('=');
+                    if (eqIdx > 0) {
+                        String name = trimmed.substring(0, eqIdx);
+                        if (name.equals("clawbench_session") ||
+                                (name.startsWith("cb") && name.endsWith("_clawbench_session"))) {
+                            sessionCookie = trimmed;
+                            break;
+                        }
                     }
                 }
             }
             if (sessionCookie == null) {
-                AppLog.w(TAG, "NativeWS: no session cookie found, cannot authenticate");
+                AppLog.w(TAG, "NativeWS: no session cookie found, scheduling retry");
+                scheduleNativeWsReconnect(serverUrl);
                 return;
             }
 
@@ -1384,9 +1767,9 @@ public class BackgroundService extends Service {
 
             AppLog.i(TAG, "NativeWS: connecting to " + wsUrl);
 
-            // Build OkHttp client
+            // Build OkHttp client — adaptive app-layer ping subsumes protocol-level ping
             OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder()
-                    .pingInterval(30, TimeUnit.SECONDS)
+                    .pingInterval(0, TimeUnit.MILLISECONDS)
                     .readTimeout(0, TimeUnit.MILLISECONDS);
 
             // Handle self-signed certs
@@ -1425,6 +1808,13 @@ public class BackgroundService extends Service {
         nativeWsIntentionalStop = true;
         nativeWsActive = false;
         nativeWsNeeded = false;
+        stopWsPingLoop();
+        // Cancel any pending reconnect
+        if (wsReconnectHandler != null && wsReconnectRunnable != null) {
+            wsReconnectHandler.removeCallbacks(wsReconnectRunnable);
+            wsReconnectHandler = null;
+            wsReconnectRunnable = null;
+        }
         if (nativeEventWs != null) {
             try {
                 nativeEventWs.close(1000, "foreground");
@@ -1435,32 +1825,51 @@ public class BackgroundService extends Service {
 
         // If no SSH ports are forwarded, the Service has no reason to stay alive.
         // Stop it to avoid wasting battery on an idle foreground service.
-        if (forwardedPorts.isEmpty()) {
-            AppLog.i(TAG, "NativeWS: no SSH ports either, stopping service");
+        maybeStopIdleService();
+    }
+
+    /**
+     * Stop the service if it has no active work (no SSH ports, no native WS needed).
+     */
+    private void maybeStopIdleService() {
+        if (forwardedPorts.isEmpty() && !nativeWsNeeded) {
+            AppLog.i(TAG, "Service idle (no SSH ports, no native WS), stopping");
             stopSelf();
         }
     }
 
     /**
      * Schedule a reconnect attempt for the native WebSocket.
+     * Reconnects indefinitely with exponential backoff, capped at the longest
+     * delay in RECONNECT_DELAYS_MS. Only stops on nativeWsIntentionalStop.
+     * Cancels any previously scheduled reconnect to avoid callback accumulation.
      */
     private void scheduleNativeWsReconnect(String serverUrl) {
         if (nativeWsIntentionalStop) return;
-        nativeWsReconnectAttempt++;
-        if (nativeWsReconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
-            AppLog.w(TAG, "NativeWS: exhausted reconnect attempts, giving up");
-            return;
+        // Cancel any previously scheduled reconnect
+        if (wsReconnectHandler != null && wsReconnectRunnable != null) {
+            wsReconnectHandler.removeCallbacks(wsReconnectRunnable);
         }
+        nativeWsReconnectAttempt++;
         int delayIdx = Math.min(nativeWsReconnectAttempt - 1, RECONNECT_DELAYS_MS.length - 1);
         int delay = RECONNECT_DELAYS_MS[delayIdx];
-        AppLog.i(TAG, "NativeWS: reconnecting in " + delay + "ms (attempt " + nativeWsReconnectAttempt + ")");
+        int displayAttempt = Math.min(nativeWsReconnectAttempt, 999);
+        AppLog.i(TAG, "NativeWS: reconnecting in " + delay + "ms (attempt " + displayAttempt + ")");
+
+        // Release locks during reconnect backoff — re-acquired before connect attempt
+        maybeReleaseWakeLock();
+        maybeReleaseWifiLock();
 
         // Use Handler to schedule on main thread, then post to network executor
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+        wsReconnectHandler = new Handler(Looper.getMainLooper());
+        final String finalServerUrl = serverUrl;
+        wsReconnectRunnable = () -> {
             if (!nativeWsIntentionalStop && isRunning) {
-                networkExecutor.execute(() -> connectNativeWs(serverUrl));
+                ensureWakeLock(); // Briefly wake CPU for connection attempt
+                networkExecutor.execute(() -> connectNativeWs(finalServerUrl));
             }
-        }, delay);
+        };
+        wsReconnectHandler.postDelayed(wsReconnectRunnable, delay);
     }
 
     /**
@@ -1472,6 +1881,18 @@ public class BackgroundService extends Service {
             nativeWsActive = true;
             nativeWsReconnectAttempt = 0;
             AppLog.i(TAG, "NativeWS: connected");
+            acquireWakeLock();
+            acquireWifiLock();
+            startWsPingLoop();
+            // Cancel WorkManager polling — WS is more efficient
+            cancelPendingEventsWs();
+
+            // Fetch missed events that occurred while offline
+            String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .getString(KEY_SERVER_URL, "");
+            if (!serverUrl.isEmpty()) {
+                networkExecutor.execute(() -> fetchPendingEvents(serverUrl));
+            }
         }
 
         @Override
@@ -1488,21 +1909,6 @@ public class BackgroundService extends Service {
 
                 if (!"event".equals(type)) return;
 
-                // If JPush is available, native WS is no longer needed —
-                // disconnect and let JPush handle notifications going forward.
-                // Also check jpushEnabledOnServer: even if JPush SDK hasn't finished
-                // initializing (pushAvailable=false), the server will send JPush
-                // notifications, so we must not show duplicate notifications.
-                if (MainActivity.instance != null &&
-                        (MainActivity.instance.pushAvailable || MainActivity.instance.jpushEnabledOnServer)) {
-                    AppLog.i(TAG, "NativeWS: JPush available (pushAvailable=" + MainActivity.instance.pushAvailable
-                            + ", jpushEnabledOnServer=" + MainActivity.instance.jpushEnabledOnServer
-                            + "), disconnecting native WS");
-                    nativeWsIntentionalStop = true;
-                    webSocket.close(1000, "jpush-available");
-                    return;
-                }
-
                 String eventId = msg.optString("id", "");
                 String event = msg.optString("event", "");
                 JSONObject data = msg.optJSONObject("data");
@@ -1514,6 +1920,14 @@ public class BackgroundService extends Service {
                     ack.put("type", "ack");
                     ack.put("id", eventId);
                     webSocket.send(ack.toString());
+                }
+
+                // Dedup check (prevents double notifications from WS replay + pending fetch)
+                if (!eventId.isEmpty()) {
+                    if (isDuplicateEvent(eventId)) {
+                        return;
+                    }
+                    addProcessedEventId(eventId);
                 }
 
                 // Only notify for terminal states and permission pending
@@ -1532,9 +1946,20 @@ public class BackgroundService extends Service {
                     postEventNotification(event, data);
                 }
 
+                // Update last seen event cursor for pending events fetch
+                // Only update for terminal-state events that are persisted server-side
+                if (!eventId.isEmpty() && shouldNotify) {
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putString(KEY_LAST_SEEN_EVENT_ID, eventId)
+                            .apply();
+                }
+
             } catch (Exception e) {
                 AppLog.w(TAG, "NativeWS: error processing message", e);
             }
+            // Message received proves connection is alive — skip next ping to save CPU
+            skipNextPing = true;
         }
 
         @Override
@@ -1545,6 +1970,7 @@ public class BackgroundService extends Service {
         @Override
         public void onClosed(WebSocket webSocket, int code, String reason) {
             nativeWsActive = false;
+            stopWsPingLoop();
             AppLog.i(TAG, "NativeWS: closed (code=" + code + ", reason=" + reason + ")");
             if (!nativeWsIntentionalStop) {
                 String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -1553,11 +1979,16 @@ public class BackgroundService extends Service {
                     scheduleNativeWsReconnect(serverUrl);
                 }
             }
+            maybeReleaseWakeLock();
+            maybeReleaseWifiLock();
+            // Schedule WorkManager fallback since WS is down
+            schedulePendingEventsWs();
         }
 
         @Override
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
             nativeWsActive = false;
+            stopWsPingLoop();
             AppLog.w(TAG, "NativeWS: connection failure: " + (t != null ? t.getMessage() : "unknown"));
             if (!nativeWsIntentionalStop) {
                 String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -1566,138 +1997,129 @@ public class BackgroundService extends Service {
                     scheduleNativeWsReconnect(serverUrl);
                 }
             }
+            maybeReleaseWakeLock();
+            maybeReleaseWifiLock();
+            // Schedule WorkManager fallback since WS failed
+            schedulePendingEventsWs();
         }
     }
 
     /**
      * Post a system notification for an AI event.
+     * Title/alert formatting:
+     *   1. Default: title = PushTaskCompleted, alert = PushSessionEnded
+     *      (task_update: alert = PushScheduledTaskDone)
+     *   2. permission_pending: title = PushPermissionPending, alert = toolName || PushPermissionPending
+     *   3. If sessionTitle non-empty && NOT permission_pending: title = "Done:" + sessionTitle
+     *   4. If responsePreview non-empty: alert = truncateForPush(responsePreview, 512)
      */
     private void postEventNotification(String eventType, JSONObject data) {
+        // Suppress notifications when app is in the foreground
+        if (MainActivity.isForeground) {
+            AppLog.d(TAG, "NativeWS: suppressing notification, app is foreground");
+            return;
+        }
         try {
             String status = data.optString("status", "");
-            String sessionId = null;
-            String taskId = null;
-            String projectPath = null;
-            String title = null;
-            String text = null;
+            String sessionId = data.optString("session_id", "");
+            String taskId = data.optString("task_id", "");
+            String executionId = data.optString("execution_id", "");
+            String projectPath = data.optString("project_path", "");
+            String sessionTitle = data.optString("session_title", "");
+            String responsePreview = data.optString("response_preview", "");
+            String toolName = data.optString("tool_name", "");
 
             AppLog.i(TAG, "NativeWS: postEventNotification called, eventType=" + eventType + ", data=" + data.toString());
 
+            // --- Title/alert formatting (mirrors backend ws/manager.go) ---
+
+            String title = getString(R.string.push_task_completed);
+            String alert;
+
             if ("session_update".equals(eventType)) {
-                sessionId = data.optString("session_id", "");
-                String responsePreview = data.optString("response_preview", "");
+                // Cancelled-specific default alert
+                alert = "cancelled".equals(status)
+                        ? getString(R.string.push_session_cancelled)
+                        : getString(R.string.push_session_ended);
+
+                // Permission pending: override title/alert
                 if ("permission_pending".equals(status)) {
-                    title = "需要审批";
-                    String toolName = data.optString("tool_name", "");
-                    text = toolName.isEmpty() ? "AI请求操作许可" : toolName;
-                } else if ("completed".equals(status)) {
-                    title = "AI 任务完成";
-                    text = responsePreview.isEmpty() ? "AI会话已结束" : responsePreview;
-                } else {
-                    title = "AI 会话通知";
-                    text = "会话已取消";
+                    title = getString(R.string.push_permission_pending);
+                    alert = toolName.isEmpty() ? getString(R.string.push_permission_pending) : toolName;
                 }
+
+                // If sessionTitle non-empty and not permission_pending: "Done:"+sessionTitle
+                if (!sessionTitle.isEmpty() && !"permission_pending".equals(status)) {
+                    title = "Done:" + sessionTitle;
+                }
+
+                // If responsePreview non-empty: use as alert (truncated)
+                if (!responsePreview.isEmpty()) {
+                    alert = truncateForPush(responsePreview);
+                }
+
             } else if ("task_update".equals(eventType)) {
-                taskId = data.optString("task_id", "");
-                sessionId = data.optString("session_id", null);
-                String executionId = data.optString("execution_id", null);
-                if ("completed".equals(status)) {
-                    title = "计划任务完成";
-                    text = "任务已完成";
+                // Status-specific default alert
+                if ("failed".equals(status)) {
+                    alert = getString(R.string.push_task_failed);
                 } else if ("cancelled".equals(status)) {
-                    title = "计划任务通知";
-                    text = "任务已取消";
+                    alert = getString(R.string.push_task_cancelled);
                 } else {
-                    title = "计划任务通知";
-                    text = "任务失败";
-                }
-                // Build intent for notification tap — open the app and navigate to task execution detail
-                Intent intent = new Intent(this, MainActivity.class);
-                intent.setAction(android.content.Intent.ACTION_MAIN);
-                intent.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
-                intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                intent.putExtra("event_type", "task_update");
-                if (taskId != null && !taskId.isEmpty()) {
-                    intent.putExtra("task_id", taskId);
-                }
-                if (executionId != null && !executionId.isEmpty()) {
-                    intent.putExtra("execution_id", executionId);
-                }
-                if (sessionId != null && !sessionId.isEmpty()) {
-                    intent.putExtra("session_id", sessionId);
-                }
-                projectPath = data.optString("project_path", "");
-                if (projectPath != null && !projectPath.isEmpty()) {
-                    intent.putExtra("project_path", projectPath);
+                    alert = getString(R.string.push_scheduled_task_done);
                 }
 
-                AppLog.i(TAG, "NativeWS: notification intent extras: session_id=" + sessionId
-                        + ", task_id=" + taskId + ", execution_id=" + executionId + ", project_path=" + projectPath);
-
-                PendingIntent pendingIntent = PendingIntent.getActivity(
-                        this, 0, intent,
-                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-                );
-
-                // Use hash of task_id as notification ID so each gets its own notification
-                int notifId = EVENTS_NOTIFICATION_ID;
-                if (taskId != null && !taskId.isEmpty()) {
-                    notifId = EVENTS_NOTIFICATION_ID + 1000 + Math.abs(taskId.hashCode() % 1000);
-                } else if (sessionId != null && !sessionId.isEmpty()) {
-                    notifId = EVENTS_NOTIFICATION_ID + Math.abs(sessionId.hashCode() % 1000);
+                // If sessionTitle non-empty: "Done:"+sessionTitle
+                if (!sessionTitle.isEmpty()) {
+                    title = "Done:" + sessionTitle;
                 }
 
-                Notification notification = new NotificationCompat.Builder(this, EVENTS_CHANNEL_ID)
-                        .setContentTitle(title)
-                        .setContentText(text)
-                        .setSmallIcon(R.drawable.ic_notification)
-                        .setContentIntent(pendingIntent)
-                        .setAutoCancel(true)
-                        .build();
-
-                NotificationManager nm = getSystemService(NotificationManager.class);
-                if (nm != null) {
-                    nm.notify(notifId, notification);
+                // If responsePreview non-empty: use as alert (truncated)
+                if (!responsePreview.isEmpty()) {
+                    alert = truncateForPush(responsePreview);
                 }
 
-                AppLog.i(TAG, "NativeWS: posted notification: " + title + " - " + text);
-                return;
             } else {
                 AppLog.i(TAG, "NativeWS: postEventNotification - unhandled eventType=" + eventType + ", skipping");
                 return;
             }
 
-            // Build intent for notification tap — open the app and navigate to session
+            // --- Build intent for notification tap ---
             Intent intent = new Intent(this, MainActivity.class);
             intent.setAction(android.content.Intent.ACTION_MAIN);
             intent.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
             intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            intent.putExtra("event_type", "permission_pending".equals(status) ? "permission_pending" : "session_update");
-            if (sessionId != null && !sessionId.isEmpty()) {
-                intent.putExtra("session_id", sessionId);
-            }
-            projectPath = data.optString("project_path", "");
-            if (projectPath != null && !projectPath.isEmpty()) {
-                intent.putExtra("project_path", projectPath);
-            }
 
-            AppLog.i(TAG, "NativeWS: notification intent extras: session_id=" + sessionId
-                    + ", project_path=" + projectPath);
+            if ("task_update".equals(eventType)) {
+                intent.putExtra("event_type", "task_update");
+                if (!taskId.isEmpty()) intent.putExtra("task_id", taskId);
+                if (!executionId.isEmpty()) intent.putExtra("execution_id", executionId);
+                if (!sessionId.isEmpty()) intent.putExtra("session_id", sessionId);
+            } else {
+                intent.putExtra("event_type", "permission_pending".equals(status) ? "permission_pending" : "session_update");
+                if (!sessionId.isEmpty()) intent.putExtra("session_id", sessionId);
+            }
+            if (!projectPath.isEmpty()) intent.putExtra("project_path", projectPath);
+
+            AppLog.i(TAG, "NativeWS: notification intent extras: event_type=" + eventType
+                    + ", session_id=" + sessionId + ", task_id=" + taskId
+                    + ", execution_id=" + executionId + ", project_path=" + projectPath);
 
             PendingIntent pendingIntent = PendingIntent.getActivity(
                     this, 0, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
 
-            // Use hash of session_id as notification ID so each gets its own notification
+            // Use hash of session_id or task_id as notification ID so each gets its own notification
             int notifId = EVENTS_NOTIFICATION_ID;
-            if (sessionId != null && !sessionId.isEmpty()) {
+            if (!taskId.isEmpty()) {
+                notifId = EVENTS_NOTIFICATION_ID + 1000 + Math.abs(taskId.hashCode() % 1000);
+            } else if (!sessionId.isEmpty()) {
                 notifId = EVENTS_NOTIFICATION_ID + Math.abs(sessionId.hashCode() % 1000);
             }
 
             Notification notification = new NotificationCompat.Builder(this, EVENTS_CHANNEL_ID)
                     .setContentTitle(title)
-                    .setContentText(text)
+                    .setContentText(alert)
                     .setSmallIcon(R.drawable.ic_notification)
                     .setContentIntent(pendingIntent)
                     .setAutoCancel(true)
@@ -1708,10 +2130,271 @@ public class BackgroundService extends Service {
                 nm.notify(notifId, notification);
             }
 
-            AppLog.i(TAG, "NativeWS: posted notification: " + title + " - " + text);
+            AppLog.i(TAG, "NativeWS: posted notification: " + title + " - " + alert);
 
         } catch (Exception e) {
             AppLog.e(TAG, "NativeWS: failed to post notification", e);
+        }
+    }
+
+    /**
+     * Fetch pending (missed) events from the server via HTTP GET.
+     * Called on WS reconnect to recover events that occurred while offline.
+     * Posts Android notifications for each missed terminal event.
+     * MUST be called from a background thread (network I/O).
+     */
+    private void fetchPendingEvents(String serverUrl) {
+        try {
+            String lastSeenId = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .getString(KEY_LAST_SEEN_EVENT_ID, "");
+
+            StringBuilder urlBuilder = new StringBuilder(serverUrl)
+                    .append("/api/ai/events/pending");
+            if (!lastSeenId.isEmpty()) {
+                urlBuilder.append("?after=").append(java.net.URLEncoder.encode(lastSeenId, "UTF-8"));
+            }
+
+            // Read session cookie (same pattern as connectNativeWs)
+            String cookies = android.webkit.CookieManager.getInstance().getCookie(serverUrl);
+            String sessionCookie = null;
+            if (cookies != null) {
+                for (String cookie : cookies.split(";")) {
+                    String trimmed = cookie.trim();
+                    int eqIdx = trimmed.indexOf('=');
+                    if (eqIdx > 0) {
+                        String name = trimmed.substring(0, eqIdx);
+                        if (name.equals("clawbench_session") ||
+                                (name.startsWith("cb") && name.endsWith("_clawbench_session"))) {
+                            sessionCookie = trimmed;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (sessionCookie == null) {
+                AppLog.w(TAG, "PendingEvents: no session cookie, skipping fetch");
+                return;
+            }
+
+            // Build OkHttp request (reuse SSL context)
+            OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(10, TimeUnit.SECONDS);
+            if (trustAllSSLContext != null && serverUrl.startsWith("https://")) {
+                clientBuilder.sslSocketFactory(trustAllSSLContext.getSocketFactory(), new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                });
+                clientBuilder.hostnameVerifier((hostname, session) -> true);
+            }
+
+            Request request = new Request.Builder()
+                    .url(urlBuilder.toString())
+                    .header("Cookie", sessionCookie)
+                    .get()
+                    .build();
+
+            Response response = clientBuilder.build().newCall(request).execute();
+            if (response.code() != 200) {
+                AppLog.w(TAG, "PendingEvents: HTTP " + response.code());
+                return;
+            }
+
+            String body = response.body().string();
+            JSONObject json = new JSONObject(body);
+            JSONArray events = json.optJSONArray("events");
+            if (events == null || events.length() == 0) {
+                AppLog.d(TAG, "PendingEvents: no missed events");
+                return;
+            }
+
+            AppLog.i(TAG, "PendingEvents: processing " + events.length() + " missed events");
+            String latestId = lastSeenId;
+            for (int i = 0; i < events.length(); i++) {
+                JSONObject eventObj = events.getJSONObject(i);
+                String payloadStr = eventObj.optString("payload", "");
+                String eventId = eventObj.optString("event_id", "");
+
+                // Skip duplicates
+                if (!eventId.isEmpty() && isDuplicateEvent(eventId)) {
+                    continue;
+                }
+                if (!eventId.isEmpty()) {
+                    addProcessedEventId(eventId);
+                }
+
+                // Parse the full ServerMessage from payload
+                JSONObject msg = new JSONObject(payloadStr);
+                String eventType = msg.optString("event", "");
+                JSONObject data = msg.optJSONObject("data");
+                if (data == null) continue;
+
+                // Post notification (same logic as NativeEventListener.onMessage)
+                String status = data.optString("status", "");
+                boolean shouldNotify = false;
+                if ("session_update".equals(eventType)
+                        && ("completed".equals(status) || "cancelled".equals(status) || "permission_pending".equals(status))) {
+                    shouldNotify = true;
+                } else if ("task_update".equals(eventType)
+                        && ("completed".equals(status) || "failed".equals(status) || "cancelled".equals(status))) {
+                    shouldNotify = true;
+                }
+                if (shouldNotify) {
+                    postEventNotification(eventType, data);
+                }
+
+                if (!eventId.isEmpty()) {
+                    latestId = eventId;
+                }
+            }
+
+            // Update cursor
+            if (!latestId.equals(lastSeenId)) {
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putString(KEY_LAST_SEEN_EVENT_ID, latestId)
+                        .apply();
+            }
+
+        } catch (Exception e) {
+            AppLog.w(TAG, "PendingEvents: fetch failed", e);
+        }
+    }
+
+    /**
+     * Truncate text for push notification alert.
+     * Mirrors backend ws/manager.go truncateForPush: max 512 code points + "…".
+     */
+    private static final int PUSH_ALERT_MAX_CODE_POINTS = 512;
+
+    private static String truncateForPush(String s) {
+        if (s.codePointCount(0, s.length()) <= PUSH_ALERT_MAX_CODE_POINTS) {
+            return s;
+        }
+        int end = s.offsetByCodePoints(0, PUSH_ALERT_MAX_CODE_POINTS);
+        return s.substring(0, end) + "…";
+    }
+
+    /**
+     * Post an event notification from outside the service (e.g. PendingEventsWorker).
+     * Creates its own NotificationManager and channel since the service may not be running.
+     */
+    static void postEventNotificationFromWorker(Context context, String eventType, JSONObject data) {
+        // Suppress notifications when app is in the foreground
+        if (MainActivity.isForeground) {
+            AppLog.d(TAG, "PendingEvents: suppressing notification, app is foreground");
+            return;
+        }
+        try {
+            String status = data.optString("status", "");
+            String sessionId = data.optString("session_id", "");
+            String taskId = data.optString("task_id", "");
+            String executionId = data.optString("execution_id", "");
+            String projectPath = data.optString("project_path", "");
+            String sessionTitle = data.optString("session_title", "");
+            String responsePreview = data.optString("response_preview", "");
+            String toolName = data.optString("tool_name", "");
+
+            // Ensure notification channel exists
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                android.app.NotificationManager nm = context.getSystemService(android.app.NotificationManager.class);
+                if (nm != null) {
+                    android.app.NotificationChannel channel = nm.getNotificationChannel(EVENTS_CHANNEL_ID);
+                    if (channel == null) {
+                        channel = new android.app.NotificationChannel(
+                                EVENTS_CHANNEL_ID, "AI 事件通知",
+                                android.app.NotificationManager.IMPORTANCE_HIGH);
+                        channel.setDescription("AI会话和任务完成通知");
+                        channel.enableLights(true);
+                        channel.setVibrationPattern(new long[]{0, 300, 200, 300});
+                        nm.createNotificationChannel(channel);
+                    }
+                }
+            }
+
+            // Title/alert formatting (same logic as postEventNotification, using R.string resources)
+            String title;
+            String alert;
+            if ("session_update".equals(eventType)) {
+                title = context.getString(R.string.push_session_ended);
+                alert = "cancelled".equals(status)
+                        ? context.getString(R.string.push_session_cancelled)
+                        : context.getString(R.string.push_session_ended);
+                if ("permission_pending".equals(status)) {
+                    title = context.getString(R.string.push_permission_pending);
+                    alert = toolName.isEmpty()
+                            ? context.getString(R.string.push_permission_pending)
+                            : toolName;
+                }
+                if (!sessionTitle.isEmpty() && !"permission_pending".equals(status)) {
+                    title = "Done:" + sessionTitle;
+                }
+                if (!responsePreview.isEmpty()) {
+                    alert = truncateForPush(responsePreview);
+                }
+            } else if ("task_update".equals(eventType)) {
+                title = context.getString(R.string.push_task_completed);
+                if ("failed".equals(status)) {
+                    alert = context.getString(R.string.push_task_failed);
+                } else if ("cancelled".equals(status)) {
+                    alert = context.getString(R.string.push_task_cancelled);
+                } else {
+                    alert = context.getString(R.string.push_scheduled_task_done);
+                }
+                if (!sessionTitle.isEmpty()) {
+                    title = "Done:" + sessionTitle;
+                }
+                if (!responsePreview.isEmpty()) {
+                    alert = truncateForPush(responsePreview);
+                }
+            } else {
+                return;
+            }
+
+            Intent intent = new Intent(context, MainActivity.class);
+            intent.setAction(android.content.Intent.ACTION_MAIN);
+            intent.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            if ("task_update".equals(eventType)) {
+                intent.putExtra("event_type", "task_update");
+                if (!taskId.isEmpty()) intent.putExtra("task_id", taskId);
+                if (!executionId.isEmpty()) intent.putExtra("execution_id", executionId);
+                if (!sessionId.isEmpty()) intent.putExtra("session_id", sessionId);
+            } else {
+                intent.putExtra("event_type", "permission_pending".equals(status) ? "permission_pending" : "session_update");
+                if (!sessionId.isEmpty()) intent.putExtra("session_id", sessionId);
+            }
+            if (!projectPath.isEmpty()) intent.putExtra("project_path", projectPath);
+
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                    context, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            int notifId = EVENTS_NOTIFICATION_ID;
+            if (!taskId.isEmpty()) {
+                notifId = EVENTS_NOTIFICATION_ID + 1000 + Math.abs(taskId.hashCode() % 1000);
+            } else if (!sessionId.isEmpty()) {
+                notifId = EVENTS_NOTIFICATION_ID + Math.abs(sessionId.hashCode() % 1000);
+            }
+
+            Notification notification = new NotificationCompat.Builder(context, EVENTS_CHANNEL_ID)
+                    .setContentTitle(title)
+                    .setContentText(alert)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentIntent(pendingIntent)
+                    .setAutoCancel(true)
+                    .build();
+
+            NotificationManager nm = context.getSystemService(NotificationManager.class);
+            if (nm != null) {
+                nm.notify(notifId, notification);
+            }
+
+            AppLog.i(TAG, "PendingEventsWorker: posted notification: " + title + " - " + alert);
+        } catch (Exception e) {
+            AppLog.e(TAG, "PendingEventsWorker: failed to post notification", e);
         }
     }
 }

@@ -49,6 +49,7 @@ registerIdentityUpdaters({
   updateAvailableModes,
   updateAvailableThinkingEfforts,
   updateCommandState,
+  updateUsageState,
   currentAgentId,
 })
 
@@ -142,6 +143,13 @@ function loadThinkingPref(agentId: string): string | null {
 // user action (local ref update), or DB restore (initSessionFromAPI).
 // Agent-initiated mode changes override user selection.
 // ───────────────────────────────────────────────────────────
+
+function loadModePref(agentId: string): string | null {
+  if (!agentId) return null
+  // Read from agent's server-side preference (preferredMode)
+  const { getEffectiveModeId } = useAgents()
+  return getEffectiveModeId(agentId) || null
+}
 
 /** Update mode state from REST API or user action (full state). */
 export function updateModeState(modeId: string, modes: Array<{ id: string; name: string }>) {
@@ -390,7 +398,7 @@ export async function initSessionFromAPI() {
         } else {
           // Fall back to agent's stored transport
           const agent = agentsApi.getAgent(data.agentId || '')
-          currentTransport.value = agent?.transport || 'cli'
+          currentTransport.value = agent?.transport || (agent?.acpCommand ? 'acp-stdio' : 'cli')
         }
         // Initialize autoApprove from server state
         if (data.autoApprove !== undefined) {
@@ -656,6 +664,7 @@ export function useSessionIdentity() {
     saveThinkingPref,
     loadModelPref,
     loadThinkingPref,
+    loadModePref,
     toggleAutoApprove,
     // Mode state helpers
     updateModeState,

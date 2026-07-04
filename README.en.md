@@ -120,6 +120,21 @@ graph LR
 - **A PC (Linux / macOS / Windows)**: To run the ClawBench server, with at least one AI coding agent CLI installed (CodeBuddy, Claude Code, OpenCode, Codex, Qoder CLI, VeCLI, CodeWhale, MiMo-Code, Pi, Cline, Copilot, or Kimi)
 - **A phone**: Install the [ClawBench Android App](https://github.com/xulongzhe/clawbench/releases), or use a mobile browser (Chrome recommended) to access the server address
 
+### npm Install (with China mirror acceleration)
+
+Install via npm in one command. Users in China can use the npmmirror registry for fast downloads:
+
+```bash
+# Configure npmmirror (one-time setup)
+npm config set registry https://registry.npmmirror.com/
+# Install globally
+npm install -g @xulongzhe/clawbench
+# Start
+clawbench
+```
+
+Supports Linux (x64/arm64), macOS (Intel/Apple Silicon), and Windows (x64). npm automatically selects the correct platform-specific binary package.
+
 ### Download & Start
 
 Download the latest ZIP package from [GitHub Releases](https://github.com/xulongzhe/clawbench/releases), extract and you're ready:
@@ -133,8 +148,6 @@ cd clawbench
 
 That's it — on every startup, ClawBench automatically scans for installed AI CLI tools, generates minimal agent configs for each detected backend, and auto-discovers available models and thinking effort levels. No manual configuration needed.
 
-> If no AI CLI is installed but the embedded Pi agent is available (from the release package or `--with-pi` build), a setup wizard appears on first launch, guiding you through selecting an LLM provider, entering your API key, verifying model access, and creating an agent — all in one click.
-
 > A random 8-character hex password is auto-generated on first startup and printed to the console in a bordered box. Save it securely.
 
 Once deployed, access `http://server-ip:20000` from your phone app or mobile browser:
@@ -144,7 +157,7 @@ Once deployed, access `http://server-ip:20000` from your phone app or mobile bro
 
 ### Customize Agents
 
-Auto-discovered agent configs use minimal defaults (no model lists or thinking effort levels — these are auto-discovered at runtime). To customize model lists, system prompts, etc., create new agents via the setup wizard in the Web UI. Agent configs are stored in the database.
+Auto-discovered agent configs use minimal defaults (no model lists or thinking effort levels — these are auto-discovered at runtime). To customize model lists, system prompts, etc., create new agents from the Web UI. Agent configs are stored in the database.
 
 > For build instructions, advanced configuration, deployment, and architecture details, see **[Build & Development Guide](docs/DEVELOPMENT.en.md)**.
 
@@ -190,7 +203,6 @@ Auto-discovered agent configs use minimal defaults (no model lists or thinking e
 - **Model Selection Persistence**: Model choice and thinking effort per agent auto-saved to localStorage, restored on reload/session switch
 - **Scheduled Tasks**: AI creates Cron schedules via CLI subcommands, executes automatically; independent tab with 4-level breadcrumb navigation; task cards embedded in chat messages; frequency presets (hourly/daily/weekly/monthly) + custom cron expressions; per-execution read tracking + TTS playback; execution auto-summary + completion notification (sound/haptic/toast)
 - **Continue Conversation**: One-click continue conversation from task execution detail, auto-copies history messages and summaries to a new session, inherits backend/agent/model/thinking effort; sessions originated from scheduled tasks show a purple "Task" badge in session list
-- **Setup Wizard**: When no AI CLI is installed, the embedded Pi agent provides a 5-step guided setup (Welcome → Select Provider → Enter API Key → Verify Model → Name Agent), supporting 23 LLM providers (OpenAI, Anthropic, Google, DeepSeek, Alibaba Qwen, etc.); supports custom URL mode for any OpenAI/Anthropic-compatible endpoint with auto-detected API format and direct HTTP verification (no Pi CLI needed). API keys are encrypted with AES-256-GCM and encryption keys auto-rotate on password change
 - **Multi-Session Management**: Create, switch, delete independent sessions, swipe to switch
 - **Swipe Session Toggle**: Toggle left/right swipe session switching in Settings → Chat; defaults to off to prevent accidental switches when scrolling wide content
 - **Image Upload**: Upload images for AI conversation (multimodal)
@@ -281,7 +293,7 @@ Auto-discovered agent configs use minimal defaults (no model lists or thinking e
 - Notification sound + haptic feedback (alerts when AI completes)
 - Browser push notifications
 - **Task Completion Push**: Scheduled task completion notifications include response preview summary; tap to navigate to execution details
-- **ACP Approval Push**: When ACP agents need user approval (e.g., file write, command execution), JPush sends Android notification showing tool name; tap to navigate directly to session for approval
+
 
 ### 🎨 Themes
 - Light / Dark mode, follows system preference
